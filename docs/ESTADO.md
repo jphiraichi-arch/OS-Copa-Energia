@@ -222,3 +222,69 @@ python -m osapp.cli desativar-usuario --login ana.modelo
 - Se o administrador mudar a filial de uma OS em execução, o executor (da filial antiga)
   deixa de vê-la; o administrador pode concluir ou desfazer o início.
 - `inicio_realizado` pode ser anterior à criação da OS (não há regra sobre isso).
+
+## Prompt 6 — casca da interface: login, sessão, guarda de rotas, navegação
+
+### O que existe
+
+- `ui/rotas.py` (puro): tabela central `TABELA` (`/login`, `/`, `/os/nova`, `/os/{id}`,
+  `/os/{id}/editar`, `/os/{id}/concluir`), `resolver`, `normalizar` (rota desconhecida -> `/`),
+  `rota_anterior`, `rota_os`, `rota_editar`, `rota_concluir`.
+- `ui/sessao.py` (puro): `SessaoUI` (ator_id, última atividade, dados de exibição, rota
+  pendente), `decidir_rota(rota, sessao, agora)`, `expirada`, `autenticada`, `iniciar`,
+  `encerrar`, `registrar_atividade`, `aplicar_navegacao`.
+- `ui/app.py`: classe `App` (uma por sessão de navegador): guarda de rotas, casca com
+  cabeçalho + navegação, `ir`, `voltar`, `sair`, `entrar`, `avisar` e `chamar` (auxiliar
+  único de chamada de serviços, que devolve `Resultado`).
+- `ui/views/login.py`, `ui/views/em_construcao.py` (telas provisórias), `ui/views/base.py`.
+- `ui/components/basicos.py` (cartão, campo de texto, botões, indicador de carga) e
+  `ui/components/cabecalho.py` (agora com `logo`, `barra`, `saudacao`, menu com "Sair").
+- `main.py`: `main(page)` cria um `App` por sessão. A página de fumaça foi substituída.
+- Testes: `tests/test_ui_rotas_sessao.py`.
+
+### Abordagem de rotas escolhida
+
+A imperativa do cookbook "Navigation and routing": `page.on_route_change` reconstrói
+`page.views` a partir de `page.route`; a navegação usa o assíncrono `page.push_route()`.
+Cada rota monta uma única `View`. Não se usa o `Router` declarativo (é para apps escritos
+com `@component`). O botão de voltar do cabeçalho leva à tela anterior na hierarquia
+(`rota_anterior`); o voltar do navegador muda a URL e passa pela mesma guarda.
+
+### Sessão, tempo limite e atualização da página
+
+- O estado da sessão (`SessaoUI`) fica na memória do servidor, dentro do `App` da sessão
+  Flet. Nada é gravado no armazenamento do cliente pelo app.
+- `OS_SESSAO_TIMEOUT_MIN` minutos sem atividade (navegação ou chamada de serviço) encerram
+  a sessão; a próxima navegação ou ação mostra `/login` com "Sessão expirada. Entre
+  novamente.".
+- **Atualizar a página (F5):** o cliente Flet reconecta à mesma sessão do servidor, então o
+  usuário continua logado e na mesma rota (verificado). O próprio Flet mantém uma sessão
+  desconectada por `FLET_SESSION_TIMEOUT` segundos (padrão 3600) antes de descartá-la;
+  depois disso, ou se o processo reiniciar, a atualização cria uma sessão nova e mostra o
+  login. O tempo limite de inatividade do app continua valendo durante a reconexão.
+- Abrir o app em outra aba cria outra sessão (novo login).
+
+### Como executar
+
+```bash
+alembic upgrade head && OS_SEED_SENHA='<senha>' python -m osapp.seed
+python -m osapp.main        # http://localhost:8550 ; entre com marina.teste ou admin
+```
+
+### Decisões
+
+- Serviços (bloqueantes) rodam com `await asyncio.to_thread(...)`, como recomenda o
+  cookbook "Async apps".
+- Navegação: `NavigationBar` abaixo de 600 px, `NavigationRail` a partir de 600 px, trocando
+  em `page.on_resize`.
+- Ferramentas oficiais de teste do Flet (`flet test` / `flet.testing`): **não rodam neste
+  ambiente** (`import flet.testing` falha por falta de numpy; o extra `flet[test]` traz
+  numpy, pillow e scikit-image e o executor precisa do cliente Flutter de desktop). Não há
+  teste de integração Flet; a verificação foi feita dirigindo o app em Chromium headless
+  (Playwright) a 390 px e 1280 px.
+
+### Lacunas conhecidas
+
+- Sem telas reais de Home, Detalhe e formulários (prompts 7 a 9).
+- Um usuário desativado só é barrado na próxima chamada de serviço (as telas provisórias
+  não chamam serviços).

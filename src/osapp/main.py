@@ -13,73 +13,16 @@ import flet as ft
 
 from osapp.config import Config, ConfigError, carregar_config
 from osapp.logs import configurar_logging
-from osapp.ui import theme
-from osapp.ui.components.cabecalho import cabecalho
+from osapp.ui.app import App
 
 PORTA_DESENVOLVIMENTO = 8550
 
 logger = logging.getLogger("osapp")
 
 
-def construir_conteudo_smoke() -> ft.Control:
-    """Página de fumaça do prompt 1: cabeçalho, um cartão e um botão primário."""
-    cartao = ft.Container(
-        bgcolor=theme.COR_CARTAO,
-        border_radius=theme.RAIO_CARTAO,
-        padding=theme.ESPACO_M,
-        shadow=ft.BoxShadow(blur_radius=12, color=theme.COR_SOMBRA, offset=ft.Offset(0, 2)),
-        content=ft.Column(
-            controls=[
-                ft.Text(
-                    "Sistema de OS",
-                    color=theme.COR_TITULO,
-                    size=theme.FONTE_TITULO,
-                    weight=ft.FontWeight.BOLD,
-                ),
-                ft.Text(
-                    "Página de teste do esqueleto do projeto. As telas reais chegam "
-                    "nas próximas etapas.",
-                    color=theme.COR_SUBTITULO,
-                    size=theme.FONTE_SUBTITULO,
-                ),
-            ],
-            spacing=theme.ESPACO_P,
-            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-        ),
-    )
-    botao = ft.Button(
-        content="Nova ordem de serviço",
-        icon=ft.Icons.ADD_CIRCLE_OUTLINE,
-        style=theme.estilo_botao_primario(),
-        height=theme.ALTURA_BOTAO,
-    )
-    corpo = ft.Container(
-        alignment=ft.Alignment.TOP_CENTER,
-        padding=theme.ESPACO_M,
-        content=ft.Container(
-            max_width=theme.LARGURA_MAX_CONTEUDO,
-            content=ft.Column(
-                controls=[cartao, botao],
-                spacing=theme.ESPACO_M,
-                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-            ),
-        ),
-    )
-    return ft.Column(
-        controls=[cabecalho(nome="Visitante", codigo_filial="F000"), corpo],
-        spacing=0,
-        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-    )
-
-
-def main(page: ft.Page) -> None:
-    page.title = "Sistema de OS"
-    theme.aplicar_tema(page)
-    page.padding = 0
-    page.spacing = 0
-    page.scroll = ft.ScrollMode.AUTO
-    page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
-    page.add(ft.SafeArea(content=construir_conteudo_smoke()))
+async def main(page: ft.Page) -> None:
+    """Chamado pelo Flet uma vez para cada sessão de navegador."""
+    await App(page, carregar_config()).iniciar()
 
 
 def _iniciar() -> Config:
