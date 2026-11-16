@@ -24,6 +24,7 @@ from osapp.ui.views.detalhe import Detalhe
 from osapp.ui.views.em_construcao import EmConstrucao
 from osapp.ui.views.home import Home
 from osapp.ui.views.login import Login
+from osapp.ui.views.os_formulario import CriarOs, EditarOs
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +45,9 @@ def _em_construcao(nome: str):
 TELAS = {
     "login": Login,
     "home": Home,
-    "os_nova": _em_construcao("Nova OS"),
+    "os_nova": CriarOs,
     "os_detalhe": Detalhe,
-    "os_editar": _em_construcao("Alterar OS"),
+    "os_editar": EditarOs,
     "os_concluir": _em_construcao("Concluir OS"),
 }
 
@@ -64,13 +65,17 @@ class Resultado:
 
 
 class App:
+    MENSAGEM_GENERICA = MENSAGEM_GENERICA
+
     def __init__(self, page: ft.Page, config: Config) -> None:
         self.page = page
+        self.config = config
         self.sessao = sessao_ui.SessaoUI(timeout_min=config.sessao_timeout_min)
         self._tela: Tela | None = None
         self._rota_mostrada: str | None = None
         self._largo: bool | None = None
         self._mensagem_ao_chegar: str | None = None
+        self._rota_a_ignorar: str | None = None
 
     # --- Inicialização ----------------------------------------------------------------
 
@@ -79,19 +84,75 @@ class App:
         page.title = "Sistema de OS"
         theme.aplicar_tema(page)
         page.padding = 0
+        # Textos do próprio Material (contadores, diálogos) em português do Brasil.
+        portugues = ft.Locale("pt", "BR")
+        page.locale_configuration = ft.LocaleConfiguration(
+            supported_locales=[portugues], current_locale=portugues
+        )
         page.on_route_change = self._ao_mudar_rota
         page.on_resize = self._ao_redimensionar
         await self._navegar(page.route)
 
     # --- Navegação --------------------------------------------------------------------
 
-    async def ir(self, rota: str, mensagem: str | None = None) -> None:
-        """Navega para a rota (passando pela guarda). ``mensagem`` aparece na chegada."""
+    async def ir(self, rota: str, mensagem: str | None = None, forcar: bool = False) -> None:
+        """Navega para a rota (passando pela guarda). ``mensagem`` aparece na chegada.
+
+        Se a tela atual tem alterações não salvas, pede confirmação antes de sair
+        (a menos que ``forcar`` seja True).
+        """
+        if not forcar and self._ha_alteracoes_a_perder(rota):
+            self._confirmar_saida(rota, mensagem)
+            return
+        if forcar:
+            self._tela = None  # o usuário já confirmou o descarte
         self._mensagem_ao_chegar = mensagem
         if rotas.normalizar(self.page.route) == rota:
             await self._navegar(rota)  # mesma rota: o evento não dispararia
         else:
             await self.page.push_route(rota)
+
+    def _ha_alteracoes_a_perder(self, destino: str) -> bool:
+        return (
+            self._tela is not None
+            and destino != self._rota_mostrada
+            and destino != rotas.LOGIN
+            and self._tela.tem_alteracoes()
+        )
+
+    def _confirmar_saida(self, destino: str, mensagem: str | None = None) -> None:
+        async def descartar(_e=None) -> None:
+            self.page.pop_dialog()
+            await self.ir(destino, mensagem, forcar=True)
+
+        def continuar(_e=None) -> None:
+            self.page.pop_dialog()
+
+        self.page.show_dialog(
+            ft.AlertDialog(
+                modal=True,
+                bgcolor=theme.COR_CARTAO,
+                title=ft.Text("Descartar alterações?", color=theme.COR_TITULO),
+                content=ft.Text(
+                    "As alterações que você fez ainda não foram salvas.",
+                    color=theme.COR_SUBTITULO,
+                ),
+                actions=[
+                    ft.TextButton(
+                        content="Continuar editando",
+                        style=theme.estilo_botao_texto(),
+                        height=theme.ALVO_TOQUE_MIN,
+                        on_click=continuar,
+                    ),
+                    ft.TextButton(
+                        content="Descartar",
+                        style=theme.estilo_botao_texto(),
+                        height=theme.ALVO_TOQUE_MIN,
+                        on_click=descartar,
+                    ),
+                ],
+            )
+        )
 
     async def voltar(self, _e=None) -> None:
         anterior = rotas.rota_anterior(self._rota_mostrada or rotas.HOME)
@@ -101,7 +162,7 @@ class App:
     async def sair(self, _e=None) -> None:
         sessao_ui.encerrar(self.sessao)
         self._tela = None
-        await self.ir(rotas.LOGIN)
+        await self.ir(rotas.LOGIN, forcar=True)
 
     async def entrar(self, ator) -> None:
         """Chamado pela tela de login depois de o serviço autenticar o usuário."""
@@ -111,6 +172,10 @@ class App:
         await self.ir(rotas.normalizar(pendente) if pendente else rotas.HOME)
 
     async def _ao_mudar_rota(self, e: ft.RouteChangeEvent) -> None:
+        if self._rota_a_ignorar is not None and e.route == self._rota_a_ignorar:
+            self._rota_a_ignorar = None  # é só a URL voltando para a tela que continua aberta
+            return
+        self._rota_a_ignorar = None
         await self._navegar(e.route)
 
     async def _navegar(self, rota: str | None) -> None:
@@ -118,6 +183,13 @@ class App:
         destino = sessao_ui.aplicar_navegacao(rota, self.sessao, relogio.agora())
         if self.page.route != destino:
             await self.page.push_route(destino)  # dispara de novo _ao_mudar_rota
+            return
+        if self._ha_alteracoes_a_perder(destino):
+            # Saída pelo botão voltar do navegador ou por URL digitada: a URL volta para
+            # a tela atual (que continua aberta) e o app pede confirmação.
+            self._rota_a_ignorar = self._rota_mostrada
+            await self.page.push_route(self._rota_mostrada)
+            self._confirmar_saida(destino)
             return
         await self._mostrar(destino)
 

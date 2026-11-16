@@ -118,8 +118,17 @@ class Detalhe(Tela):
         return cartoes
 
     def _acoes(self, d) -> list[ft.Control]:
-        """Botões de ação da OS. Preenchido nos prompts 8 e 9."""
-        return []
+        """Botões de ação, mostrados conforme ``acoes`` (calculado pelo serviço).
+
+        Esconder um botão é só conveniência: quem autoriza é o serviço.
+        """
+        botoes: list[ft.Control] = []
+        if d.acoes.pode_editar:
+            botoes.append(basicos.botao_secundario("Alterar", ft.Icons.EDIT, self._alterar))
+        return botoes
+
+    async def _alterar(self, _e=None) -> None:
+        await self.app.ir(rotas.rota_editar(self.os_id))
 
     def _secao(self, nome: str, linhas: list[ft.Control]) -> ft.Control:
         return basicos.cartao(

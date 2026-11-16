@@ -323,3 +323,39 @@ Depois do seed, um script curto que chame `auth.autenticar` e `ordens.criar_os`,
 
 - Sem botões de criar, alterar ou mudar status (prompts 8 e 9).
 - O histórico não é paginado.
+
+## Prompt 8 — Criar OS e Alterar OS
+
+### O que existe
+
+- `ui/formularios.py` (puro): `ler_valor`, `ler_tempo`, `tempo_para_campo`, `valor_para_campo`,
+  `ler_data`, `ler_hora`, `para_utc`, `ler_data_hora`, `partes_locais`, `somente_alterados`.
+- `ui/components/formulario_os.py`: `FormularioOs`, o formulário único das duas telas
+  (título, descrição, valor previsto, tempo previsto, filial; e os campos de "realizado"
+  quando `acoes.pode_editar_realizado`).
+- `ui/views/os_formulario.py`: `CriarOs` (`/os/nova`, botão "Salvar OS") e `EditarOs`
+  (`/os/{id}/editar`, botão "Salvar alterações", envia a `versao` carregada).
+- Detalhe: botão "Alterar" quando `acoes.pode_editar`.
+- `App`: confirmação "Descartar alterações?" ao sair de um formulário alterado (navegação do
+  app, botão voltar do cabeçalho e botão voltar do navegador); textos do Material em pt-BR
+  (`page.locale_configuration`).
+- Testes: `tests/test_ui_formularios.py`.
+
+### Decisões
+
+- Alterar envia ao serviço só os campos que mudaram (assim um usuário comum nunca envia
+  `filial_id`). Sem mudança, volta ao Detalhe com "Nenhuma alteração para salvar.".
+- Rota `/os/{id}/editar` aberta sem permissão: a tela usa `acoes.pode_editar` (calculado
+  pelo serviço) e mostra a mensagem genérica, sem o formulário. Se o formulário for
+  enviado mesmo assim, o serviço recusa.
+- Datas e horas do "realizado" são campos de texto (`dd/mm/aaaa` e `HH:MM`) no fuso `OS_TZ`.
+- O valor exige vírgula e dois decimais (`ler_brl` é estrito): "150" é recusado com a
+  mensagem "Valor inválido. Use o formato 1.234,56.".
+- Sair para `/login` (logout ou sessão expirada) não pede confirmação.
+
+### Lacunas conhecidas
+
+- Sem botões de status nem tela de conclusão (prompt 9).
+- O teclado numérico de alguns celulares pode não ter vírgula ou dois-pontos; o tipo de
+  teclado é só uma sugestão ao navegador (não verificado em aparelho real).
+- Se a sessão expirar com o formulário aberto, o que foi digitado é perdido.
