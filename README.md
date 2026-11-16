@@ -26,6 +26,16 @@ cp .env.example .env   # ajuste os valores; .env nunca vai para o git
 Se uma variável obrigatória faltar ou um valor for inválido, o app encerra na inicialização
 com uma mensagem clara.
 
+## Banco de dados
+
+O esquema é criado e atualizado pelo Alembic, que lê a URL de `OS_DATABASE_URL`
+(nunca do `alembic.ini`):
+
+```bash
+alembic upgrade head      # cria/atualiza as tabelas
+alembic check             # confere se modelos e migrações concordam
+```
+
 ## Executar
 
 Desenvolvimento (abre em http://localhost:8550):
@@ -50,3 +60,6 @@ sessões fixas no balanceador) e um proxy reverso que repasse WebSocket.
 ruff check .
 pytest -q
 ```
+
+Cada teste usa um SQLite temporário novo. Para rodar os mesmos testes em outro banco
+(por exemplo PostgreSQL), defina `OS_TEST_DATABASE_URL`; esse banco é esvaziado a cada teste.

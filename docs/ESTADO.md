@@ -47,3 +47,52 @@ ruff check . && pytest -q
 - `OS_DATABASE_URL` é validada apenas quanto à presença; nada se conecta ao banco ainda.
 - `OS_SESSAO_TIMEOUT_MIN` é lida, mas ainda não é usada.
 - Verificação visual feita com Chromium headless a 390 px e 1280 px; não testado em aparelho real.
+
+## Prompt 2 — modelos, migração, repositórios
+
+### O que existe
+
+- Dependências novas: `sqlalchemy>=2`, `alembic`.
+- `src/osapp/db.py`: `Base` (MetaData com convenção de nomes), `criar_engine(url)`,
+  `obter_engine()`, `obter_fabrica_de_sessoes()`, `reiniciar()` (testes) e o gerenciador de
+  contexto `sessao()` (commit no sucesso, rollback no erro). No SQLite, cada conexão liga
+  `PRAGMA foreign_keys=ON` e recebe um `lower()` que entende acentos.
+- `src/osapp/models/tipos.py`: `DataHoraUTC`, usado em todo timestamp (grava em UTC, lê com
+  fuso UTC, recusa datetime sem fuso).
+- Modelos: `Filial` (`filiais`), `Usuario` (`usuarios`), `OrdemServico` (`ordens_servico`),
+  `OsEvento` (`os_eventos`), com os índices e check constraints pedidos.
+- `alembic.ini` + `migrations/` (`env.py` lê a URL de `osapp.config`, `render_as_batch=True`)
+  e a migração inicial `0001`.
+- Repositórios (recebem uma `Session`; sem regra de negócio nem permissão):
+  - `FilialRepo`: `obter`, `obter_por_codigo`, `listar`, `adicionar`.
+  - `UsuarioRepo`: `obter`, `obter_por_login`, `adicionar`.
+  - `OrdemServicoRepo`: `obter`, `adicionar`,
+    `listar(filial_id, status, busca, limite, deslocamento)`, `proximo_numero(ano)`.
+  - `OsEventoRepo`: `adicionar`, `listar_por_os` (somente inserção).
+- Testes: `tests/conftest.py` (fixtures `banco_vazio` e `banco`), `tests/fabricas.py`,
+  `tests/test_migracao.py`, `tests/test_modelos.py`, `tests/test_repositorios.py`.
+
+### Como executar
+
+```bash
+OS_DATABASE_URL=sqlite:///./dev.db alembic upgrade head
+pytest -q                                   # SQLite temporário por teste
+OS_TEST_DATABASE_URL=... pytest -q          # mesmos testes em outro banco
+```
+
+### Decisões
+
+- `versao` é o `version_id_col` do mapeamento de `OrdemServico`: o ORM põe
+  `WHERE versao = ?` em cada UPDATE, incrementa o valor e levanta `StaleDataError` se outra
+  transação gravou antes. Sem alteração real não há UPDATE nem incremento.
+- `Usuario.login` é convertido para minúsculas no próprio modelo (`@validates`).
+- `criado_em`, `atualizado_em` e `os_eventos.data_hora` têm como padrão o instante atual em
+  UTC; os serviços podem informar o valor explicitamente.
+- `proximo_numero` usa o maior número existente do ano + 1 (sem sequences do banco).
+
+### Lacunas conhecidas
+
+- Não testado em PostgreSQL neste ambiente (nenhum driver PostgreSQL é dependência do projeto;
+  será preciso adicionar um, por exemplo `psycopg`, quando o PostgreSQL entrar).
+- No PostgreSQL a busca sem diferenciar maiúsculas depende do `lower()` do banco (correto com
+  uma collation UTF-8). A busca diferencia acentos ('balanca' não encontra 'balança').
