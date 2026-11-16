@@ -5,6 +5,7 @@ services:
     name: sistema-os
     runtime: docker
     plan: free
+    region: virginia   # perto do banco (Neon, AWS us-east-1)
     numInstances: 1
     healthCheckPath: /
     envVars:

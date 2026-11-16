@@ -20,8 +20,10 @@ Os limites mudam com frequência: confira as páginas oficiais antes de depender
 
 ## Passo a passo (cerca de 10 minutos)
 
-1. **Banco (Neon).** Crie uma conta em https://neon.com, crie um projeto (região mais
-   próxima, por exemplo São Paulo) e copie a *connection string*, no formato
+1. **Banco (Neon).** Crie uma conta em https://neon.com e um projeto na região
+   **AWS US East 1 (N. Virginia)**, a mesma do app no Render (o plano gratuito do Render
+   não tem região no Brasil, e app e banco devem ficar lado a lado). Copie a *connection
+   string* (botão **Connect**), no formato
    `postgresql://usuario:senha@host/banco?sslmode=require`. Trate-a como senha.
 2. **App (Render).** Crie uma conta em https://render.com e conecte o seu GitHub. Escolha
    **New > Blueprint**, selecione este repositório e o ramo que contém o `render.yaml`.
