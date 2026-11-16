@@ -20,7 +20,9 @@ from osapp.ui import rotas, theme
 from osapp.ui import sessao as sessao_ui
 from osapp.ui.components import cabecalho
 from osapp.ui.views.base import Tela
+from osapp.ui.views.detalhe import Detalhe
 from osapp.ui.views.em_construcao import EmConstrucao
+from osapp.ui.views.home import Home
 from osapp.ui.views.login import Login
 
 logger = logging.getLogger(__name__)
@@ -41,9 +43,9 @@ def _em_construcao(nome: str):
 # Tabela central: nome da rota (ver ui/rotas.py) -> construtor da tela.
 TELAS = {
     "login": Login,
-    "home": _em_construcao("Ordens de serviço"),
+    "home": Home,
     "os_nova": _em_construcao("Nova OS"),
-    "os_detalhe": _em_construcao("Detalhe da OS"),
+    "os_detalhe": Detalhe,
     "os_editar": _em_construcao("Alterar OS"),
     "os_concluir": _em_construcao("Concluir OS"),
 }

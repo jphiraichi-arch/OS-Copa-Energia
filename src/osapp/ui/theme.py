@@ -126,3 +126,12 @@ def estilo_botao_texto() -> ft.ButtonStyle:
         color=COR_BOTAO_PRIMARIO,
         text_style=ft.TextStyle(size=FONTE_BOTAO, weight=ft.FontWeight.BOLD),
     )
+
+
+def cores_status(status: str) -> tuple[str, str]:
+    """(fundo, texto) do selo de um status; status desconhecido usa um par neutro."""
+    return {
+        "ABERTA": COR_STATUS_ABERTA,
+        "EM_EXECUCAO": COR_STATUS_EM_EXECUCAO,
+        "CONCLUIDA": COR_STATUS_CONCLUIDA,
+    }.get(status, COR_STATUS_OUTRO)

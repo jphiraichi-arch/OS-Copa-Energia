@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import flet as ft
 
+from osapp.services import status as status_os
 from osapp.ui import theme
 
 
@@ -86,4 +87,46 @@ def coluna(controles: list[ft.Control], espaco: int = theme.ESPACO_M) -> ft.Colu
         controls=controles,
         spacing=espaco,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+    )
+
+
+def selo_status(status: str) -> ft.Container:
+    """Selo com o rótulo do status. A informação está no texto, não só na cor."""
+    fundo, cor = theme.cores_status(status)
+    return ft.Container(
+        bgcolor=fundo,
+        border_radius=theme.RAIO_CHIP,
+        padding=ft.Padding.symmetric(horizontal=10, vertical=4),
+        content=ft.Text(
+            status_os.rotulo(status),
+            color=cor,
+            size=theme.FONTE_PEQUENA,
+            weight=ft.FontWeight.BOLD,
+            no_wrap=True,
+        ),
+    )
+
+
+def rotulo_valor(rotulo: str, valor: str) -> ft.Column:
+    """Um par 'rótulo pequeno em cima, valor embaixo'."""
+    return ft.Column(
+        controls=[
+            ft.Text(rotulo, color=theme.COR_SUBTITULO, size=theme.FONTE_PEQUENA),
+            ft.Text(valor, color=theme.COR_TITULO, size=theme.FONTE_CORPO, selectable=True),
+        ],
+        spacing=2,
+        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+    )
+
+
+def mensagem_central(mensagem: str) -> ft.Container:
+    return ft.Container(
+        alignment=ft.Alignment.CENTER,
+        padding=theme.ESPACO_G,
+        content=ft.Text(
+            mensagem,
+            color=theme.COR_SUBTITULO,
+            size=theme.FONTE_CORPO,
+            text_align=ft.TextAlign.CENTER,
+        ),
     )

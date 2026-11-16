@@ -288,3 +288,38 @@ python -m osapp.main        # http://localhost:8550 ; entre com marina.teste ou 
 - Sem telas reais de Home, Detalhe e formulários (prompts 7 a 9).
 - Um usuário desativado só é barrado na próxima chamada de serviço (as telas provisórias
   não chamam serviços).
+
+## Prompt 7 — Home (lista) e Detalhe da OS
+
+### O que existe
+
+- `ui/views/home.py` (`/`): busca (Enter ou ícone), chips de status (Todas + os status de
+  `services/status.py`), lista de filiais só para administrador ("Todas as filiais" + cada
+  filial, começando na própria), botão "Atualizar", cartões das OS, "Carregar mais", estado
+  vazio "Nenhuma OS encontrada." e indicador de carga.
+- `ui/views/detalhe.py` (`/os/{id}`): topo, cartões "Previsto", "Realizado", "Diferença" (só
+  quando concluída) e "Histórico" (do mais novo ao mais antigo); "OS não encontrada." com
+  botão para a lista.
+- `ui/historico.py` (puro): `CAMPOS` (campo -> rótulo e formatador), `frase(evento)`,
+  `comparacao`, `texto_diferenca_valor`, `texto_diferenca_tempo`.
+- `ui/components/basicos.py`: `selo_status`, `rotulo_valor`, `mensagem_central`.
+- Testes: `tests/test_ui_historico.py`.
+
+### Como criar dados de demonstração
+
+Depois do seed, um script curto que chame `auth.autenticar` e `ordens.criar_os`,
+`iniciar_execucao` e `concluir_os` cria OS nas duas filiais (não há script no repositório).
+
+### Decisões
+
+- A tela não filtra por filial nem decide permissão: passa os filtros ao serviço e mostra o
+  que ele devolve. O filtro de filial só aparece para administrador (dado de exibição da
+  sessão); para os demais a tela envia `filial_id=None` e o serviço restringe.
+- Frases do histórico usam `->` e cortam textos longos em 80 caracteres.
+- Diferenças mostram sinal, percentual com uma casa e as palavras "Acima do previsto",
+  "Abaixo do previsto" ou "Igual ao previsto".
+
+### Lacunas conhecidas
+
+- Sem botões de criar, alterar ou mudar status (prompts 8 e 9).
+- O histórico não é paginado.
