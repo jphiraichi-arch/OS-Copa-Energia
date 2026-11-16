@@ -1,4 +1,5 @@
 import re
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -195,7 +196,10 @@ def test_usuario_comum_nao_le_os_de_outra_filial(cenario):
 
 def test_colega_da_mesma_filial_le_a_os(cenario):
     d = criar(cenario["marina"])
-    assert ordens.obter_os(cenario["joao"], d.id) == d
+    visto = ordens.obter_os(cenario["joao"], d.id)
+    # Tudo igual, exceto as ações, que dependem de quem olha (prompt 5).
+    assert replace(visto, acoes=d.acoes) == d
+    assert d.acoes.pode_editar and not visto.acoes.pode_editar
     assert len(ordens.listar_eventos(cenario["joao"], d.id)) == 1
 
 

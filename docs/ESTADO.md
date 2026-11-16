@@ -182,3 +182,43 @@ python -m osapp.cli desativar-usuario --login ana.modelo
 ### Lacunas conhecidas
 
 - Sem edição, mudança de status nem conclusão (prompt 5).
+
+## Prompt 5 — serviço de OS, parte 2
+
+### O que existe
+
+- `services/status.py`: tabela `TRANSICOES` (`(origem, destino) -> quem pode`),
+  `QUALQUER_USUARIO_DA_FILIAL`, `SOMENTE_EXECUTOR`, `quem_pode_transicionar(origem, destino)`,
+  `ENCERRADOS` e `encerrado(status)`.
+- `services/ordens.py`, funções novas (todas com `versao` para a trava otimista):
+  - `editar_os(ator_id, os_id, versao, alteracoes: dict) -> OsDetalhe`
+  - `iniciar_execucao(ator_id, os_id, versao) -> OsDetalhe`
+  - `desfazer_inicio(ator_id, os_id, versao) -> OsDetalhe`
+  - `concluir_os(ator_id, os_id, versao, valor_realizado_centavos, inicio_realizado,
+    fim_realizado, descricao_realizado) -> OsDetalhe`
+- `OsDetalhe` ganhou `tempo_realizado_minutos`, `diferenca_valor_centavos`,
+  `diferenca_valor_percentual`, `diferenca_tempo_minutos` e `acoes: AcoesOs` (`pode_editar`,
+  `pode_iniciar`, `pode_desfazer_inicio`, `pode_concluir`, `pode_editar_realizado`).
+- Constantes: `CAMPOS_PREVISTO`, `CAMPOS_REALIZADO`, `CAMPO_FILIAL`, `TIPO_REALIZADO`.
+- Testes: `tests/test_ordens_parte2.py` (166 testes; a matriz de permissões tem 72 células:
+  6 atores x 4 ações x 3 status).
+
+### Decisões
+
+- Ordem das verificações em toda escrita: visibilidade (`ErroNaoEncontrado`) -> permissão
+  e transição (`ErroPermissao`) -> versão (`ErroConflito`) -> validação (`ErroValidacao`).
+- Transição fora da tabela levanta `ErroPermissao`, inclusive para administrador.
+- A conclusão grava um evento `STATUS` e quatro eventos de tipo `REALIZADO` (um por campo,
+  `valor_antigo` nulo). Correções posteriores do administrador são eventos `EDICAO`.
+- No histórico, instantes são texto ISO 8601 em UTC, inteiros são texto decimal, e a mudança
+  de filial registra o código da filial (não o id).
+- `diferenca_valor_percentual` é arredondada para 2 casas.
+- `tempo_realizado_minutos` é a diferença entre fim e início, em minutos inteiros.
+- A OS é gravada uma única vez por operação: `versao` sobe exatamente 1.
+- Escrita concorrente detectada pelo banco (`StaleDataError`) também vira `ErroConflito`.
+
+### Lacunas conhecidas
+
+- Se o administrador mudar a filial de uma OS em execução, o executor (da filial antiga)
+  deixa de vê-la; o administrador pode concluir ou desfazer o início.
+- `inicio_realizado` pode ser anterior à criação da OS (não há regra sobre isso).
