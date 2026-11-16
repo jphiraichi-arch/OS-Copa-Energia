@@ -52,6 +52,6 @@ visíveis no menu só para administrador.
 em `services/auth.py`, que confere a senha atual com `senhas.verificar` e valida a nova com
 `validar_senha`. Uma tela simples acessada pelo menu do cabeçalho.
 
-**Antes do PostgreSQL.** Trocar `valor_previsto_centavos` e `valor_realizado_centavos` para
-`BigInteger` (ver `docs/AUDITORIA.md`, item d), adicionar o driver (por exemplo `psycopg`)
-e rodar a suíte com `OS_TEST_DATABASE_URL`.
+**Produção de verdade.** O plano gratuito de nuvem (ver `docs/NUVEM.md`) dorme e não tem
+garantias. Para uso diário: uma instância paga (ou uma máquina própria) sempre ligada, um
+PostgreSQL com backup e, se houver mais de uma instância, sessões fixas no balanceador.

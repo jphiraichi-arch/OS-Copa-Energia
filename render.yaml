@@ -1,0 +1,20 @@
+# Blueprint do Render (https://render.com): um serviço web gratuito a partir do Dockerfile.
+# O banco é um PostgreSQL externo (por exemplo Neon); a URL é informada no painel.
+services:
+  - type: web
+    name: sistema-os
+    runtime: docker
+    plan: free
+    numInstances: 1
+    healthCheckPath: /
+    envVars:
+      - key: OS_DATABASE_URL
+        sync: false   # cole aqui a URL do PostgreSQL (segredo; não vai para o git)
+      - key: OS_SEED_SENHA
+        sync: false   # senha dos usuários fictícios de demonstração (mínimo 8 caracteres)
+      - key: OS_TZ
+        value: America/Sao_Paulo
+      - key: OS_SESSAO_TIMEOUT_MIN
+        value: "30"
+      - key: OS_LOG_LEVEL
+        value: INFO

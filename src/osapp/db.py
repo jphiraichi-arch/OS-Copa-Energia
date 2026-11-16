@@ -43,10 +43,13 @@ def _preparar_conexao_sqlite(conexao_dbapi, _registro) -> None:
 
 def criar_engine(url: str) -> Engine:
     """Cria um engine para a URL. No SQLite, liga as chaves estrangeiras em cada conexão."""
-    engine = create_engine(url)
-    if engine.dialect.name == "sqlite":
+    if url.startswith("sqlite"):
+        engine = create_engine(url)
         event.listen(engine, "connect", _preparar_conexao_sqlite)
-    return engine
+        return engine
+    # Bancos em rede (PostgreSQL): testa a conexão antes de usar e a renova de tempos em
+    # tempos, porque bancos de nuvem encerram conexões paradas.
+    return create_engine(url, pool_pre_ping=True, pool_recycle=300)
 
 
 _engine: Engine | None = None

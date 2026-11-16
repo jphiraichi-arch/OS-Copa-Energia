@@ -406,3 +406,17 @@ não edita mais e o administrador edita, com a mudança no histórico; carlos (F
 
 - `executar.sh`: prepara o ambiente (venv, dependências, `.env`, migração, seed opcional) e
   inicia o app em desenvolvimento com um comando. Testado em uma cópia limpa do projeto.
+
+## Nuvem e PostgreSQL
+
+- Migração `0002`: `valor_previsto_centavos` e `valor_realizado_centavos` em `BigInteger`
+  (resolve a pendência do item d da auditoria).
+- Extra `postgres` no `pyproject.toml` (`psycopg[binary]`); `config.normalizar_url_do_banco`
+  aceita `postgres://` e `postgresql://`; conexões de rede usam `pool_pre_ping` e
+  `pool_recycle`.
+- `Dockerfile`, `.dockerignore`, `docker/iniciar.sh` (migração, seed opcional, uvicorn com
+  um processo) e `render.yaml`. Guia em `docs/NUVEM.md`.
+- Verificado: a suíte inteira passa em SQLite e em PostgreSQL 16
+  (`OS_TEST_DATABASE_URL`); a imagem foi construída e executada contra PostgreSQL, com
+  login e criação de OS pelo navegador.
+- Não verificado: a implantação real no Render e no Neon (exige contas do responsável).

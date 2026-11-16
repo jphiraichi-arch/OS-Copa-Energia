@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text
+from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from osapp.db import Base
@@ -32,9 +32,11 @@ class OrdemServico(Base):
     descricao: Mapped[str] = mapped_column(Text)
     # Os valores permitidos de status são verificados no serviço, não por constraint.
     status: Mapped[str] = mapped_column(String(20))
-    valor_previsto_centavos: Mapped[int]
+    # BigInteger: o limite de negócio (9.999.999.999 centavos) não cabe no INTEGER de
+    # 32 bits do PostgreSQL.
+    valor_previsto_centavos: Mapped[int] = mapped_column(BigInteger)
     tempo_previsto_minutos: Mapped[int]
-    valor_realizado_centavos: Mapped[int | None]
+    valor_realizado_centavos: Mapped[int | None] = mapped_column(BigInteger)
     inicio_realizado: Mapped[datetime | None] = mapped_column(DataHoraUTC())
     fim_realizado: Mapped[datetime | None] = mapped_column(DataHoraUTC())
     descricao_realizado: Mapped[str | None] = mapped_column(Text)

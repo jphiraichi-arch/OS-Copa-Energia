@@ -11,15 +11,15 @@ automatizados. Os números de linha valem para o commit do prompt 9.
 | a | Senhas | Passa |
 | b | `carregar_ator` e regras de filial/papel em `ordens.py` | Passa |
 | c | Sem SQL cru | Passa (uma instrução `PRAGMA` constante, exigida) |
-| d | Validação de entradas nos serviços | Passa, com uma pendência fora da interface |
+| d | Validação de entradas nos serviços | Passa (pendência das colunas de valor corrigida depois, ver item d) |
 | e | Guarda de rotas, logout e tempo limite | Passa |
 | f | Segredos no repositório | Passa |
 | g | Mensagens ao usuário | Passa |
 | h | Dados fictícios | Passa |
 | i | Histórico somente de inserção | Passa |
 
-Nenhuma falha dentro da interface. **Uma pendência fora da interface, relatada e não
-alterada** (item d): o tipo das colunas de valor no PostgreSQL.
+Nenhuma falha dentro da interface. A pendência fora da interface encontrada no item d (tipo
+das colunas de valor no PostgreSQL) foi corrigida depois, na migração `0002`.
 
 ## a. Senhas — Passa
 
@@ -94,7 +94,9 @@ público, mas é o auxiliar de gravação do histórico exigido pelo prompt 4; r
 - A leitura local na interface (`ui/formularios.py`) é conveniência; os valores passam de
   novo pela validação do serviço.
 
-**Pendência fora da interface (relatada, não alterada):** `valor_previsto_centavos` e
+**Pendência fora da interface (corrigida depois do prompt 9, migração `0002`):** as duas
+colunas passaram a `BigInteger` e a suíte inteira passa em PostgreSQL 16. Texto original
+do achado: `valor_previsto_centavos` e
 `valor_realizado_centavos` são colunas `Integer` (`models/ordem_servico.py`, migração
 `0001`). No PostgreSQL isso é um inteiro de 32 bits (máximo 2.147.483.647 centavos, cerca de
 R$ 21,4 milhões), abaixo do limite aceito pelo serviço (9.999.999.999 centavos). No SQLite
@@ -173,4 +175,4 @@ proíbem alterar modelos e migração sem relatar antes.
 
 - O bloqueio de login é por usuário (5 falhas, 15 minutos). Não há limite por endereço IP.
 - O app precisa ficar atrás de um proxy com HTTPS (ver README); ele próprio fala HTTP.
-- Não testado em PostgreSQL neste ambiente.
+- PostgreSQL: a suíte inteira (527 testes) passa em PostgreSQL 16 com o driver psycopg 3.

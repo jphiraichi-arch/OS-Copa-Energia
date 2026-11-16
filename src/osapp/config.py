@@ -15,6 +15,18 @@ LOG_LEVEL_PADRAO = "INFO"
 NIVEIS_DE_LOG = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 
 
+def normalizar_url_do_banco(url: str) -> str:
+    """Faz URLs 'postgres://' e 'postgresql://' usarem o driver psycopg (versão 3).
+
+    Serviços de nuvem entregam a URL nesses formatos; o SQLAlchemy precisa do driver
+    no esquema. As demais URLs ficam como estão.
+    """
+    for prefixo in ("postgres://", "postgresql://"):
+        if url.startswith(prefixo):
+            return "postgresql+psycopg://" + url[len(prefixo) :]
+    return url
+
+
 class ConfigError(RuntimeError):
     """Configuração ausente ou inválida. A aplicação não deve iniciar."""
 
@@ -74,7 +86,7 @@ def carregar_config(env: Mapping[str, str] | None = None) -> Config:
         )
 
     return Config(
-        database_url=database_url,
+        database_url=normalizar_url_do_banco(database_url),
         tz=tz,
         sessao_timeout_min=sessao_timeout_min,
         log_level=log_level,

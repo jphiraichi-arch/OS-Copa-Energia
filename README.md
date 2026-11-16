@@ -4,7 +4,8 @@ Aplicativo web de ordens de serviço (OS) para equipes de manutenção e operaç
 Flet 1.1 rodando no servidor: o Python roda no servidor e o navegador mostra a interface.
 
 Documentos: [regras do projeto](docs/REGRAS.md) · [estado atual](docs/ESTADO.md) ·
-[auditoria de segurança](docs/AUDITORIA.md) · [próximos passos](docs/PROXIMOS_PASSOS.md).
+[auditoria de segurança](docs/AUDITORIA.md) · [próximos passos](docs/PROXIMOS_PASSOS.md) ·
+[publicar na nuvem sem custo](docs/NUVEM.md).
 
 ## Requisitos
 
@@ -106,6 +107,13 @@ server {
     }
 }
 ```
+
+### Contêiner e nuvem
+
+Há um `Dockerfile` (app + driver PostgreSQL) e um `render.yaml`. O passo a passo para
+publicar sem custo (Render + Neon) está em [docs/NUVEM.md](docs/NUVEM.md). Para usar
+PostgreSQL fora do contêiner: `pip install -e '.[postgres]'`; URLs `postgres://` e
+`postgresql://` são aceitas e passam a usar o driver psycopg.
 
 ## CLI de administração
 

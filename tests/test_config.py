@@ -65,3 +65,19 @@ def test_repr_nao_expoe_a_url():
     config = carregar_config({"OS_DATABASE_URL": "postgresql://u:segredo@h/db"})
     assert "segredo" not in repr(config)
     assert "segredo" not in str(config)
+
+
+@pytest.mark.parametrize(
+    ("entrada", "esperado"),
+    [
+        ("postgres://u:s@h/db", "postgresql+psycopg://u:s@h/db"),
+        (
+            "postgresql://u:s@h:5432/db?sslmode=require",
+            "postgresql+psycopg://u:s@h:5432/db?sslmode=require",
+        ),
+        ("postgresql+psycopg://u:s@h/db", "postgresql+psycopg://u:s@h/db"),
+        ("sqlite:///./dev.db", "sqlite:///./dev.db"),
+    ],
+)
+def test_url_de_nuvem_usa_o_driver_psycopg(entrada, esperado):
+    assert carregar_config({"OS_DATABASE_URL": entrada}).database_url == esperado
