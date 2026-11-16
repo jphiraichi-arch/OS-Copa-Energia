@@ -96,3 +96,57 @@ OS_TEST_DATABASE_URL=... pytest -q          # mesmos testes em outro banco
   será preciso adicionar um, por exemplo `psycopg`, quando o PostgreSQL entrar).
 - No PostgreSQL a busca sem diferenciar maiúsculas depende do `lower()` do banco (correto com
   uma collation UTF-8). A busca diferencia acentos ('balanca' não encontra 'balança').
+
+## Prompt 3 — autenticação, permissões, seed, CLI
+
+### O que existe
+
+- Dependência nova: `argon2-cffi`.
+- `services/erros.py`: `ErroDominio`, `ErroValidacao(campo, mensagem)`, `ErroAutenticacao`,
+  `ErroPermissao`, `ErroNaoEncontrado`, `ErroConflito`.
+- `services/relogio.py`: `agora()` (UTC; os testes substituem `relogio.agora`).
+- `services/senhas.py`: `gerar_hash`, `verificar`, `precisa_rehash` (argon2id, parâmetros
+  padrão da biblioteca); `SENHA_MIN = 8`, `SENHA_MAX = 128`.
+- `services/auth.py`: `Ator`, `autenticar(login, senha)`, `carregar_ator(usuario_id)`.
+  5 falhas seguidas bloqueiam por 15 minutos; toda falha levanta o mesmo `ErroAutenticacao`.
+- `services/permissoes.py`: `exigir_admin(ator)`, `pode_acessar_filial(ator, filial_id)`.
+- `services/administracao.py` (usado só pelo seed e pela CLI, sem ator): `criar_filial`,
+  `criar_usuario`, `redefinir_senha`, `desativar_usuario`, `validar_senha`.
+- `osapp/logs.py`: `configurar_logging()` a partir de `OS_LOG_LEVEL` (usado por `main.py`,
+  seed e CLI).
+- `osapp/seed.py` e `osapp/cli.py`.
+- Testes: `tests/test_auth.py`.
+
+### Como executar
+
+```bash
+alembic upgrade head
+OS_SEED_SENHA='<senha de 8+ caracteres>' python -m osapp.seed
+python -m osapp.cli criar-filial --codigo F003 --nome 'Filial Modelo Oeste'
+python -m osapp.cli criar-usuario          # pergunta nome, login, filial e senha
+python -m osapp.cli criar-usuario --nome 'Ana Modelo' --login ana.modelo --filial F001 [--admin]
+python -m osapp.cli redefinir-senha --login ana.modelo
+python -m osapp.cli desativar-usuario --login ana.modelo
+```
+
+### Decisões
+
+- Login ou senha vazios, longos demais ou de tipo errado levantam `ErroAutenticacao` (não
+  `ErroValidacao`), antes de qualquer hash e sem tocar no banco.
+- Usuário inativo ou bloqueado: a senha ainda é verificada (tempo de resposta uniforme), mas
+  a tentativa não altera contadores. Vencido o bloqueio, a contagem recomeça do zero.
+- O seed não altera registros existentes (não troca a senha de quem já existe).
+- `redefinir-senha` também zera as tentativas e remove o bloqueio.
+- `main.py` passou a usar `configurar_logging` (única alteração em arquivo do prompt 1).
+
+### Lacunas conhecidas
+
+- **PENDENTE DE DECISÃO (modelo):** `valor_previsto_centavos` e `valor_realizado_centavos`
+  são `Integer`. No PostgreSQL isso é um inteiro de 32 bits (máximo 2.147.483.647 centavos,
+  cerca de R$ 21,4 milhões), menor que o limite de negócio de 9.999.999.999 centavos. No
+  SQLite não há problema. Antes de usar PostgreSQL é preciso trocar as duas colunas para
+  `BigInteger` (modelo + migração). Não foi alterado porque os prompts 3 a 5 proíbem mexer
+  em modelos e migração.
+- Não há comando para reativar usuário nem para listar usuários.
+- A política de senha é só o tamanho (8 a 128 caracteres).
+- Não há limitação de tentativas por endereço IP, apenas por usuário.

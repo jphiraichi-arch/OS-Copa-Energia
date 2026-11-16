@@ -12,6 +12,7 @@ import sys
 import flet as ft
 
 from osapp.config import Config, ConfigError, carregar_config
+from osapp.logs import configurar_logging
 from osapp.ui import theme
 from osapp.ui.components.cabecalho import cabecalho
 
@@ -87,10 +88,7 @@ def _iniciar() -> Config:
         config = carregar_config()
     except ConfigError as exc:
         sys.exit(f"Erro de configuração: {exc}")
-    logging.basicConfig(
-        level=config.log_level,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    configurar_logging(config.log_level)
     return config
 
 

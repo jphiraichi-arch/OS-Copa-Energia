@@ -1,0 +1,67 @@
+"""Dados fictícios de desenvolvimento. Idempotente.  Uso: python -m osapp.seed
+
+A senha de todos os usuários vem de OS_SEED_SENHA (obrigatória) e nunca é exibida.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+
+from osapp.config import ConfigError
+from osapp.logs import configurar_logging
+from osapp.services import administracao
+from osapp.services.erros import ErroConflito, ErroValidacao
+
+FILIAIS = [("F001", "Filial Modelo Norte"), ("F002", "Filial Modelo Sul")]
+# (nome, login, código da filial, é administrador)
+USUARIOS = [
+    ("Administrador Fictício", "admin", "F001", True),
+    ("Marina Teste", "marina.teste", "F001", False),
+    ("João Fictício", "joao.ficticio", "F001", False),
+    ("Carlos Exemplo", "carlos.exemplo", "F002", False),
+]
+
+
+def executar(senha: str) -> dict[str, int]:
+    """Cria o que faltar. Registros existentes não são alterados (nem a senha)."""
+    administracao.validar_senha(senha)
+    criados = {"filiais": 0, "usuarios": 0}
+    for codigo, nome in FILIAIS:
+        try:
+            administracao.criar_filial(codigo, nome)
+            criados["filiais"] += 1
+        except ErroConflito:
+            pass
+    for nome, login, filial, is_admin in USUARIOS:
+        try:
+            administracao.criar_usuario(nome, login, senha, filial, is_admin)
+            criados["usuarios"] += 1
+        except ErroConflito:
+            pass
+    return criados
+
+
+def main() -> int:
+    try:
+        configurar_logging()
+    except ConfigError as exc:
+        print(f"Erro de configuração: {exc}", file=sys.stderr)
+        return 1
+    try:
+        criados = executar(os.environ.get("OS_SEED_SENHA", ""))
+    except ErroValidacao:
+        print(
+            "Defina a variável de ambiente OS_SEED_SENHA com pelo menos 8 caracteres.",
+            file=sys.stderr,
+        )
+        return 1
+    print(
+        f"Seed concluído: {criados['filiais']} filial(is) e {criados['usuarios']} usuário(s) "
+        "criados; os demais já existiam."
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
