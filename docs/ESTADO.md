@@ -401,3 +401,8 @@ não edita mais e o administrador edita, com a mudança no histórico; carlos (F
 - Não testado em PostgreSQL, nem em celular real, nem com as ferramentas `flet test`.
 - Sem limite de tentativas de login por endereço IP.
 - Funcionalidades adiadas: ver `docs/PROXIMOS_PASSOS.md`.
+
+## Depois do prompt 9
+
+- `executar.sh`: prepara o ambiente (venv, dependências, `.env`, migração, seed opcional) e
+  inicia o app em desenvolvimento com um comando. Testado em uma cópia limpa do projeto.

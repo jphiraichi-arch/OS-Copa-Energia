@@ -12,6 +12,16 @@ Documentos: [regras do projeto](docs/REGRAS.md) · [estado atual](docs/ESTADO.md
 - SQLite (já vem com o Python) para desenvolvimento.
 - Um navegador atual. Celulares são o alvo principal.
 
+## Início rápido
+
+```bash
+OS_SEED_SENHA='uma-senha-de-teste' ./executar.sh    # prepara tudo e abre http://localhost:8550
+```
+
+O script cria o ambiente virtual, instala as dependências, cria o `.env` e as tabelas e
+inicia o app em modo de desenvolvimento. Sem `OS_SEED_SENHA`, não cria os usuários
+fictícios. Os passos manuais equivalentes estão abaixo.
+
 ## Instalação
 
 ```bash
