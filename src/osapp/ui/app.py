@@ -16,11 +16,12 @@ import flet as ft
 from osapp.config import Config
 from osapp.services import relogio
 from osapp.services.erros import ErroAutenticacao, ErroValidacao
-from osapp.ui import rotas, theme
+from osapp.ui import rotas, textos, theme
 from osapp.ui import sessao as sessao_ui
 from osapp.ui.components import cabecalho
 from osapp.ui.views.base import Tela
 from osapp.ui.views.concluir import ConcluirOs
+from osapp.ui.views.configuracoes import Configuracoes
 from osapp.ui.views.detalhe import Detalhe
 from osapp.ui.views.home import Home
 from osapp.ui.views.login import Login
@@ -30,10 +31,23 @@ logger = logging.getLogger(__name__)
 
 MENSAGEM_GENERICA = "Não foi possível concluir a operação. Tente novamente."
 
-# Destinos da navegação principal: (rótulo, ícone, ícone selecionado, rota).
+# Destinos da navegação principal:
+# (rótulo na barra inferior, rótulo no trilho lateral, ícone, ícone selecionado, rota).
 DESTINOS = [
-    ("Ordens", ft.Icons.ASSIGNMENT_OUTLINED, ft.Icons.ASSIGNMENT, rotas.HOME),
-    ("Nova OS", ft.Icons.ADD_CIRCLE_OUTLINE, ft.Icons.ADD_CIRCLE, rotas.OS_NOVA),
+    (
+        textos.NAVEGACAO_ORDENS,
+        textos.TRILHO_ORDENS,
+        ft.Icons.ASSIGNMENT_OUTLINED,
+        ft.Icons.ASSIGNMENT,
+        rotas.HOME,
+    ),
+    (
+        textos.NAVEGACAO_NOVA_ORDEM,
+        textos.TRILHO_NOVA_ORDEM,
+        ft.Icons.ADD_CIRCLE_OUTLINE,
+        ft.Icons.ADD_CIRCLE,
+        rotas.OS_NOVA,
+    ),
 ]
 
 
@@ -41,6 +55,7 @@ DESTINOS = [
 TELAS = {
     "login": Login,
     "home": Home,
+    "configuracoes": Configuracoes,
     "os_nova": CriarOs,
     "os_detalhe": Detalhe,
     "os_editar": EditarOs,
@@ -77,7 +92,7 @@ class App:
 
     async def iniciar(self) -> None:
         page = self.page
-        page.title = "Sistema de OS"
+        page.title = textos.TITULO_DO_APP
         theme.aplicar_tema(page)
         page.padding = 0
         # Textos do próprio Material (contadores, diálogos) em português do Brasil.
@@ -178,10 +193,13 @@ class App:
         self._tela = None
         await self.ir(rotas.LOGIN, forcar=True)
 
-    async def entrar(self, ator) -> None:
+    async def abrir_configuracoes(self, _e=None) -> None:
+        await self.ir(rotas.CONFIGURACOES)
+
+    async def entrar(self, ator, login: str = "") -> None:
         """Chamado pela tela de login depois de o serviço autenticar o usuário."""
         pendente = self.sessao.rota_pendente
-        sessao_ui.iniciar(self.sessao, ator, relogio.agora())
+        sessao_ui.iniciar(self.sessao, ator, relogio.agora(), login)
         self.sessao.rota_pendente = None
         await self.ir(rotas.normalizar(pendente) if pendente else rotas.HOME)
 
@@ -226,7 +244,7 @@ class App:
         return 1 if self._rota_mostrada == rotas.OS_NOVA else 0
 
     async def _ao_escolher_destino(self, e) -> None:
-        await self.ir(DESTINOS[int(e.control.selected_index)][3])
+        await self.ir(DESTINOS[int(e.control.selected_index)][4])
 
     def _montar(self) -> None:
         """Monta a View da rota atual em volta do conteúdo da tela."""
@@ -269,7 +287,10 @@ class App:
             codigo_filial=self.sessao.filial_codigo,
             on_voltar=self.voltar,
             mostrar_voltar=rotas.rota_anterior(rota) is not None,
-            itens_menu=[("Sair", ft.Icons.LOGOUT, self.sair)],
+            itens_menu=[
+                (textos.MENU_CONFIGURACOES, ft.Icons.SETTINGS, self.abrir_configuracoes),
+                (textos.MENU_SAIR, ft.Icons.LOGOUT, self.sair),
+            ],
             recuo_esquerda=theme.LARGURA_TRILHO + 1 if self._largo else 0,
         )
         barra_inferior = None
@@ -284,9 +305,14 @@ class App:
                     ft.NavigationRailDestination(
                         icon=ft.Icon(icone, color=theme.COR_SUBTITULO),
                         selected_icon=ft.Icon(selecionado, color=theme.COR_TITULO),
-                        label=ft.Text(rotulo, color=theme.COR_TITULO),
+                        label=ft.Text(
+                            rotulo_trilho,
+                            color=theme.COR_TITULO,
+                            size=theme.FONTE_PEQUENA,
+                            text_align=ft.TextAlign.CENTER,
+                        ),
                     )
-                    for rotulo, icone, selecionado, _rota in DESTINOS
+                    for _rotulo, rotulo_trilho, icone, selecionado, _rota in DESTINOS
                 ],
                 on_change=self._ao_escolher_destino,
             )
@@ -312,7 +338,7 @@ class App:
                         selected_icon=ft.Icon(selecionado, color=theme.COR_TITULO),
                         label=rotulo,
                     )
-                    for rotulo, icone, selecionado, _rota in DESTINOS
+                    for rotulo, _rotulo_trilho, icone, selecionado, _rota in DESTINOS
                 ],
                 on_change=self._ao_escolher_destino,
             )

@@ -21,6 +21,7 @@ class SessaoUI:
     ultima_atividade: datetime | None = None
     # Dados de exibição do cabeçalho, copiados do Ator no login.
     nome: str = ""
+    login: str = ""
     filial_id: int | None = None
     filial_codigo: str = ""
     is_admin: bool = False
@@ -56,10 +57,15 @@ def decidir_rota(rota: str | None, sessao: SessaoUI, agora: datetime) -> str:
     return destino
 
 
-def iniciar(sessao: SessaoUI, ator, agora: datetime) -> None:
-    """Registra o login. ``ator`` é o Ator devolvido pelo serviço de autenticação."""
+def iniciar(sessao: SessaoUI, ator, agora: datetime, login: str = "") -> None:
+    """Registra o login. ``ator`` é o Ator devolvido pelo serviço de autenticação.
+
+    ``login`` é o que o usuário digitou e o serviço aceitou; é guardado (aparado e em
+    minúsculas, como o serviço o grava) só para exibição em Configurações.
+    """
     sessao.ator_id = ator.usuario_id
     sessao.nome = ator.nome
+    sessao.login = login.strip().lower()
     sessao.filial_id = ator.filial_id
     sessao.filial_codigo = ator.filial_codigo
     sessao.is_admin = ator.is_admin
@@ -72,6 +78,7 @@ def encerrar(sessao: SessaoUI, mensagem: str | None = None) -> None:
     sessao.ator_id = None
     sessao.ultima_atividade = None
     sessao.nome = ""
+    sessao.login = ""
     sessao.filial_id = None
     sessao.filial_codigo = ""
     sessao.is_admin = False

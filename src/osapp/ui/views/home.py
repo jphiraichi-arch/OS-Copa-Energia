@@ -10,7 +10,7 @@ import flet as ft
 
 from osapp import formatacao
 from osapp.services import ordens, status
-from osapp.ui import rotas, theme
+from osapp.ui import rotas, textos, theme
 from osapp.ui.components import basicos
 from osapp.ui.views.base import Tela
 
@@ -27,12 +27,13 @@ class Home(Tela):
         self.itens: list = []
 
         self.busca = basicos.campo_texto(
-            "Buscar por número, título ou descrição",
+            textos.HOME_BUSCA,
+            hint_text=textos.HOME_BUSCA_DICA,
             on_submit=self._buscar,
             suffix_icon=ft.IconButton(
                 icon=ft.Icons.SEARCH,
                 icon_color=theme.COR_BOTAO_PRIMARIO,
-                tooltip="Buscar",
+                tooltip=textos.HOME_BUSCAR,
                 width=theme.ALVO_TOQUE_MIN,
                 height=theme.ALVO_TOQUE_MIN,
                 on_click=self._buscar,
@@ -41,7 +42,7 @@ class Home(Tela):
         self.chips = ft.Row(wrap=True, spacing=theme.ESPACO_P, run_spacing=theme.ESPACO_P)
         self._montar_chips()
         self.filial = ft.Dropdown(
-            label="Filial",
+            label=textos.HOME_FILIAL,
             visible=False,
             expand=True,
             color=theme.COR_TITULO,
@@ -54,7 +55,7 @@ class Home(Tela):
             on_select=self._ao_escolher_filial,
         )
         self.atualizar = ft.TextButton(
-            content="Atualizar",
+            content=textos.HOME_ATUALIZAR,
             icon=ft.Icons.REFRESH,
             style=theme.estilo_botao_texto(),
             height=theme.ALVO_TOQUE_MIN,
@@ -64,6 +65,7 @@ class Home(Tela):
         self.rodape = basicos.coluna([])
         self.conteudo = basicos.coluna(
             [
+                basicos.titulo(textos.HOME_TITULO, theme.FONTE_SAUDACAO),
                 self.busca,
                 self.chips,
                 ft.Row(
@@ -79,7 +81,7 @@ class Home(Tela):
     # --- Filtros ----------------------------------------------------------------------
 
     def _montar_chips(self) -> None:
-        opcoes = [(None, "Todas"), *status.ROTULOS.items()]
+        opcoes = [(None, textos.HOME_TODAS), *status.ROTULOS.items()]
         self.chips.controls = [
             ft.Chip(
                 label=ft.Text(rotulo, color=theme.COR_TITULO, size=theme.FONTE_SUBTITULO),
@@ -114,7 +116,7 @@ class Home(Tela):
             resultado = await self.app.chamar(ordens.listar_filiais, self.app.sessao.ator_id)
             if resultado.ok:
                 self.filial.options = [
-                    ft.DropdownOption(key=TODAS_AS_FILIAIS, text="Todas as filiais"),
+                    ft.DropdownOption(key=TODAS_AS_FILIAIS, text=textos.HOME_TODAS_AS_FILIAIS),
                     *[
                         ft.DropdownOption(key=str(f.id), text=f"{f.codigo} - {f.nome}")
                         for f in resultado.valor
@@ -152,11 +154,11 @@ class Home(Tela):
             self.itens.extend(resultado.valor.itens)
             self.lista.controls = [self._cartao(item) for item in self.itens]
             if not self.itens:
-                self.rodape.controls = [basicos.mensagem_central("Nenhuma OS encontrada.")]
+                self.rodape.controls = [basicos.mensagem_central(textos.HOME_VAZIA)]
             elif resultado.valor.tem_mais:
                 self.rodape.controls = [
                     basicos.botao_secundario(
-                        "Carregar mais", ft.Icons.EXPAND_MORE, self._carregar_mais
+                        textos.HOME_CARREGAR_MAIS, ft.Icons.EXPAND_MORE, self._carregar_mais
                     )
                 ]
         try:

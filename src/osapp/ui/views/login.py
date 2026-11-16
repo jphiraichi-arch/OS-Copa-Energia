@@ -81,7 +81,7 @@ class Login(Tela):
         self.senha.value = ""  # o campo de senha é limpo depois de toda tentativa
         self.botao.disabled = False
         if resultado.ok:
-            await self.app.entrar(resultado.valor)
+            await self.app.entrar(resultado.valor, login)
             return
         if isinstance(resultado.erro, ErroAutenticacao):
             self.mensagem.value = MENSAGEM_CREDENCIAIS

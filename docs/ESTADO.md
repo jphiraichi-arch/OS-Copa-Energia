@@ -420,3 +420,45 @@ não edita mais e o administrador edita, com a mudança no histórico; carlos (F
   (`OS_TEST_DATABASE_URL`); a imagem foi construída e executada contra PostgreSQL, com
   login e criação de OS pelo navegador.
 - Não verificado: a implantação real no Render e no Neon (exige contas do responsável).
+
+## Prompt 10 (parcial) — Configurações e rótulos por extenso
+
+Feitos os itens 1 e 3. Os itens 2 (logotipo) e 4 (Relatórios) ficaram pendentes: ver abaixo.
+
+### O que existe
+
+- `ui/textos.py`: os rótulos da tela principal, da navegação, do menu e de Configurações em
+  um só módulo. Regra: "Ordem de Serviço" por extenso, nunca a sigla.
+- Rota `/configuracoes` (`ui/rotas.py`, `ui/views/configuracoes.py`), atrás da mesma guarda
+  das demais. Mostra, só para leitura, em cartões: nome, usuário (login), filial (código e
+  nome), perfil (Administrador ou Usuário) e a versão do app.
+- Menu do cabeçalho: "Configurações" (engrenagem) acima de "Sair".
+- Home: título "Ordens de Serviço"; estado vazio "Nenhuma Ordem de Serviço encontrada.";
+  campo de busca com rótulo "Buscar" e dica "Número, título ou descrição".
+- Navegação: "Ordens de Serviço" e "Nova Ordem de Serviço" (por extenso na barra inferior;
+  em duas linhas no trilho lateral). Título da aba: "Sistema de Ordens de Serviço".
+- Testes: `tests/test_ui_textos.py` (inclui o teste que falha se um rótulo da tela principal
+  ou da navegação tiver a sigla isolada).
+
+### Decisões
+
+- O login mostrado em Configurações é o que o usuário digitou e o serviço aceitou, guardado
+  na sessão (`SessaoUI.login`) no momento do login. Não foi preciso mudar serviços.
+- O nome da filial vem de `ordens.listar_filiais` (serviço já existente).
+- A versão vem dos metadados do pacote (`pyproject.toml`).
+- `theme.LARGURA_TRILHO` passou de 88 para 100 para caber o rótulo em duas linhas.
+
+### Pendências deste prompt
+
+- **Logotipo:** `src/osapp/assets/logo.png` não existe no repositório; o logo provisório
+  (ícone + "OS") continua no cabeçalho e no login. É o único "OS" como sigla que resta na
+  tela principal.
+- **Relatórios:** não existe funcionalidade de relatórios no código; por decisão do
+  responsável, o item foi adiado.
+- A sigla continua nas telas fora da principal (formulários, Detalhe, mensagens como
+  "OS criada."), que estavam fora do escopo.
+
+### Implantação
+
+O serviço no Render tem implantação automática: um `git push` para o ramo publicado
+implanta. Este commit foi deixado só no repositório local, sem push.
