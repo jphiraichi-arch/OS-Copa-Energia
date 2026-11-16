@@ -359,3 +359,45 @@ Depois do seed, um script curto que chame `auth.autenticar` e `ordens.criar_os`,
 - O teclado numérico de alguns celulares pode não ter vírgula ou dois-pontos; o tipo de
   teclado é só uma sugestão ao navegador (não verificado em aparelho real).
 - Se a sessão expirar com o formulário aberto, o que foi digitado é perdido.
+
+## Prompt 9 — ações de status, Concluir OS, auditoria, README
+
+### O que existe
+
+- Detalhe: botões "Iniciar execução" e "Desfazer início" (com diálogo de confirmação) e
+  "Concluir OS", mostrados conforme `acoes`; quando em execução, mostra quem iniciou e quando.
+- `ui/views/concluir.py` (`/os/{id}/concluir`): resumo do previsto, valor realizado, início
+  e fim (data + hora), descrição do que foi feito, prévia ao vivo das diferenças e botão
+  "Concluir OS".
+- `ui/formularios.py`: `previa_diferencas`.
+- `App.confirmar`: diálogo de confirmação reutilizável.
+- `docs/AUDITORIA.md`, `docs/PROXIMOS_PASSOS.md` e o `README.md` final.
+- Todas as rotas têm tela real; a tela provisória "Em construção" foi removida.
+- Suíte: 523 testes.
+
+### Decisões
+
+- Início e fim são campos de texto (`dd/mm/aaaa` e `HH:MM`), com a data de hoje preenchida.
+  Os seletores `DatePicker` e `TimePicker` do Flet existem, mas são diálogos em tela cheia
+  e exigiriam quatro aberturas por conclusão; campos de texto são mais rápidos no celular
+  e têm mensagens de erro claras.
+- As horas são digitadas no fuso `OS_TZ` e convertidas para UTC antes de chamar o serviço.
+- A prévia das diferenças é só visual; os números oficiais vêm do serviço.
+- Rota `/os/{id}/concluir` aberta sem permissão mostra a mensagem genérica (usa
+  `acoes.pode_concluir`, calculado pelo serviço).
+
+### Verificação manual (Chromium headless, 390 px e 1280 px)
+
+Roteiro do prompt 9 executado de ponta a ponta: marina cria; joão inicia; marina não vê
+"Concluir OS" nem "Desfazer início"; joão desfaz e inicia de novo; joão conclui com 13:50
+a 14:30 (o serviço recusou a data de hoje por estar no futuro e aceitou a de ontem); marina
+não edita mais e o administrador edita, com a mudança no histórico; carlos (F002) recebe
+"OS não encontrada."; a sessão expira depois do tempo limite.
+
+### Lacunas conhecidas
+
+- Pendência de modelo antes do PostgreSQL: colunas de valor em `BigInteger`
+  (ver `docs/AUDITORIA.md`, item d).
+- Não testado em PostgreSQL, nem em celular real, nem com as ferramentas `flet test`.
+- Sem limite de tentativas de login por endereço IP.
+- Funcionalidades adiadas: ver `docs/PROXIMOS_PASSOS.md`.

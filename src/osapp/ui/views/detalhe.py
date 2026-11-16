@@ -6,10 +6,12 @@ import flet as ft
 
 from osapp import formatacao
 from osapp.services import ordens, status
-from osapp.services.erros import ErroNaoEncontrado
+from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao
 from osapp.ui import historico, rotas, theme
 from osapp.ui.components import basicos
 from osapp.ui.views.base import Tela
+
+MENSAGEM_CONFLITO = "Esta OS foi alterada por outra pessoa. Atualize e tente novamente."
 
 
 class Detalhe(Tela):
@@ -79,6 +81,7 @@ class Detalhe(Tela):
                         "Criada por",
                         f"{d.criado_por_nome}, em {formatacao.formatar_data_hora(d.criado_em)}",
                     ),
+                    *self._em_execucao(d),
                 ],
                 espaco=theme.ESPACO_P + 4,
             )
@@ -117,18 +120,81 @@ class Detalhe(Tela):
         cartoes.append(self._historico(eventos))
         return cartoes
 
+    def _em_execucao(self, d) -> list[ft.Control]:
+        """Quem iniciou e quando, enquanto a OS está em execução."""
+        if d.status != status.EM_EXECUCAO or d.executor_nome is None or d.iniciado_em is None:
+            return []
+        return [
+            basicos.rotulo_valor(
+                "Em execução por",
+                f"{d.executor_nome}, desde {formatacao.formatar_data_hora(d.iniciado_em)}",
+            )
+        ]
+
     def _acoes(self, d) -> list[ft.Control]:
         """Botões de ação, mostrados conforme ``acoes`` (calculado pelo serviço).
 
         Esconder um botão é só conveniência: quem autoriza é o serviço.
         """
         botoes: list[ft.Control] = []
+        if d.acoes.pode_iniciar:
+            botoes.append(
+                basicos.botao_primario(
+                    "Iniciar execução", ft.Icons.PLAY_ARROW, self._perguntar_iniciar
+                )
+            )
+        if d.acoes.pode_concluir:
+            botoes.append(
+                basicos.botao_primario("Concluir OS", ft.Icons.CHECK_CIRCLE_OUTLINE, self._concluir)
+            )
+        if d.acoes.pode_desfazer_inicio:
+            botoes.append(
+                basicos.botao_secundario("Desfazer início", ft.Icons.UNDO, self._perguntar_desfazer)
+            )
         if d.acoes.pode_editar:
             botoes.append(basicos.botao_secundario("Alterar", ft.Icons.EDIT, self._alterar))
         return botoes
 
     async def _alterar(self, _e=None) -> None:
         await self.app.ir(rotas.rota_editar(self.os_id))
+
+    async def _concluir(self, _e=None) -> None:
+        await self.app.ir(rotas.rota_concluir(self.os_id))
+
+    def _perguntar_iniciar(self, _e=None) -> None:
+        self.app.confirmar(
+            "Iniciar execução?",
+            "Você passa a ser o executor desta OS. Só você (ou um administrador) poderá "
+            "concluí-la ou desfazer o início.",
+            "Iniciar",
+            lambda: self._mudar_status(ordens.iniciar_execucao, "Execução iniciada."),
+        )
+
+    def _perguntar_desfazer(self, _e=None) -> None:
+        self.app.confirmar(
+            "Desfazer início?",
+            "A OS volta para o status Aberta e fica sem executor. Outra pessoa poderá iniciá-la.",
+            "Desfazer início",
+            lambda: self._mudar_status(ordens.desfazer_inicio, "Início desfeito."),
+        )
+
+    async def _mudar_status(self, funcao, mensagem_de_sucesso: str) -> None:
+        resultado = await self.app.chamar(
+            funcao,
+            self.app.sessao.ator_id,
+            self.os_id,
+            self.os.versao,
+            erros_tratados=(ErroConflito, ErroPermissao, ErroNaoEncontrado),
+        )
+        if resultado.ok:
+            self.app.avisar(mensagem_de_sucesso)
+        elif isinstance(resultado.erro, ErroConflito):
+            self.app.avisar(MENSAGEM_CONFLITO)
+        elif isinstance(resultado.erro, ErroPermissao | ErroNaoEncontrado):
+            self.app.avisar(self.app.MENSAGEM_GENERICA)
+        else:
+            return  # sessão encerrada ou erro já avisado
+        await self.carregar()  # mostra o estado atual da OS
 
     def _secao(self, nome: str, linhas: list[ft.Control]) -> ft.Control:
         return basicos.cartao(

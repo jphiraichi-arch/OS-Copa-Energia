@@ -20,8 +20,8 @@ from osapp.ui import rotas, theme
 from osapp.ui import sessao as sessao_ui
 from osapp.ui.components import cabecalho
 from osapp.ui.views.base import Tela
+from osapp.ui.views.concluir import ConcluirOs
 from osapp.ui.views.detalhe import Detalhe
-from osapp.ui.views.em_construcao import EmConstrucao
 from osapp.ui.views.home import Home
 from osapp.ui.views.login import Login
 from osapp.ui.views.os_formulario import CriarOs, EditarOs
@@ -37,10 +37,6 @@ DESTINOS = [
 ]
 
 
-def _em_construcao(nome: str):
-    return lambda app, **params: EmConstrucao(app, nome, **params)
-
-
 # Tabela central: nome da rota (ver ui/rotas.py) -> construtor da tela.
 TELAS = {
     "login": Login,
@@ -48,7 +44,7 @@ TELAS = {
     "os_nova": CriarOs,
     "os_detalhe": Detalhe,
     "os_editar": EditarOs,
-    "os_concluir": _em_construcao("Concluir OS"),
+    "os_concluir": ConcluirOs,
 }
 
 
@@ -121,34 +117,52 @@ class App:
         )
 
     def _confirmar_saida(self, destino: str, mensagem: str | None = None) -> None:
-        async def descartar(_e=None) -> None:
-            self.page.pop_dialog()
+        async def descartar() -> None:
             await self.ir(destino, mensagem, forcar=True)
 
-        def continuar(_e=None) -> None:
+        self.confirmar(
+            "Descartar alterações?",
+            "As alterações que você fez ainda não foram salvas.",
+            "Descartar",
+            descartar,
+            rotulo_cancelar="Continuar editando",
+        )
+
+    def confirmar(
+        self,
+        titulo: str,
+        texto: str,
+        rotulo_confirmar: str,
+        ao_confirmar,
+        rotulo_cancelar: str = "Cancelar",
+    ) -> None:
+        """Diálogo de confirmação. ``ao_confirmar`` é uma função assíncrona sem argumentos."""
+
+        async def confirmou(_e=None) -> None:
+            self.page.pop_dialog()
+            await ao_confirmar()
+
+        def cancelou(_e=None) -> None:
             self.page.pop_dialog()
 
         self.page.show_dialog(
             ft.AlertDialog(
                 modal=True,
                 bgcolor=theme.COR_CARTAO,
-                title=ft.Text("Descartar alterações?", color=theme.COR_TITULO),
-                content=ft.Text(
-                    "As alterações que você fez ainda não foram salvas.",
-                    color=theme.COR_SUBTITULO,
-                ),
+                title=ft.Text(titulo, color=theme.COR_TITULO),
+                content=ft.Text(texto, color=theme.COR_SUBTITULO),
                 actions=[
                     ft.TextButton(
-                        content="Continuar editando",
+                        content=rotulo_cancelar,
                         style=theme.estilo_botao_texto(),
                         height=theme.ALVO_TOQUE_MIN,
-                        on_click=continuar,
+                        on_click=cancelou,
                     ),
                     ft.TextButton(
-                        content="Descartar",
+                        content=rotulo_confirmar,
                         style=theme.estilo_botao_texto(),
                         height=theme.ALVO_TOQUE_MIN,
-                        on_click=descartar,
+                        on_click=confirmou,
                     ),
                 ],
             )

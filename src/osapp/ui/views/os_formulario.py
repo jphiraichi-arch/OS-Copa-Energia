@@ -10,8 +10,7 @@ from osapp.ui import rotas, theme
 from osapp.ui.components import basicos
 from osapp.ui.components.formulario_os import FormularioOs
 from osapp.ui.views.base import Tela
-
-MENSAGEM_CONFLITO = "Esta OS foi alterada por outra pessoa. Atualize e tente novamente."
+from osapp.ui.views.detalhe import MENSAGEM_CONFLITO
 
 
 class _TelaDeFormulario(Tela):

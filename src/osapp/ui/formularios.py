@@ -91,3 +91,38 @@ def partes_locais(instante: datetime, tz: str) -> tuple[str, str]:
 def somente_alterados(original: dict, atual: dict) -> dict:
     """Os pares de ``atual`` cujo valor difere do de ``original`` (para editar_os)."""
     return {campo: valor for campo, valor in atual.items() if original.get(campo) != valor}
+
+
+def previa_diferencas(
+    valor_previsto_centavos: int,
+    tempo_previsto_minutos: int,
+    texto_valor: str | None,
+    inicio: tuple[str | None, str | None],
+    fim: tuple[str | None, str | None],
+    tz: str,
+) -> tuple[str | None, str | None]:
+    """Prévia (diferença de valor, diferença de tempo) enquanto o usuário digita.
+
+    Cada item é None enquanto as entradas correspondentes não forem válidas. É só uma
+    prévia: os números oficiais são calculados pelo serviço na conclusão.
+    """
+    from osapp.ui import historico
+
+    previa_valor = previa_tempo = None
+    try:
+        diferenca = ler_valor(texto_valor) - valor_previsto_centavos
+        percentual = (
+            round(diferenca * 100 / valor_previsto_centavos, 2) if valor_previsto_centavos else None
+        )
+        previa_valor = historico.texto_diferenca_valor(diferenca, percentual)
+    except ValueError:
+        pass
+    try:
+        inicio_utc = ler_data_hora(inicio[0], inicio[1], tz)
+        fim_utc = ler_data_hora(fim[0], fim[1], tz)
+        if fim_utc > inicio_utc:
+            minutos = int((fim_utc - inicio_utc).total_seconds() // 60)
+            previa_tempo = historico.texto_diferenca_tempo(minutos - tempo_previsto_minutos)
+    except ValueError:
+        pass
+    return previa_valor, previa_tempo

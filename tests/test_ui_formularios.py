@@ -105,3 +105,53 @@ def test_somente_alterados():
     assert f.somente_alterados(original, atual) == {"titulo": "B"}
     assert f.somente_alterados(original, dict(original)) == {}
     assert f.somente_alterados({}, {"titulo": "B"}) == {"titulo": "B"}
+
+
+# --- Prévia das diferenças na tela Concluir OS ---------------------------------------
+
+
+def previa(
+    valor="120,00",
+    inicio=("04/05/2026", "13:50"),
+    fim=("04/05/2026", "14:30"),
+    previsto=10000,
+    tempo=60,
+):
+    return f.previa_diferencas(previsto, tempo, valor, inicio, fim, SP)
+
+
+def test_previa_com_entradas_validas():
+    assert previa() == (
+        "+R$ 20,00 (+20,0%) - Acima do previsto",
+        "-0h20 - Abaixo do previsto",  # 40 minutos realizados contra 60 previstos
+    )
+    assert previa(valor="100,00", fim=("04/05/2026", "14:50")) == (
+        "R$ 0,00 (0,0%) - Igual ao previsto",
+        "0h00 - Igual ao previsto",
+    )
+
+
+def test_previa_sem_percentual_quando_o_previsto_e_zero():
+    assert previa(previsto=0)[0] == "+R$ 120,00 - Acima do previsto"
+
+
+def test_previa_cruzando_a_meia_noite():
+    assert previa(inicio=("04/05/2026", "23:30"), fim=("05/05/2026", "00:45"))[1] == (
+        "+0h15 - Acima do previsto"
+    )
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "esperado"),
+    [
+        ({"valor": ""}, (None, "-0h20 - Abaixo do previsto")),
+        ({"valor": "abc"}, (None, "-0h20 - Abaixo do previsto")),
+        ({"inicio": ("04/05/2026", "")}, ("+R$ 20,00 (+20,0%) - Acima do previsto", None)),
+        ({"fim": ("31/02/2026", "14:30")}, ("+R$ 20,00 (+20,0%) - Acima do previsto", None)),
+        # fim antes do início: sem prévia de tempo
+        ({"fim": ("04/05/2026", "13:00")}, ("+R$ 20,00 (+20,0%) - Acima do previsto", None)),
+        ({"valor": None, "inicio": (None, None), "fim": (None, None)}, (None, None)),
+    ],
+)
+def test_previa_some_enquanto_a_entrada_e_invalida(kwargs, esperado):
+    assert previa(**kwargs) == esperado
