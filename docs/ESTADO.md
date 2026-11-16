@@ -150,3 +150,35 @@ python -m osapp.cli desativar-usuario --login ana.modelo
 - Não há comando para reativar usuário nem para listar usuários.
 - A política de senha é só o tamanho (8 a 128 caracteres).
 - Não há limitação de tentativas por endereço IP, apenas por usuário.
+
+## Prompt 4 — serviço de OS, parte 1
+
+### O que existe
+
+- `services/status.py`: `ABERTA`, `EM_EXECUCAO`, `CONCLUIDA`, `STATUS_INICIAL`, `ROTULOS`,
+  `rotulo(status)`, `status_conhecido(status)`.
+- `services/ordens.py` (toda função começa por `carregar_ator(ator_id)` e devolve DTOs):
+  - `criar_os(ator_id, titulo, descricao, valor_previsto_centavos, tempo_previsto_minutos,
+    filial_id=None) -> OsDetalhe`
+  - `obter_os(ator_id, os_id) -> OsDetalhe`
+  - `listar_os(ator_id, busca=None, status=None, filial_id=None, pagina=1) -> PaginaOs`
+  - `listar_eventos(ator_id, os_id) -> list[EventoDTO]` (do mais antigo ao mais novo)
+  - `listar_filiais(ator_id) -> list[FilialDTO]`
+  - `registrar_evento(...)`: único ponto que grava em `os_eventos`, na mesma transação.
+  - DTOs: `OsDetalhe`, `OsResumo`, `PaginaOs`, `EventoDTO`, `FilialDTO`.
+  - Tipos de evento: `TIPO_CRIACAO`, `TIPO_EDICAO`, `TIPO_STATUS`.
+- Testes: `tests/test_ordens_parte1.py` (64 testes) e a fixture `cenario` em `conftest.py`.
+
+### Decisões
+
+- O ano do número (`OS-AAAA-NNNNNN`) é o ano no fuso `OS_TZ`, não em UTC. A sequência é única
+  por ano para todas as filiais.
+- Em conflito de número: 1 tentativa + 3 repetições; depois, `ErroConflito`.
+- `titulo` e `descricao` são gravados sem espaços nas pontas; descrição só de espaços é recusada.
+- `busca` maior que 100 caracteres é cortada em 100 (não gera erro).
+- Um `os_id` de tipo errado é tratado como OS inexistente (`ErroNaoEncontrado`).
+- Admin criando em filial inexistente recebe `ErroValidacao("filial_id")`.
+
+### Lacunas conhecidas
+
+- Sem edição, mudança de status nem conclusão (prompt 5).

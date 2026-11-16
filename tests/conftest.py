@@ -43,3 +43,27 @@ def banco(banco_vazio):
     """Banco novo com o esquema criado pela migração (alembic upgrade head)."""
     command.upgrade(config_alembic(), "head")
     return banco_vazio
+
+
+@pytest.fixture
+def cenario(banco):
+    """Duas filiais e seis usuários fictícios (sem calcular hash, para ser rápido).
+
+    Devolve os ids: f1, f2, admin, marina, joao, pedro (F001), carlos (F002) e
+    inativa (F001, desativada).
+    """
+    from osapp.db import sessao
+    from tests.fabricas import nova_filial, novo_usuario
+
+    with sessao() as s:
+        f1 = nova_filial(s, "F001", "Filial Modelo Norte")
+        f2 = nova_filial(s, "F002", "Filial Modelo Sul")
+        usuarios = {
+            "admin": novo_usuario(s, f1, "admin", "Administrador Fictício", is_admin=True),
+            "marina": novo_usuario(s, f1, "marina.teste", "Marina Teste"),
+            "joao": novo_usuario(s, f1, "joao.ficticio", "João Fictício"),
+            "pedro": novo_usuario(s, f1, "pedro.modelo", "Pedro Modelo"),
+            "carlos": novo_usuario(s, f2, "carlos.exemplo", "Carlos Exemplo"),
+            "inativa": novo_usuario(s, f1, "ines.inativa", "Inês Inativa", ativo=False),
+        }
+        return {"f1": f1.id, "f2": f2.id, **{k: u.id for k, u in usuarios.items()}}
