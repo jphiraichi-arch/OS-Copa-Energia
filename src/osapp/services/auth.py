@@ -36,6 +36,7 @@ class Ator:
     filial_id: int
     filial_codigo: str
     is_admin: bool
+    is_gerente: bool = False
 
 
 def _ator_de(usuario: Usuario) -> Ator:
@@ -45,6 +46,7 @@ def _ator_de(usuario: Usuario) -> Ator:
         filial_id=usuario.filial_id,
         filial_codigo=usuario.filial.codigo,
         is_admin=usuario.is_admin,
+        is_gerente=usuario.is_gerente and not usuario.is_admin,
     )
 
 

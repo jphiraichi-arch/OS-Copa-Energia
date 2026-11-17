@@ -19,6 +19,8 @@ class Usuario(Base):
     senha_hash: Mapped[str] = mapped_column(String(255))
     filial_id: Mapped[int] = mapped_column(ForeignKey("filiais.id"))
     is_admin: Mapped[bool] = mapped_column(default=False, server_default=false())
+    # Gerente: vê o relatório completo da própria filial. Administrador prevalece.
+    is_gerente: Mapped[bool] = mapped_column(default=False, server_default=false())
     ativo: Mapped[bool] = mapped_column(default=True, server_default=true())
     tentativas_falhas: Mapped[int] = mapped_column(default=0, server_default="0")
     bloqueado_ate: Mapped[datetime | None] = mapped_column(DataHoraUTC())

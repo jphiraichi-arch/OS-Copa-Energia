@@ -37,9 +37,16 @@ def _criar_usuario(args) -> str:
     nome = _perguntar(args.nome, "Nome")
     login = _perguntar(args.login, "Login")
     filial = _perguntar(args.filial, "Código da filial")
-    usuario = administracao.criar_usuario(nome, login, _ler_senha(), filial, args.admin)
-    papel = "administrador" if usuario.is_admin else "usuário"
+    usuario = administracao.criar_usuario(
+        nome, login, _ler_senha(), filial, args.admin, args.gerente
+    )
+    papel = "administrador" if usuario.is_admin else "gerente" if usuario.is_gerente else "usuário"
     return f"Usuário {usuario.login} criado na filial {usuario.filial_codigo} ({papel})."
+
+
+def _definir_perfil(args) -> str:
+    administracao.definir_perfil(_perguntar(args.login, "Login"), args.perfil)
+    return f"Perfil alterado para {args.perfil}."
 
 
 def _redefinir_senha(args) -> str:
@@ -66,8 +73,15 @@ def criar_parser() -> argparse.ArgumentParser:
     p.add_argument("--nome")
     p.add_argument("--login")
     p.add_argument("--filial", help="Código da filial")
-    p.add_argument("--admin", action="store_true", help="Cria como administrador")
+    perfil = p.add_mutually_exclusive_group()
+    perfil.add_argument("--admin", action="store_true", help="Cria como administrador")
+    perfil.add_argument("--gerente", action="store_true", help="Cria como gerente da filial")
     p.set_defaults(func=_criar_usuario)
+
+    p = sub.add_parser("definir-perfil", help="Muda o perfil de um usuário")
+    p.add_argument("--login")
+    p.add_argument("--perfil", required=True, choices=administracao.PERFIS)
+    p.set_defaults(func=_definir_perfil)
 
     p = sub.add_parser("redefinir-senha", help="Redefine a senha e remove o bloqueio")
     p.add_argument("--login")

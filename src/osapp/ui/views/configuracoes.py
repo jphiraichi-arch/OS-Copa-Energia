@@ -22,8 +22,10 @@ def versao_do_app() -> str:
         return "desconhecida"
 
 
-def rotulo_do_perfil(is_admin: bool) -> str:
-    return textos.PERFIL_ADMINISTRADOR if is_admin else textos.PERFIL_USUARIO
+def rotulo_do_perfil(is_admin: bool, is_gerente: bool = False) -> str:
+    if is_admin:
+        return textos.PERFIL_ADMINISTRADOR
+    return textos.PERFIL_GERENTE if is_gerente else textos.PERFIL_USUARIO
 
 
 class Configuracoes(Tela):
@@ -43,7 +45,8 @@ class Configuracoes(Tela):
                         basicos.rotulo_valor(textos.CONFIG_LOGIN, sessao.login),
                         self.filial,
                         basicos.rotulo_valor(
-                            textos.CONFIG_PERFIL, rotulo_do_perfil(sessao.is_admin)
+                            textos.CONFIG_PERFIL,
+                            rotulo_do_perfil(sessao.is_admin, sessao.is_gerente),
                         ),
                     ],
                 ),

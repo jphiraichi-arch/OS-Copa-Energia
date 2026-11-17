@@ -44,6 +44,18 @@ Se não for possível verificar uma API, pare e avise. Não adivinhe.
 - O usuário vê mensagens de erro genéricas; os detalhes vão para os logs do servidor.
 - Dados de seed usam apenas nomes fictícios.
 
+## Perfis de acesso
+
+- **Usuário (operário):** trabalha só na própria filial; vê o relatório básico (contagens e
+  tempos) da própria filial.
+- **Gerente:** mesmas permissões do usuário nas Ordens de Serviço; além disso vê o relatório
+  completo (valores em dinheiro, gasto do mês, desvios e desempenho por pessoa) da própria
+  filial.
+- **Administrador:** age em todas as filiais e vê todos os relatórios, por filial ou
+  consolidados.
+- Dados sensíveis (valores em dinheiro, desempenho por pessoa) só saem do serviço para
+  gerente (própria filial) e administrador. A interface apenas mostra o que recebe.
+
 ## Idioma
 
 - Interface em português do Brasil; datas `dd/mm/aaaa`; moeda `R$ 1.234,56`.

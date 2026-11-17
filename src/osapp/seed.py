@@ -14,12 +14,13 @@ from osapp.services import administracao
 from osapp.services.erros import ErroConflito, ErroValidacao
 
 FILIAIS = [("F001", "Filial Modelo Norte"), ("F002", "Filial Modelo Sul")]
-# (nome, login, código da filial, é administrador)
+# (nome, login, código da filial, perfil)
 USUARIOS = [
-    ("Administrador Fictício", "admin", "F001", True),
-    ("Marina Teste", "marina.teste", "F001", False),
-    ("João Fictício", "joao.ficticio", "F001", False),
-    ("Carlos Exemplo", "carlos.exemplo", "F002", False),
+    ("Administrador Fictício", "admin", "F001", "administrador"),
+    ("Gabriela Gerente", "gerente.norte", "F001", "gerente"),
+    ("Marina Teste", "marina.teste", "F001", "usuario"),
+    ("João Fictício", "joao.ficticio", "F001", "usuario"),
+    ("Carlos Exemplo", "carlos.exemplo", "F002", "usuario"),
 ]
 
 
@@ -33,9 +34,11 @@ def executar(senha: str) -> dict[str, int]:
             criados["filiais"] += 1
         except ErroConflito:
             pass
-    for nome, login, filial, is_admin in USUARIOS:
+    for nome, login, filial, perfil in USUARIOS:
         try:
-            administracao.criar_usuario(nome, login, senha, filial, is_admin)
+            administracao.criar_usuario(
+                nome, login, senha, filial, perfil == "administrador", perfil == "gerente"
+            )
             criados["usuarios"] += 1
         except ErroConflito:
             pass

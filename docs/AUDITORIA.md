@@ -176,3 +176,22 @@ proíbem alterar modelos e migração sem relatar antes.
 - O bloqueio de login é por usuário (5 falhas, 15 minutos). Não há limite por endereço IP.
 - O app precisa ficar atrás de um proxy com HTTPS (ver README); ele próprio fala HTTP.
 - PostgreSQL: a suíte inteira (527 testes) passa em PostgreSQL 16 com o driver psycopg 3.
+
+## Adendo — relatórios e perfil gerente (17/11/2026)
+
+- **Relatórios (`services/relatorios.py`):** `gerar_relatorio` começa por `carregar_ator`;
+  usuário comum e gerente só consultam a própria filial (`ErroPermissao` para outra, com
+  log); o relatório completo só é preenchido quando `permissoes.pode_ver_relatorio_completo`
+  permite (gerente na própria filial, administrador). Testes: `tests/test_relatorios.py`
+  (`test_operario_ve_so_o_basico_da_propria_filial`,
+  `test_gerente_ve_o_completo_da_propria_filial_e_nada_de_outra`, `test_admin_ve_tudo`,
+  `test_relatorio_basico_nao_tem_dado_sensivel`, `test_desativar_gerente_tira_o_acesso_na_hora`).
+- **Consultas novas:** `OrdemServicoRepo.contar_por_status`, `contar_criadas` e
+  `listar_concluidas` usam `select()` do SQLAlchemy com parâmetros vinculados; o
+  `self._s.execute(...)` recebe um objeto de consulta, não texto.
+- **Execução de migrações (`migrations/env.py`):** no SQLite, `PRAGMA foreign_keys=OFF/ON` e
+  `PRAGMA foreign_key_check` (textos constantes, sem dado de usuário) cercam a migração; ao
+  fim, qualquer referência inválida interrompe com erro. Correção de um defeito real: com as
+  chaves estrangeiras ligadas, migrações que recriam tabelas falhavam no SQLite assim que havia
+  dados. Teste: `test_migracao.py::test_migracoes_com_dados_existentes` (falha sem a correção).
+  No PostgreSQL (produção) nada muda.

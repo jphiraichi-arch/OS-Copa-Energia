@@ -61,8 +61,8 @@ O Alembic lê a URL de `OS_DATABASE_URL`, nunca do `alembic.ini`.
 OS_SEED_SENHA='uma-senha-de-teste' python -m osapp.seed
 ```
 
-Cria as filiais F001 e F002 e os usuários `admin`, `marina.teste`, `joao.ficticio` (F001) e
-`carlos.exemplo` (F002), todos com a senha de `OS_SEED_SENHA`. Pode ser executado mais de
+Cria as filiais F001 e F002 e os usuários `admin`, `gerente.norte` (gerente), `marina.teste`,
+`joao.ficticio` (F001) e `carlos.exemplo` (F002), todos com a senha de `OS_SEED_SENHA`. Pode ser executado mais de
 uma vez. Não use o seed em produção.
 
 ## Executar em desenvolvimento
@@ -123,6 +123,8 @@ Senhas são sempre pedidas no terminal (nunca passadas como argumento).
 python -m osapp.cli criar-filial --codigo F003 --nome 'Filial Modelo Oeste'
 python -m osapp.cli criar-usuario                       # pergunta nome, login, filial e senha
 python -m osapp.cli criar-usuario --nome 'Ana Modelo' --login ana.modelo --filial F001 --admin
+python -m osapp.cli criar-usuario --nome 'Bia Modelo' --login bia.modelo --filial F001 --gerente
+python -m osapp.cli definir-perfil --login bia.modelo --perfil gerente   # usuario|gerente|administrador
 python -m osapp.cli redefinir-senha --login ana.modelo  # também remove o bloqueio
 python -m osapp.cli desativar-usuario --login ana.modelo
 ```

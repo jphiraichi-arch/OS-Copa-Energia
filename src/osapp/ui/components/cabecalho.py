@@ -9,8 +9,10 @@ import flet as ft
 from osapp.ui import theme
 
 
-def logo(cor_texto: str = theme.COR_SOBRE_CABECALHO, escala: float = 1.0) -> ft.Control:
-    """Logo neutro de marcador: um ícone e o texto 'OS'. Nunca um logotipo real."""
+def logo(
+    cor_texto: str = theme.COR_SOBRE_CABECALHO, escala: float = 1.0, texto: str = "OS"
+) -> ft.Control:
+    """Logo provisório: um ícone e um texto. Será trocado pelo arquivo do logotipo."""
     return ft.Row(
         controls=[
             ft.Icon(
@@ -19,7 +21,7 @@ def logo(cor_texto: str = theme.COR_SOBRE_CABECALHO, escala: float = 1.0) -> ft.
                 size=theme.TAMANHO_ICONE_LOGO * escala,
             ),
             ft.Text(
-                "OS",
+                texto,
                 color=cor_texto,
                 size=theme.FONTE_LOGO * escala,
                 weight=ft.FontWeight.BOLD,

@@ -6,7 +6,7 @@ import flet as ft
 
 from osapp.services import auth
 from osapp.services.erros import ErroAutenticacao
-from osapp.ui import theme
+from osapp.ui import textos, theme
 from osapp.ui.components import basicos
 from osapp.ui.components.cabecalho import logo
 from osapp.ui.views.base import Tela
@@ -48,7 +48,11 @@ class Login(Tela):
                 content=basicos.coluna(
                     [
                         ft.Row(
-                            [logo(cor_texto=theme.COR_TITULO, escala=1.6)],
+                            [
+                                logo(
+                                    cor_texto=theme.COR_TITULO, escala=1.2, texto=textos.LOGIN_MARCA
+                                )
+                            ],
                             alignment=ft.MainAxisAlignment.CENTER,
                         ),
                         basicos.cartao(

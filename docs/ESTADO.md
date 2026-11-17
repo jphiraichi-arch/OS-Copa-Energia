@@ -462,3 +462,45 @@ Feitos os itens 1 e 3. Os itens 2 (logotipo) e 4 (Relatórios) ficaram pendentes
 
 O serviço no Render tem implantação automática: um `git push` para o ramo publicado
 implanta. Este commit foi deixado só no repositório local, sem push.
+
+## Relatórios, perfil gerente e login por extenso (17/11/2026)
+
+### O que existe
+
+- **Perfil gerente:** coluna `usuarios.is_gerente` (migração `0003`), `Ator.is_gerente`,
+  `permissoes.pode_ver_relatorio_completo`, `administracao.definir_perfil`, CLI
+  `criar-usuario --gerente` e `definir-perfil`. Seed: nova usuária fictícia `gerente.norte`
+  (F001). Nas Ordens de Serviço o gerente tem as mesmas permissões do usuário comum.
+- **`services/relatorios.py`:** `gerar_relatorio(ator_id, ano, mes, filial_id=None)`, mês no
+  fuso `OS_TZ`.
+  - Básico (todos, própria filial): OS por status agora, criadas no mês, concluídas no mês,
+    tempo médio de execução.
+  - Completo (gerente na própria filial; administrador em qualquer filial ou no consolidado):
+    valor previsto, gasto total realizado, diferença em R$ e %, tempo previsto e realizado,
+    quantas OS passaram do valor previsto, as 5 com maior estouro, desempenho por executor e,
+    no consolidado, totais por filial.
+- **Tela Relatórios (`/relatorios`):** terceira aba da navegação (barra inferior e trilho),
+  item "Relatórios" no menu, seletor de mês e, para administrador, de filial. Para quem não
+  pode ver o completo, um cartão avisa que valores e desempenho por pessoa são restritos.
+- **Rótulos:** barra inferior com três destinos usa a forma curta por extenso ("Ordens",
+  "Nova Ordem", "Relatórios"); o trilho lateral mantém os nomes completos. Tela de login:
+  "Ordens de Serviço" por extenso. Configurações mostra o perfil "Gerente".
+- **Migrações no SQLite:** `migrations/env.py` desliga as chaves estrangeiras durante a
+  migração e confere a integridade no fim (defeito corrigido; ver AUDITORIA, adendo).
+- Testes: `tests/test_relatorios.py`, novos casos em `test_auth.py`, `test_migracao.py` e
+  `test_ui_textos.py`. A suíte também passa em PostgreSQL 16.
+
+### Decisões
+
+- "Sensível" = valores em dinheiro e dados por pessoa. Contagens e tempo médio são básicos.
+- O gasto do mês considera as OS concluídas no mês (pela data de conclusão, no fuso local).
+- O executor de uma OS concluída é quem a iniciou; sem ele, quem a concluiu.
+
+### Lacunas conhecidas
+
+- **Logotipo:** o arquivo da Copa Energia ainda não está no repositório; o cabeçalho continua
+  com o logo provisório ("OS"), inclusive na aba Relatórios.
+- No SQLite, uma migração que falha no meio pode deixar uma tabela `_alembic_tmp_*`; é
+  preciso apagá-la antes de tentar de novo. Afeta só o banco local de desenvolvimento.
+- Não há tela para mudar perfis; usa-se a CLI.
+- Sem exportação PDF/Excel dos relatórios.

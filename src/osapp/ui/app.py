@@ -26,6 +26,7 @@ from osapp.ui.views.detalhe import Detalhe
 from osapp.ui.views.home import Home
 from osapp.ui.views.login import Login
 from osapp.ui.views.os_formulario import CriarOs, EditarOs
+from osapp.ui.views.relatorios import Relatorios
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,13 @@ DESTINOS = [
         ft.Icons.ADD_CIRCLE,
         rotas.OS_NOVA,
     ),
+    (
+        textos.NAVEGACAO_RELATORIOS,
+        textos.TRILHO_RELATORIOS,
+        ft.Icons.INSERT_CHART_OUTLINED,
+        ft.Icons.INSERT_CHART,
+        rotas.RELATORIOS,
+    ),
 ]
 
 
@@ -56,6 +64,7 @@ TELAS = {
     "login": Login,
     "home": Home,
     "configuracoes": Configuracoes,
+    "relatorios": Relatorios,
     "os_nova": CriarOs,
     "os_detalhe": Detalhe,
     "os_editar": EditarOs,
@@ -196,6 +205,9 @@ class App:
     async def abrir_configuracoes(self, _e=None) -> None:
         await self.ir(rotas.CONFIGURACOES)
 
+    async def abrir_relatorios(self, _e=None) -> None:
+        await self.ir(rotas.RELATORIOS)
+
     async def entrar(self, ator, login: str = "") -> None:
         """Chamado pela tela de login depois de o serviço autenticar o usuário."""
         pendente = self.sessao.rota_pendente
@@ -241,7 +253,10 @@ class App:
         return (self.page.width or 0) >= theme.LARGURA_TRILHO_MIN
 
     def _indice_destino(self) -> int:
-        return 1 if self._rota_mostrada == rotas.OS_NOVA else 0
+        for indice, destino in enumerate(DESTINOS):
+            if destino[4] == self._rota_mostrada:
+                return indice
+        return 0
 
     async def _ao_escolher_destino(self, e) -> None:
         await self.ir(DESTINOS[int(e.control.selected_index)][4])
@@ -289,6 +304,7 @@ class App:
             mostrar_voltar=rotas.rota_anterior(rota) is not None,
             itens_menu=[
                 (textos.MENU_CONFIGURACOES, ft.Icons.SETTINGS, self.abrir_configuracoes),
+                (textos.MENU_RELATORIOS, ft.Icons.INSERT_CHART_OUTLINED, self.abrir_relatorios),
                 (textos.MENU_SAIR, ft.Icons.LOGOUT, self.sair),
             ],
             recuo_esquerda=theme.LARGURA_TRILHO + 1 if self._largo else 0,

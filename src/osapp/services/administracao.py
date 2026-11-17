@@ -36,6 +36,10 @@ class UsuarioCriado:
     login: str
     filial_codigo: str
     is_admin: bool
+    is_gerente: bool = False
+
+
+PERFIS = ("usuario", "gerente", "administrador")
 
 
 def _texto(campo: str, valor: object, minimo: int, maximo: int) -> str:
@@ -80,13 +84,20 @@ def criar_filial(codigo: str, nome: str) -> FilialCriada:
 
 
 def criar_usuario(
-    nome: str, login: str, senha: str, filial_codigo: str, is_admin: bool = False
+    nome: str,
+    login: str,
+    senha: str,
+    filial_codigo: str,
+    is_admin: bool = False,
+    is_gerente: bool = False,
 ) -> UsuarioCriado:
     nome = _texto("nome", nome, 1, 100)
     login = _validar_login(login)
     validar_senha(senha)
     if not isinstance(is_admin, bool):
         raise ErroValidacao("is_admin", "Valor inválido.")
+    if not isinstance(is_gerente, bool) or (is_admin and is_gerente):
+        raise ErroValidacao("perfil", "Escolha um único perfil: usuário, gerente ou administrador.")
     if not isinstance(filial_codigo, str):
         raise ErroValidacao("filial", "Filial inválida.")
     with sessao() as s:
@@ -103,10 +114,13 @@ def criar_usuario(
                 senha_hash=senhas.gerar_hash(senha),
                 filial_id=filial.id,
                 is_admin=is_admin,
+                is_gerente=is_gerente,
             )
         )
         logger.info("Usuário criado: usuario_id=%s.", usuario.id)
-        return UsuarioCriado(usuario.id, usuario.nome, usuario.login, filial.codigo, is_admin)
+        return UsuarioCriado(
+            usuario.id, usuario.nome, usuario.login, filial.codigo, is_admin, is_gerente
+        )
 
 
 def _usuario_por_login(s, login: object) -> Usuario:
@@ -132,3 +146,14 @@ def desativar_usuario(login: str) -> None:
         usuario = _usuario_por_login(s, login)
         usuario.ativo = False
         logger.info("Usuário desativado: usuario_id=%s.", usuario.id)
+
+
+def definir_perfil(login: str, perfil: str) -> None:
+    """Muda o perfil de um usuário: 'usuario', 'gerente' ou 'administrador'."""
+    if perfil not in PERFIS:
+        raise ErroValidacao("perfil", "Perfil inválido. Use usuario, gerente ou administrador.")
+    with sessao() as s:
+        usuario = _usuario_por_login(s, login)
+        usuario.is_admin = perfil == "administrador"
+        usuario.is_gerente = perfil == "gerente"
+        logger.info("Perfil alterado: usuario_id=%s perfil=%s.", usuario.id, perfil)

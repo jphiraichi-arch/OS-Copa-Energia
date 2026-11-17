@@ -8,12 +8,14 @@ LOGIN = "/login"
 HOME = "/"
 OS_NOVA = "/os/nova"
 CONFIGURACOES = "/configuracoes"
+RELATORIOS = "/relatorios"
 
 # nome da tela -> padrão do caminho. A ordem importa: /os/nova antes de /os/{id}.
 TABELA: dict[str, re.Pattern[str]] = {
     "login": re.compile(r"^/login$"),
     "home": re.compile(r"^/$"),
     "configuracoes": re.compile(r"^/configuracoes$"),
+    "relatorios": re.compile(r"^/relatorios$"),
     "os_nova": re.compile(r"^/os/nova$"),
     "os_detalhe": re.compile(r"^/os/(?P<os_id>[1-9]\d{0,17})$"),
     "os_editar": re.compile(r"^/os/(?P<os_id>[1-9]\d{0,17})/editar$"),
@@ -61,7 +63,7 @@ def rota_anterior(rota: str) -> str | None:
     if resolvida is None:
         return None
     nome, params = resolvida
-    if nome in ("os_nova", "os_detalhe", "configuracoes"):
+    if nome in ("os_nova", "os_detalhe", "configuracoes", "relatorios"):
         return HOME
     if nome in ("os_editar", "os_concluir"):
         return rota_os(params["os_id"])

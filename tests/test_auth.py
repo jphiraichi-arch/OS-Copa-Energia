@@ -266,16 +266,17 @@ def test_duplicados_geram_conflito(usuarios):
 
 
 def test_seed_duas_vezes_nao_duplica(banco):
-    assert seed.executar(SENHA) == {"filiais": 2, "usuarios": 4}
+    assert seed.executar(SENHA) == {"filiais": 2, "usuarios": 5}
     assert seed.executar(SENHA) == {"filiais": 0, "usuarios": 0}
     with sessao() as s:
         assert sorted(f.codigo for f in s.query(Filial)) == ["F001", "F002"]
-        usuarios = {u.login: (u.filial.codigo, u.is_admin) for u in s.query(Usuario)}
+        usuarios = {u.login: (u.filial.codigo, u.is_admin, u.is_gerente) for u in s.query(Usuario)}
     assert usuarios == {
-        "admin": ("F001", True),
-        "marina.teste": ("F001", False),
-        "joao.ficticio": ("F001", False),
-        "carlos.exemplo": ("F002", False),
+        "admin": ("F001", True, False),
+        "gerente.norte": ("F001", False, True),
+        "marina.teste": ("F001", False, False),
+        "joao.ficticio": ("F001", False, False),
+        "carlos.exemplo": ("F002", False, False),
     }
     assert autenticar("joao.ficticio", SENHA).nome == "João Fictício"
 
@@ -364,3 +365,32 @@ def test_cli_nao_aceita_senha_por_argumento():
     with pytest.raises(SystemExit):
         cli.criar_parser().parse_args(["criar-usuario", "--senha", "x"])
     assert auth.MAX_TENTATIVAS == 5 and auth.MINUTOS_DE_BLOQUEIO == 15
+
+
+def test_perfil_gerente_e_definir_perfil(banco, monkeypatch, capsys):
+    seed.executar(SENHA)
+    gerente = autenticar("gerente.norte", SENHA)
+    assert (gerente.is_gerente, gerente.is_admin) == (True, False)
+    assert autenticar("marina.teste", SENHA).is_gerente is False
+    assert autenticar("admin", SENHA).is_gerente is False  # administrador prevalece
+
+    administracao.definir_perfil("marina.teste", "gerente")
+    assert carregar_ator(_usuario().id).is_gerente is True
+    administracao.definir_perfil("marina.teste", "administrador")
+    ator = carregar_ator(_usuario().id)
+    assert (ator.is_admin, ator.is_gerente) == (True, False)
+    administracao.definir_perfil("marina.teste", "usuario")
+    ator = carregar_ator(_usuario().id)
+    assert (ator.is_admin, ator.is_gerente) == (False, False)
+
+    with pytest.raises(ErroValidacao):
+        administracao.definir_perfil("marina.teste", "chefe")
+    with pytest.raises(ErroNaoEncontrado):
+        administracao.definir_perfil("nao.existe", "gerente")
+    with pytest.raises(ErroValidacao):
+        administracao.criar_usuario("Duplo", "duplo.perfil", SENHA, "F001", True, True)
+
+    assert cli.main(["definir-perfil", "--login", "joao.ficticio", "--perfil", "gerente"]) == 0
+    assert autenticar("joao.ficticio", SENHA).is_gerente is True
+    with pytest.raises(SystemExit):  # --admin e --gerente juntos são recusados
+        cli.criar_parser().parse_args(["criar-usuario", "--admin", "--gerente"])

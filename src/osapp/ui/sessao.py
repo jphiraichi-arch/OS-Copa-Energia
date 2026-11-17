@@ -25,6 +25,7 @@ class SessaoUI:
     filial_id: int | None = None
     filial_codigo: str = ""
     is_admin: bool = False
+    is_gerente: bool = False
     # Rota pedida antes do login (link direto), para onde ir depois de entrar.
     rota_pendente: str | None = None
     # Mensagem a mostrar uma vez na tela de login.
@@ -69,6 +70,7 @@ def iniciar(sessao: SessaoUI, ator, agora: datetime, login: str = "") -> None:
     sessao.filial_id = ator.filial_id
     sessao.filial_codigo = ator.filial_codigo
     sessao.is_admin = ator.is_admin
+    sessao.is_gerente = ator.is_gerente
     sessao.ultima_atividade = agora
     sessao.mensagem_login = None
 
@@ -82,6 +84,7 @@ def encerrar(sessao: SessaoUI, mensagem: str | None = None) -> None:
     sessao.filial_id = None
     sessao.filial_codigo = ""
     sessao.is_admin = False
+    sessao.is_gerente = False
     sessao.rota_pendente = None
     sessao.mensagem_login = mensagem
 

@@ -1,5 +1,7 @@
+from datetime import UTC, datetime
+
 from alembic import command
-from sqlalchemy import inspect
+from sqlalchemy import MetaData, inspect, select
 
 from osapp import db
 from tests.conftest import config_alembic
@@ -45,3 +47,66 @@ def test_alembic_ini_nao_contem_url():
     from tests.conftest import RAIZ
 
     assert "sqlalchemy.url" not in (RAIZ / "alembic.ini").read_text(encoding="utf-8")
+
+
+def test_migracoes_com_dados_existentes(banco_vazio):
+    """Sobe e desce todas as migrações com linhas que se referenciam (bug real: no SQLite,
+    recriar 'usuarios' com chaves estrangeiras ligadas falhava assim que havia OS)."""
+    cfg = config_alembic()
+    command.upgrade(cfg, "0001")
+    agora = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
+    db.reiniciar()
+    engine = db.obter_engine()
+    tabelas = MetaData()
+    tabelas.reflect(bind=engine)
+    with engine.begin() as conexao:
+        conexao.execute(
+            tabelas.tables["filiais"]
+            .insert()
+            .values(id=1, codigo="F001", nome="Filial Modelo Norte")
+        )
+        conexao.execute(
+            tabelas.tables["usuarios"]
+            .insert()
+            .values(id=1, nome="Marina Teste", login="marina.teste", senha_hash="x", filial_id=1)
+        )
+        conexao.execute(
+            tabelas.tables["ordens_servico"]
+            .insert()
+            .values(
+                id=1,
+                numero="OS-2026-000001",
+                filial_id=1,
+                criado_por_id=1,
+                titulo="Teste",
+                descricao="Teste.",
+                status="ABERTA",
+                valor_previsto_centavos=100,
+                tempo_previsto_minutos=60,
+                criado_em=agora,
+                atualizado_em=agora,
+                versao=1,
+            )
+        )
+        conexao.execute(
+            tabelas.tables["os_eventos"]
+            .insert()
+            .values(id=1, os_id=1, usuario_id=1, data_hora=agora, tipo="CRIACAO")
+        )
+    db.reiniciar()
+
+    command.upgrade(cfg, "head")
+    command.downgrade(cfg, "0001")
+    command.upgrade(cfg, "head")
+
+    db.reiniciar()
+    engine = db.obter_engine()
+    assert not [t for t in inspect(engine).get_table_names() if t.startswith("_alembic_tmp")]
+    tabelas = MetaData()
+    tabelas.reflect(bind=engine)
+    with engine.connect() as conexao:
+        usuario = conexao.execute(select(tabelas.tables["usuarios"])).mappings().one()
+        assert (usuario["login"], usuario["is_gerente"]) == ("marina.teste", False)
+        assert conexao.execute(select(tabelas.tables["os_eventos"])).all()
+        os_ = conexao.execute(select(tabelas.tables["ordens_servico"])).mappings().one()
+        assert os_["valor_previsto_centavos"] == 100
