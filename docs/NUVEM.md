@@ -46,6 +46,14 @@ Os limites mudam com frequência: confira as páginas oficiais antes de depender
 - **Atualizações:** cada push no ramo publicado gera uma nova implantação; as migrações
   rodam sozinhas na inicialização.
 
+## Migração e seed na inicialização
+
+O contêiner roda `alembic upgrade head` e o seed a cada início (`docker/iniciar.sh`). O
+comando de pré-implantação (*pre-deploy*) do Render, que rodaria a migração uma única vez,
+só existe em serviços pagos. No plano gratuito, uma trava consultiva do PostgreSQL
+(`db.trava_de_inicializacao`) garante que, se duas instâncias subirem juntas, uma espere a
+outra terminar. Ao passar para um plano pago, a migração pode ir para o pre-deploy.
+
 ## Outras plataformas
 
 O `Dockerfile` não depende do Render. Qualquer serviço que rode contêineres com WebSocket

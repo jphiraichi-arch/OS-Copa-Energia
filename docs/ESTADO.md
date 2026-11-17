@@ -504,3 +504,11 @@ implanta. Este commit foi deixado só no repositório local, sem push.
   preciso apagá-la antes de tentar de novo. Afeta só o banco local de desenvolvimento.
 - Não há tela para mudar perfis; usa-se a CLI.
 - Sem exportação PDF/Excel dos relatórios.
+
+## Inicialização simultânea no Render (17/11/2026)
+
+- Duas instâncias subiram juntas numa implantação e ambas rodaram migração e seed. Reproduzido
+  localmente: com três instâncias simultâneas, duas falhavam na inicialização.
+- O pre-deploy do Render resolveria, mas só existe em planos pagos. Solução gratuita:
+  `db.trava_de_inicializacao` (trava consultiva do PostgreSQL) em `migrations/env.py` e no
+  seed. Com a trava, 5 de 5 tentativas com três instâncias terminaram sem erro.

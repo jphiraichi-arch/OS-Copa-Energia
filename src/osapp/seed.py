@@ -9,6 +9,7 @@ import os
 import sys
 
 from osapp.config import ConfigError
+from osapp.db import obter_engine, trava_de_inicializacao
 from osapp.logs import configurar_logging
 from osapp.services import administracao
 from osapp.services.erros import ErroConflito, ErroValidacao
@@ -52,7 +53,9 @@ def main() -> int:
         print(f"Erro de configuração: {exc}", file=sys.stderr)
         return 1
     try:
-        criados = executar(os.environ.get("OS_SEED_SENHA", ""))
+        # Instâncias que sobem juntas rodam o seed uma de cada vez.
+        with trava_de_inicializacao(obter_engine()):
+            criados = executar(os.environ.get("OS_SEED_SENHA", ""))
     except ErroValidacao:
         print(
             "Defina a variável de ambiente OS_SEED_SENHA com pelo menos 8 caracteres.",

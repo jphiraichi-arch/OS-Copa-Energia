@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from sqlalchemy import Engine, MetaData, create_engine, event
+from sqlalchemy import Engine, MetaData, create_engine, event, func, select
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from osapp.config import carregar_config
@@ -92,3 +92,28 @@ def sessao() -> Iterator[Session]:
         raise
     finally:
         s.close()
+
+
+# Número fixo e arbitrário que identifica a trava de inicialização no PostgreSQL.
+TRAVA_DE_INICIALIZACAO = 74_182_026
+
+
+@contextmanager
+def trava_de_inicializacao(engine: Engine) -> Iterator[None]:
+    """Faz migração e seed rodarem um de cada vez quando várias instâncias sobem juntas.
+
+    Usa uma trava consultiva do PostgreSQL (pg_advisory_lock), presa a uma conexão
+    própria: a segunda instância espera a primeira terminar e então encontra tudo
+    pronto. No SQLite (desenvolvimento, um processo só) não faz nada.
+    """
+    if engine.dialect.name != "postgresql":
+        yield
+        return
+    with engine.connect() as conexao:
+        conexao.execute(select(func.pg_advisory_lock(TRAVA_DE_INICIALIZACAO)))
+        conexao.commit()
+        try:
+            yield
+        finally:
+            conexao.execute(select(func.pg_advisory_unlock(TRAVA_DE_INICIALIZACAO)))
+            conexao.commit()

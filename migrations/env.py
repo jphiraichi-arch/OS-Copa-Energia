@@ -6,7 +6,7 @@ from alembic import context
 
 import osapp.models  # noqa: F401  (registra as tabelas em Base.metadata)
 from osapp.config import carregar_config
-from osapp.db import Base, criar_engine
+from osapp.db import Base, criar_engine, trava_de_inicializacao
 
 target_metadata = Base.metadata
 
@@ -26,7 +26,8 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     engine = criar_engine(carregar_config().database_url)
     try:
-        with engine.connect() as conexao:
+        # Instâncias que sobem juntas migram uma de cada vez (ver db.trava_de_inicializacao).
+        with trava_de_inicializacao(engine), engine.connect() as conexao:
             sqlite = conexao.dialect.name == "sqlite"
             if sqlite:
                 # No SQLite, alterar uma coluna recria a tabela (modo batch). Com as chaves

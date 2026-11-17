@@ -110,3 +110,53 @@ def test_migracoes_com_dados_existentes(banco_vazio):
         assert conexao.execute(select(tabelas.tables["os_eventos"])).all()
         os_ = conexao.execute(select(tabelas.tables["ordens_servico"])).mappings().one()
         assert os_["valor_previsto_centavos"] == 100
+
+
+def test_instancias_simultaneas_migram_e_semeiam_uma_de_cada_vez(banco_vazio):
+    """Várias instâncias subindo juntas (como no Render) não podem falhar na inicialização."""
+    import os
+    import subprocess
+
+    import pytest
+
+    if not banco_vazio.startswith("postgresql"):
+        pytest.skip("a trava de inicialização só age no PostgreSQL (OS_TEST_DATABASE_URL)")
+    from tests.conftest import RAIZ
+
+    ambiente = {
+        **os.environ,
+        "OS_DATABASE_URL": banco_vazio,
+        "OS_SEED_SENHA": "senha-ficticia-123",
+        "OS_LOG_LEVEL": "WARNING",
+    }
+    roteiro = "alembic upgrade head && python -m osapp.seed"
+    processos = [
+        subprocess.Popen(
+            ["sh", "-c", roteiro],
+            cwd=RAIZ,
+            env=ambiente,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        for _ in range(3)
+    ]
+    saidas = [(p.wait(timeout=120), p.stdout.read()) for p in processos]
+    assert [codigo for codigo, _ in saidas] == [0, 0, 0], saidas
+    assert sum("5 usuário(s) criados" in texto for _, texto in saidas) == 1
+    db.reiniciar()
+    from sqlalchemy import func
+
+    from osapp.models import Usuario
+
+    with db.sessao() as s:
+        assert s.scalar(select(func.count()).select_from(Usuario)) == 5
+
+
+def test_trava_de_inicializacao_nao_faz_nada_no_sqlite(tmp_path):
+    from osapp.db import criar_engine, trava_de_inicializacao
+
+    engine = criar_engine(f"sqlite:///{tmp_path / 'x.db'}")
+    with trava_de_inicializacao(engine):
+        pass
+    engine.dispose()

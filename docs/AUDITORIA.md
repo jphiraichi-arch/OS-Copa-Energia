@@ -195,3 +195,8 @@ proíbem alterar modelos e migração sem relatar antes.
   chaves estrangeiras ligadas, migrações que recriam tabelas falhavam no SQLite assim que havia
   dados. Teste: `test_migracao.py::test_migracoes_com_dados_existentes` (falha sem a correção).
   No PostgreSQL (produção) nada muda.
+- **Inicialização simultânea (17/11/2026):** migração e seed rodam sob uma trava consultiva
+  do PostgreSQL (`db.trava_de_inicializacao`, via `select(func.pg_advisory_lock(...))`, sem
+  SQL em texto). Antes, com três instâncias subindo juntas, duas falhavam por chave
+  duplicada. Teste: `test_migracao.py::test_instancias_simultaneas_migram_e_semeiam_uma_de_cada_vez`
+  (roda com `OS_TEST_DATABASE_URL` em PostgreSQL; falha sem a trava).
