@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 import flet as ft
 
-from osapp.ui import theme
+from osapp.ui import marca, theme
 
 
 def logo(
@@ -30,6 +30,13 @@ def logo(
         spacing=theme.ESPACO_P,
         tight=True,
     )
+
+
+def _logo_do_cabecalho() -> ft.Control:
+    """Logotipo da empresa no cabeçalho escuro; o provisório só se o arquivo faltar."""
+    if marca.logo_disponivel():
+        return marca.logo(theme.ALTURA_LOGO_CABECALHO)
+    return logo()
 
 
 def _botao_icone(icone: ft.IconData, dica: str, on_click=None, visivel=True) -> ft.IconButton:
@@ -112,7 +119,7 @@ def barra(
         content=ft.Container(
             max_width=theme.LARGURA_MAX_CONTEUDO,
             content=ft.Row(
-                controls=[logo(), acoes],
+                controls=[_logo_do_cabecalho(), acoes],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
             ),

@@ -512,3 +512,20 @@ implanta. Este commit foi deixado só no repositório local, sem push.
 - O pre-deploy do Render resolveria, mas só existe em planos pagos. Solução gratuita:
   `db.trava_de_inicializacao` (trava consultiva do PostgreSQL) em `migrations/env.py` e no
   seed. Com a trava, 5 de 5 tentativas com três instâncias terminaram sem erro.
+
+## Logotipo da Copa Energia (17/11/2026)
+
+- Arquivo: `src/osapp/assets/logo.png`, a partir da imagem enviada pelo responsável
+  (310 x 163 px, fundo branco). Foram cortadas só as margens brancas: 216 x 94 px, pixels
+  idênticos aos do original, sem redimensionar nem recolorir.
+- `ui/marca.py`: pasta de assets (caminho absoluto dentro do pacote) e o controle do
+  logotipo, com rótulo acessível "Copa Energia" e proporções mantidas (`BoxFit.CONTAIN`).
+- Cabeçalho escuro: logotipo sobre uma placa branca arredondada (as letras do logotipo são
+  escuras e sumiriam no fundo grafite). Altura `theme.ALTURA_LOGO_CABECALHO` (30).
+- Login: logotipo (altura 56) e, abaixo, "Ordens de Serviço" por extenso.
+- `main.py` passa `assets_dir` ao Flet no desenvolvimento e no ASGI; o `pyproject.toml`
+  inclui `assets/*.png` no pacote, que é o que o contêiner instala. Se o arquivo faltar, as
+  telas voltam ao logo provisório.
+- Lacuna: o arquivo tem 94 px de altura. No login (56 px de tela), celulares de alta
+  densidade ampliam a imagem e ela pode ficar levemente menos nítida. Um arquivo maior
+  (ou SVG) resolveria.

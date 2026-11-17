@@ -7,6 +7,7 @@ O número da ordem (por exemplo OS-2026-000001) é dado gravado, não rótulo.
 from __future__ import annotations
 
 TITULO_DO_APP = "Sistema de Ordens de Serviço"
+MARCA_ROTULO = "Copa Energia"
 
 # --- Navegação principal ---------------------------------------------------------------
 # Barra inferior (celular): três destinos em 390 px, por isso a forma curta por extenso.

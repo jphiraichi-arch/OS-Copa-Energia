@@ -14,6 +14,7 @@ import flet as ft
 from osapp.config import Config, ConfigError, carregar_config
 from osapp.logs import configurar_logging
 from osapp.ui.app import App
+from osapp.ui.marca import PASTA_ASSETS
 
 PORTA_DESENVOLVIMENTO = 8550
 
@@ -38,8 +39,13 @@ def _iniciar() -> Config:
 if __name__ == "__main__":
     _iniciar()
     logger.info("Servidor de desenvolvimento em http://localhost:%d", PORTA_DESENVOLVIMENTO)
-    ft.run(main, view=ft.AppView.WEB_BROWSER, port=PORTA_DESENVOLVIMENTO)
+    ft.run(
+        main,
+        view=ft.AppView.WEB_BROWSER,
+        port=PORTA_DESENVOLVIMENTO,
+        assets_dir=str(PASTA_ASSETS),
+    )
 else:
     # Importado por um servidor ASGI (uvicorn, hypercorn, gunicorn...).
     _iniciar()
-    app = ft.run(main, export_asgi_app=True)
+    app = ft.run(main, export_asgi_app=True, assets_dir=str(PASTA_ASSETS))

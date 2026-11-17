@@ -55,6 +55,40 @@ def test_cabecalho_monta_com_padroes_e_parametros():
         return achados
 
     padrao = textos(cabecalho())
-    assert "OS" in padrao and "F000" in padrao and "Olá, Visitante" in padrao
+    assert "F000" in padrao and "Olá, Visitante" in padrao
     outro = textos(cabecalho(nome="Marina Teste", codigo_filial="F001"))
     assert "F001" in outro and "Olá, Marina Teste" in outro
+
+
+def test_logotipo_da_empresa():
+    import flet as ft
+
+    from osapp.ui import marca
+    from osapp.ui.components.cabecalho import barra
+
+    assert marca.logo_disponivel()
+    assert (marca.PASTA_ASSETS / marca.ARQUIVO_LOGO).read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+
+    def imagens(controle):
+        achadas = [controle] if isinstance(controle, ft.Image) else []
+        for filho in getattr(controle, "controls", None) or []:
+            achadas += imagens(filho)
+        conteudo = getattr(controle, "content", None)
+        if isinstance(conteudo, ft.Control):
+            achadas += imagens(conteudo)
+        return achadas
+
+    (imagem,) = imagens(barra("F001"))
+    assert imagem.src == "logo.png" and imagem.semantics_label == "Copa Energia"
+    assert imagem.fit == ft.BoxFit.CONTAIN  # proporções mantidas
+
+
+def test_logotipo_vai_no_pacote_instalado():
+    import tomllib
+
+    from tests.conftest import RAIZ
+
+    config = tomllib.loads((RAIZ / "pyproject.toml").read_text(encoding="utf-8"))
+    assert "assets/*.png" in config["tool"]["setuptools"]["package-data"]["osapp"]
+    main = (RAIZ / "src" / "osapp" / "main.py").read_text(encoding="utf-8")
+    assert main.count("assets_dir=str(PASTA_ASSETS)") == 2  # desenvolvimento e ASGI

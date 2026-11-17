@@ -24,6 +24,7 @@ COR_ERRO = "#B3261E"
 COR_SOBRE_ERRO = "#FFFFFF"
 COR_SOMBRA = "#14000000"  # preto com ~8% de opacidade (AARRGGBB)
 COR_NAVEGACAO = "#FFFFFF"
+COR_FUNDO_LOGO = "#FFFFFF"  # placa clara: o logotipo tem letras escuras
 COR_INDICADOR_NAVEGACAO = "#FCE3C5"
 COR_CAMPO_FUNDO = "#FFFFFF"
 COR_DESABILITADO = "#9CA3AF"
@@ -40,6 +41,7 @@ COR_STATUS_OUTRO = ("#E5E7EB", "#374151")
 RAIO_CARTAO = 16
 RAIO_BOTAO = 12
 RAIO_CHIP = 999
+RAIO_LOGO = 8
 
 # --- Tamanhos e espaçamentos -----------------------------------------------
 ALVO_TOQUE_MIN = 48
@@ -53,6 +55,10 @@ ESPACO_M = 16
 ESPACO_G = 24
 TAMANHO_ICONE = 24
 TAMANHO_ICONE_LOGO = 28
+# Alturas do logotipo. O arquivo tem 94 px de altura: acima de ~47 px de tela, telas
+# de alta densidade ampliam a imagem e ela perde nitidez.
+ALTURA_LOGO_CABECALHO = 30
+ALTURA_LOGO_LOGIN = 56
 
 # --- Tipografia ------------------------------------------------------------
 FONTE_SAUDACAO = 22

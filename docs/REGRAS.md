@@ -71,7 +71,9 @@ Se não for possível verificar uma API, pare e avise. Não adivinhe.
   de cor pode aparecer em outro arquivo de `src/osapp` (garantido por `tests/test_tema.py`).
 - Celulares são o alvo principal: coluna única, sem rolagem horizontal a 390 px; alvo de toque
   mínimo de 48 px.
-- Nunca usar logotipo real de empresa.
+- O único logotipo permitido é o arquivo oficial da Copa Energia fornecido pelo responsável,
+  `src/osapp/assets/logo.png`: sem redesenhar, recolorir nem distorcer. Nenhum outro
+  logotipo real de empresa.
 
 ## Fora do escopo do MVP (o desenho não pode bloqueá-los)
 

@@ -6,7 +6,7 @@ import flet as ft
 
 from osapp.services import auth
 from osapp.services.erros import ErroAutenticacao
-from osapp.ui import textos, theme
+from osapp.ui import marca, textos, theme
 from osapp.ui.components import basicos
 from osapp.ui.components.cabecalho import logo
 from osapp.ui.views.base import Tela
@@ -47,14 +47,7 @@ class Login(Tela):
                 max_width=theme.LARGURA_MAX_LOGIN,
                 content=basicos.coluna(
                     [
-                        ft.Row(
-                            [
-                                logo(
-                                    cor_texto=theme.COR_TITULO, escala=1.2, texto=textos.LOGIN_MARCA
-                                )
-                            ],
-                            alignment=ft.MainAxisAlignment.CENTER,
-                        ),
+                        self._marca(),
                         basicos.cartao(
                             basicos.coluna(
                                 [
@@ -70,6 +63,28 @@ class Login(Tela):
                     espaco=theme.ESPACO_G,
                 ),
             ),
+        )
+
+    def _marca(self) -> ft.Control:
+        """Logotipo da empresa e, abaixo, o nome do aplicativo por extenso."""
+        if not marca.logo_disponivel():
+            return ft.Row(
+                [logo(cor_texto=theme.COR_TITULO, escala=1.2, texto=textos.LOGIN_MARCA)],
+                alignment=ft.MainAxisAlignment.CENTER,
+            )
+        return ft.Column(
+            [
+                marca.logo(theme.ALTURA_LOGO_LOGIN),
+                ft.Text(
+                    textos.LOGIN_MARCA,
+                    color=theme.COR_TITULO,
+                    size=theme.FONTE_SAUDACAO,
+                    weight=ft.FontWeight.BOLD,
+                    text_align=ft.TextAlign.CENTER,
+                ),
+            ],
+            spacing=theme.ESPACO_P,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
         )
 
     async def _entrar(self, _e=None) -> None:
