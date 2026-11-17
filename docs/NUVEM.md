@@ -54,6 +54,13 @@ só existe em serviços pagos. No plano gratuito, uma trava consultiva do Postgr
 (`db.trava_de_inicializacao`) garante que, se duas instâncias subirem juntas, uma espere a
 outra terminar. Ao passar para um plano pago, a migração pode ir para o pre-deploy.
 
+> **Atenção: use o endereço direto do banco, não o *pooler*.** A trava de inicialização é
+> uma trava de sessão do PostgreSQL e precisa de uma conexão direta. No Neon, o endereço
+> com `-pooler` no nome do servidor (por exemplo `ep-xxxx-pooler.c-16...neon.tech`) passa
+> por um agrupador de conexões em modo de transação, no qual essa trava não é confiável.
+> Em `OS_DATABASE_URL`, use o endereço **sem** `-pooler`. O app em produção já usa o
+> endereço direto.
+
 ## Outras plataformas
 
 O `Dockerfile` não depende do Render. Qualquer serviço que rode contêineres com WebSocket
