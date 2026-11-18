@@ -161,3 +161,67 @@ def test_trava_de_inicializacao_nao_faz_nada_no_sqlite(tmp_path):
     with trava_de_inicializacao(engine):
         pass
     engine.dispose()
+
+
+def test_0006_troca_o_bloqueio_pela_tabela_de_tentativas(banco_vazio):
+    """Com dados: o upgrade apaga as colunas do bloqueio sem tocar no usuário; o downgrade
+    as recria zeradas e apaga a tabela de tentativas."""
+    cfg = config_alembic()
+    command.upgrade(cfg, "0005")
+    agora = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
+    db.reiniciar()
+    engine = db.obter_engine()
+    tabelas = MetaData()
+    tabelas.reflect(bind=engine)
+    with engine.begin() as conexao:
+        conexao.execute(
+            tabelas.tables["filiais"].insert().values(id=1, codigo="F001", nome="Filial Norte")
+        )
+        conexao.execute(
+            tabelas.tables["usuarios"]
+            .insert()
+            .values(
+                id=1,
+                nome="Marina Teste",
+                login="marina.teste",
+                senha_hash="x",
+                filial_id=1,
+                tentativas_falhas=4,
+                bloqueado_ate=agora,
+            )
+        )
+    db.reiniciar()
+
+    command.upgrade(cfg, "0006")
+    db.reiniciar()
+    engine = db.obter_engine()
+    colunas = {c["name"] for c in inspect(engine).get_columns("usuarios")}
+    assert not {"tentativas_falhas", "bloqueado_ate"} & colunas
+    tabelas = MetaData()
+    tabelas.reflect(bind=engine)
+    with engine.begin() as conexao:
+        assert conexao.execute(select(tabelas.tables["usuarios"].c.login)).scalar() == (
+            "marina.teste"
+        )
+        conexao.execute(
+            tabelas.tables["tentativas_login"]
+            .insert()
+            .values(chave="a" * 64, tipo="LOGIN", falhas=2, atualizado_em=agora)
+        )
+    db.reiniciar()
+
+    command.downgrade(cfg, "0005")
+    db.reiniciar()
+    engine = db.obter_engine()
+    assert "tentativas_login" not in inspect(engine).get_table_names()
+    tabelas = MetaData()
+    tabelas.reflect(bind=engine)
+    with engine.connect() as conexao:
+        usuario = conexao.execute(select(tabelas.tables["usuarios"])).mappings().one()
+        assert (usuario["login"], usuario["tentativas_falhas"], usuario["bloqueado_ate"]) == (
+            "marina.teste",
+            0,
+            None,
+        )
+    db.reiniciar()
+    command.upgrade(cfg, "head")

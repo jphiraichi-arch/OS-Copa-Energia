@@ -6,9 +6,9 @@ from argon2 import PasswordHasher
 
 from osapp import cli, seed
 from osapp.db import sessao
-from osapp.models import Filial, Usuario
+from osapp.models import Filial, TentativaLogin, Usuario
 from osapp.repositories import UsuarioRepo
-from osapp.services import administracao, auth, permissoes, relogio, senhas
+from osapp.services import administracao, permissoes, relogio, senhas
 from osapp.services.auth import Ator, autenticar, carregar_ator
 from osapp.services.erros import (
     ErroAutenticacao,
@@ -97,48 +97,10 @@ def test_login_inexistente_ainda_verifica_um_hash(usuarios, monkeypatch):
     assert len(chamadas) == 1 and chamadas[0].startswith("$argon2id$")
 
 
-def test_quinta_falha_bloqueia_por_15_minutos(usuarios, monkeypatch):
+def test_falha_de_um_usuario_nao_afeta_outro(usuarios, monkeypatch):
     monkeypatch.setattr(relogio, "agora", lambda: T0)
-    _falhar(4)
-    assert _usuario().bloqueado_ate is None and _usuario().tentativas_falhas == 4
-    _falhar(1)
-    assert _usuario().bloqueado_ate == T0 + timedelta(minutes=15)
-
-    with pytest.raises(ErroAutenticacao):  # senha certa durante o bloqueio
-        autenticar("marina.teste", SENHA)
-    monkeypatch.setattr(relogio, "agora", lambda: T0 + timedelta(minutes=14, seconds=59))
-    with pytest.raises(ErroAutenticacao):
-        autenticar("marina.teste", SENHA)
-
-    monkeypatch.setattr(relogio, "agora", lambda: T0 + timedelta(minutes=15))
-    assert autenticar("marina.teste", SENHA).usuario_id == usuarios["marina"]
-    u = _usuario()
-    assert (u.tentativas_falhas, u.bloqueado_ate) == (0, None)
-
-
-def test_apos_o_bloqueio_a_contagem_recomeca(usuarios, monkeypatch):
-    monkeypatch.setattr(relogio, "agora", lambda: T0)
-    _falhar(5)
-    monkeypatch.setattr(relogio, "agora", lambda: T0 + timedelta(minutes=16))
-    _falhar(1)
-    u = _usuario()
-    assert (u.tentativas_falhas, u.bloqueado_ate) == (1, None)
-    assert autenticar("marina.teste", SENHA)
-
-
-def test_sucesso_zera_as_tentativas(usuarios):
-    _falhar(3)
-    assert _usuario().tentativas_falhas == 3
-    autenticar("marina.teste", SENHA)
-    assert _usuario().tentativas_falhas == 0
-    _falhar(4)  # quatro novas falhas ainda não bloqueiam
-    assert autenticar("marina.teste", SENHA)
-
-
-def test_falha_de_um_usuario_nao_afeta_outro(usuarios):
-    _falhar(5)
+    _falhar(6)  # marina.teste fica com espera; o IP (desconhecido) ainda não
     assert autenticar("admin", SENHA)
-    assert _usuario("admin").tentativas_falhas == 0
 
 
 @pytest.mark.parametrize(
@@ -155,7 +117,8 @@ def test_entrada_longa_ou_invalida_e_recusada_antes_de_qualquer_hash(
     monkeypatch.setattr(senhas, "gerar_hash", proibido)
     with pytest.raises(ErroAutenticacao):
         autenticar(login, senha)
-    assert _usuario().tentativas_falhas == 0
+    with sessao() as s:
+        assert s.query(TentativaLogin).count() == 0  # nem conta como falha
 
 
 def test_tamanhos_no_limite_sao_aceitos(usuarios):
@@ -195,9 +158,10 @@ def test_logs_nao_contem_senha_hash_nem_login_digitado(usuarios, caplog):
     ):
         assert proibido not in texto
     mensagens = [r.getMessage() for r in caplog.records if r.name == "osapp.services.auth"]
-    assert any(f"usuario_id={usuarios['marina']}" in m and "Falha" in m for m in mensagens)
-    assert any("login inexistente" in m for m in mensagens)
-    assert any("Login bem-sucedido" in m for m in mensagens)
+    falhas = [m for m in mensagens if "Falha de autenticação" in m]
+    # A falha registra só as chaves HMAC: igual para login que existe e que não existe.
+    assert len(falhas) == 2 and all("login=" in m and "usuario_id" not in m for m in falhas)
+    assert any(f"Login bem-sucedido: usuario_id={usuarios['marina']}" in m for m in mensagens)
 
 
 # --- carregar_ator e permissões -------------------------------------------------------
@@ -361,7 +325,7 @@ def test_cli(banco, monkeypatch, capsys):
     _falhar(5)
     monkeypatch.setattr(cli.getpass, "getpass", lambda _p="": "nova-senha-456")
     assert cli.main(["redefinir-senha", "--login", "marina.teste"]) == 0
-    assert autenticar("marina.teste", "nova-senha-456")  # o bloqueio foi removido
+    assert autenticar("marina.teste", "nova-senha-456")  # a espera do login foi zerada
 
     assert cli.main(["desativar-usuario", "--login", "marina.teste"]) == 0
     with pytest.raises(ErroAutenticacao):
@@ -397,7 +361,6 @@ def test_cli_interativa_e_senhas_diferentes(banco, monkeypatch):
 def test_cli_nao_aceita_senha_por_argumento():
     with pytest.raises(SystemExit):
         cli.criar_parser().parse_args(["criar-usuario", "--senha", "x"])
-    assert auth.MAX_TENTATIVAS == 5 and auth.MINUTOS_DE_BLOQUEIO == 15
 
 
 def test_perfil_gerente_e_definir_perfil(banco, monkeypatch, capsys):

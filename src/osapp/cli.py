@@ -94,6 +94,11 @@ def _redefinir_senha(args) -> str:
     return "Senha redefinida."
 
 
+def _limpar_tentativas(_args) -> str:
+    apagadas = administracao.limpar_tentativas_antigas()
+    return f"{apagadas} contador(es) de falha de login apagado(s)."
+
+
 def _desativar_usuario(args) -> str:
     administracao.desativar_usuario(_perguntar(args.login, "Login"))
     return "Usuário desativado."
@@ -142,7 +147,13 @@ def criar_parser() -> argparse.ArgumentParser:
     p.add_argument("--id", required=True, type=int)
     p.set_defaults(func=_desativar_equipamento)
 
-    p = sub.add_parser("redefinir-senha", help="Redefine a senha e remove o bloqueio")
+    p = sub.add_parser(
+        "limpar-tentativas",
+        help="Apaga contadores de falha de login sem atividade há mais de 30 dias",
+    )
+    p.set_defaults(func=_limpar_tentativas)
+
+    p = sub.add_parser("redefinir-senha", help="Redefine a senha e zera o atraso do login")
     p.add_argument("--login")
     p.set_defaults(func=_redefinir_senha)
 
@@ -161,6 +172,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     try:
         print(args.func(args))
+    except ConfigError as exc:
+        print(f"Erro de configuração: {exc}", file=sys.stderr)
+        return 1
     except ErroValidacao as exc:
         print(f"Erro: {exc.mensagem}", file=sys.stderr)
         return 1

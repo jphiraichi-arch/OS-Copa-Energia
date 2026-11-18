@@ -51,7 +51,7 @@ def test_padroes_do_usuario(banco):
         uid = u.id
     with sessao() as s:
         u = s.get(Usuario, uid)
-        assert (u.is_admin, u.ativo, u.tentativas_falhas, u.bloqueado_ate) == (False, True, 0, None)
+        assert (u.is_admin, u.ativo) == (False, True)
 
 
 @pytest.mark.parametrize("extras", [{"tempo_previsto_minutos": 0}, {"tempo_previsto_minutos": -1}])
@@ -66,16 +66,16 @@ def test_timestamp_volta_com_fuso_utc_e_igual(banco):
     em_sao_paulo = datetime(2026, 3, 1, 9, 0, tzinfo=timezone(timedelta(hours=-3)))
     with sessao() as s:
         f = nova_filial(s)
-        u = novo_usuario(s, f, bloqueado_ate=em_sao_paulo)
-        o = nova_os(s, f, u, criado_em=instante)
-        uid, oid = u.id, o.id
+        u = novo_usuario(s, f)
+        o = nova_os(s, f, u, criado_em=instante, iniciado_em=em_sao_paulo)
+        oid = o.id
     with sessao() as s:
         lido = s.get(OrdemServico, oid).criado_em
         assert lido == instante
         assert lido.tzinfo is not None and lido.utcoffset() == timedelta(0)
-        bloqueio = s.get(Usuario, uid).bloqueado_ate
-        assert bloqueio == em_sao_paulo
-        assert bloqueio.utcoffset() == timedelta(0) and bloqueio.hour == 12
+        iniciado = s.get(OrdemServico, oid).iniciado_em
+        assert iniciado == em_sao_paulo
+        assert iniciado.utcoffset() == timedelta(0) and iniciado.hour == 12
         assert s.get(OrdemServico, oid).inicio_realizado is None
 
 

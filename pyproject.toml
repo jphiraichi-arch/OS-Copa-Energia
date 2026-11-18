@@ -23,6 +23,7 @@ postgres = [
 dev = [
     "pytest>=8",
     "ruff>=0.6",
+    "pip-audit>=2.7",
 ]
 
 [tool.setuptools.packages.find]

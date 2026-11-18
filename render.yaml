@@ -13,6 +13,10 @@ services:
         sync: false   # cole aqui a URL do PostgreSQL (segredo; não vai para o git)
       - key: OS_SEED_SENHA
         sync: false   # senha dos usuários fictícios de demonstração (mínimo 8 caracteres)
+      - key: OS_HMAC_SEGREDO
+        sync: false   # segredo do HMAC das tentativas de login (mínimo 32 caracteres aleatórios)
+      - key: OS_PROXIES_CONFIAVEIS
+        sync: false   # endereço(s) do proxy do Render; ver docs/GO_LIVE.md (pergunta em aberto)
       - key: OS_TZ
         value: America/Sao_Paulo
       - key: OS_SESSAO_TIMEOUT_MIN

@@ -27,10 +27,14 @@ Os limites mudam com frequência: confira as páginas oficiais antes de depender
    `postgresql://usuario:senha@host/banco?sslmode=require`. Trate-a como senha.
 2. **App (Render).** Crie uma conta em https://render.com e conecte o seu GitHub. Escolha
    **New > Blueprint**, selecione este repositório e o ramo que contém o `render.yaml`.
-3. O Render pede duas variáveis:
+3. O Render pede estas variáveis:
    - `OS_DATABASE_URL`: cole a connection string do Neon.
    - `OS_SEED_SENHA`: uma senha de 8 ou mais caracteres para os usuários fictícios
      (`admin`, `marina.teste`, `joao.ficticio`, `carlos.exemplo`).
+   - `OS_HMAC_SEGREDO` (desde o prompt 15): 32 ou mais caracteres aleatórios; sem ela o
+     app não inicia.
+   - `OS_PROXIES_CONFIAVEIS` (desde o prompt 15): endereço do proxy que informa o IP do
+     cliente; veja `docs/GO_LIVE.md`.
 4. Confirme. O Render constrói a imagem (`Dockerfile`), e o contêiner, ao iniciar, roda
    `alembic upgrade head`, o seed (se `OS_SEED_SENHA` existir) e o servidor.
 5. Abra o endereço mostrado pelo Render e entre com `admin` e a senha do passo 3.
@@ -73,5 +77,6 @@ PostgreSQL e (3) a plataforma forneça HTTPS. A porta vem da variável `PORT` (p
 docker build -t sistema-os .
 docker run --rm -p 8000:8000 \
   -e OS_DATABASE_URL='postgresql://usuario:senha@host/banco' \
+  -e OS_HMAC_SEGREDO="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" \
   -e OS_SEED_SENHA='uma-senha-de-teste' sistema-os
 ```

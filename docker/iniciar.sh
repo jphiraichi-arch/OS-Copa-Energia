@@ -6,6 +6,10 @@ alembic upgrade head
 if [ -n "${OS_SEED_SENHA:-}" ]; then
     python -m osapp.seed
 fi
-# --proxy-headers: o contêiner fica atrás do proxy HTTPS da plataforma.
+# --proxy-headers: o contêiner fica atrás de um proxy HTTPS. Só os endereços em
+# OS_PROXIES_CONFIAVEIS (IPs ou redes, separados por vírgula) podem informar o IP do
+# cliente por X-Forwarded-For; de qualquer outro o cabeçalho é ignorado. Sem a variável,
+# só 127.0.0.1. --no-access-log: o log de acesso do uvicorn gravaria o IP de cada pedido.
 exec uvicorn osapp.main:app --host 0.0.0.0 --port "${PORT:-8000}" \
-    --proxy-headers --forwarded-allow-ips '*'
+    --proxy-headers --forwarded-allow-ips "${OS_PROXIES_CONFIAVEIS:-127.0.0.1}" \
+    --no-access-log

@@ -13,6 +13,7 @@ import flet as ft
 
 from osapp.config import Config, ConfigError, carregar_config
 from osapp.logs import configurar_logging
+from osapp.services import protecao_login
 from osapp.ui.app import App
 from osapp.ui.marca import PASTA_ASSETS
 
@@ -30,6 +31,7 @@ def _iniciar() -> Config:
     """Valida a configuração antes de servir qualquer página; aborta com mensagem clara."""
     try:
         config = carregar_config()
+        protecao_login.segredo()  # OS_HMAC_SEGREDO é obrigatória para o login funcionar
     except ConfigError as exc:
         sys.exit(f"Erro de configuração: {exc}")
     configurar_logging(config.log_level)

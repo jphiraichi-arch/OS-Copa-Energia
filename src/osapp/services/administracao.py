@@ -8,14 +8,22 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from datetime import timedelta
 
 from sqlalchemy import select
 
 from osapp.db import sessao
 from osapp.models import CategoriaCusto, Equipamento, Filial, OrdemServico, Usuario
-from osapp.repositories import CategoriaCustoRepo, EquipamentoRepo, FilialRepo, UsuarioRepo
+from osapp.models.tentativa_login import TIPO_LOGIN
+from osapp.repositories import (
+    CategoriaCustoRepo,
+    EquipamentoRepo,
+    FilialRepo,
+    TentativaLoginRepo,
+    UsuarioRepo,
+)
 from osapp.services import ordens as ordens_servico
-from osapp.services import relogio, senhas
+from osapp.services import protecao_login, relogio, senhas
 from osapp.services.auth import LOGIN_MAX
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroValidacao
 
@@ -134,14 +142,22 @@ def _usuario_por_login(s, login: object) -> Usuario:
 
 
 def redefinir_senha(login: str, senha: str) -> None:
-    """Troca a senha e remove bloqueio e contagem de falhas."""
+    """Troca a senha e zera o atraso progressivo daquele login."""
     validar_senha(senha)
     with sessao() as s:
         usuario = _usuario_por_login(s, login)
         usuario.senha_hash = senhas.gerar_hash(senha)
-        usuario.tentativas_falhas = 0
-        usuario.bloqueado_ate = None
+        TentativaLoginRepo(s).apagar(TIPO_LOGIN, protecao_login.chave_do_login(usuario.login))
         logger.info("Senha redefinida: usuario_id=%s.", usuario.id)
+
+
+def limpar_tentativas_antigas() -> int:
+    """Apaga contadores de falha de login sem atividade há mais de 30 dias. Devolve quantos."""
+    limite = relogio.agora() - timedelta(days=protecao_login.DIAS_DE_RETENCAO)
+    with sessao() as s:
+        apagadas = TentativaLoginRepo(s).apagar_anteriores(limite)
+    logger.info("Tentativas de login antigas apagadas: %s.", apagadas)
+    return apagadas
 
 
 def desativar_usuario(login: str) -> None:

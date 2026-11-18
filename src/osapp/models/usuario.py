@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlalchemy import ForeignKey, String, false, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from osapp.db import Base
 from osapp.models.filial import Filial
-from osapp.models.tipos import DataHoraUTC
 
 
 class Usuario(Base):
@@ -22,8 +19,6 @@ class Usuario(Base):
     # Gerente: vê o relatório completo da própria filial. Administrador prevalece.
     is_gerente: Mapped[bool] = mapped_column(default=False, server_default=false())
     ativo: Mapped[bool] = mapped_column(default=True, server_default=true())
-    tentativas_falhas: Mapped[int] = mapped_column(default=0, server_default="0")
-    bloqueado_ate: Mapped[datetime | None] = mapped_column(DataHoraUTC())
 
     filial: Mapped[Filial] = relationship()
 

@@ -5,7 +5,8 @@ from __future__ import annotations
 import flet as ft
 
 from osapp.services import auth
-from osapp.services.erros import ErroAutenticacao
+from osapp.services.erros import ErroAutenticacao, ErroMuitasTentativas
+from osapp.services.protecao_login import MENSAGEM_MUITAS_TENTATIVAS
 from osapp.ui import marca, textos, theme
 from osapp.ui.components import basicos
 from osapp.ui.components.cabecalho import logo
@@ -95,14 +96,22 @@ class Login(Tela):
         self.mensagem.visible = False
         self.conteudo.update()
         resultado = await self.app.chamar(
-            auth.autenticar, login, senha, exige_sessao=False, erros_tratados=(ErroAutenticacao,)
+            auth.autenticar,
+            login,
+            senha,
+            self.app.page.client_ip,  # já resolvido pelos cabeçalhos do proxy confiável
+            exige_sessao=False,
+            erros_tratados=(ErroAutenticacao,),
         )
         self.senha.value = ""  # o campo de senha é limpo depois de toda tentativa
         self.botao.disabled = False
         if resultado.ok:
             await self.app.entrar(resultado.valor, login)
             return
-        if isinstance(resultado.erro, ErroAutenticacao):
+        if isinstance(resultado.erro, ErroMuitasTentativas):
+            self.mensagem.value = MENSAGEM_MUITAS_TENTATIVAS
+            self.mensagem.visible = True
+        elif isinstance(resultado.erro, ErroAutenticacao):
             self.mensagem.value = MENSAGEM_CREDENCIAIS
             self.mensagem.visible = True
         self.conteudo.update()

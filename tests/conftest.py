@@ -18,6 +18,14 @@ from osapp import db
 
 RAIZ = Path(__file__).resolve().parents[1]
 
+# Segredo fictício só para os testes (o HMAC das tentativas de login precisa de um).
+SEGREDO_DE_TESTE = "segredo-de-teste-" + "x" * 32
+
+
+@pytest.fixture(autouse=True)
+def _segredo_hmac(monkeypatch):
+    monkeypatch.setenv("OS_HMAC_SEGREDO", SEGREDO_DE_TESTE)
+
 
 def config_alembic() -> AlembicConfig:
     return AlembicConfig(str(RAIZ / "alembic.ini"))

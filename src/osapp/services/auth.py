@@ -1,6 +1,7 @@
 """Autenticação e identidade do ator.
 
-Nunca registra em log senha, hash ou o texto digitado no campo de login.
+Nunca registra em log senha, hash, IP ou o texto digitado no campo de login: os logs
+trazem só o id do usuário e as chaves HMAC (services/protecao_login.py).
 """
 
 from __future__ import annotations
@@ -8,17 +9,15 @@ from __future__ import annotations
 import logging
 import secrets
 from dataclasses import dataclass
-from datetime import timedelta
 
 from osapp.db import sessao
 from osapp.models import Usuario
-from osapp.repositories import UsuarioRepo
-from osapp.services import relogio, senhas
-from osapp.services.erros import ErroAutenticacao
+from osapp.models.tentativa_login import TIPO_IP, TIPO_LOGIN
+from osapp.repositories import TentativaLoginRepo, UsuarioRepo
+from osapp.services import protecao_login, relogio, senhas
+from osapp.services.erros import ErroAutenticacao, ErroMuitasTentativas
 
 LOGIN_MAX = 50
-MAX_TENTATIVAS = 5
-MINUTOS_DE_BLOQUEIO = 15
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +49,13 @@ def _ator_de(usuario: Usuario) -> Ator:
     )
 
 
-def autenticar(login: str, senha: str) -> Ator:
-    """Confere login e senha. Qualquer falha levanta o mesmo ErroAutenticacao."""
+def autenticar(login: str, senha: str, ip: str | None = None) -> Ator:
+    """Confere login e senha. Qualquer falha levanta o mesmo ErroAutenticacao.
+
+    ``ip`` é o IP do cliente (Page.client_ip). Antes do instante permitido para o login
+    ou para o IP a tentativa é recusada com ErroMuitasTentativas, sem conferir a senha.
+    Logins inexistentes e inativos contam falhas como os demais.
+    """
     if not isinstance(login, str) or not isinstance(senha, str):
         logger.warning("Falha de autenticação: entrada inválida.")
         raise ErroAutenticacao()
@@ -60,52 +64,55 @@ def autenticar(login: str, senha: str) -> Ator:
         logger.warning("Falha de autenticação: entrada vazia ou acima do tamanho permitido.")
         raise ErroAutenticacao()
 
+    chave_login = protecao_login.chave_do_login(login)
+    chave_ip = protecao_login.chave_do_ip(ip)
     ator: Ator | None = None
-    # As alterações de contadores precisam ser confirmadas mesmo quando o login falha;
-    # por isso o erro só é levantado depois de a sessão fechar com commit.
+    recusada = False
+    # Os contadores precisam ser confirmados mesmo quando o login falha; por isso o erro
+    # só é levantado depois de a sessão fechar com commit.
     with sessao() as s:
-        usuario = UsuarioRepo(s).obter_por_login(login)
         agora = relogio.agora()
-        if usuario is None:
-            senhas.verificar(senha, _HASH_FICTICIO)
-            logger.warning("Falha de autenticação: login inexistente.")
+        repo = TentativaLoginRepo(s)
+        # Sempre na mesma ordem (login, depois IP), para duas transações não se travarem.
+        por_login = repo.travar(TIPO_LOGIN, chave_login, agora)
+        por_ip = repo.travar(TIPO_IP, chave_ip, agora)
+        if protecao_login.bloqueada(por_login, agora) or protecao_login.bloqueada(por_ip, agora):
+            recusada = True
+            logger.warning(
+                "Tentativa recusada antes do instante permitido: login=%s ip=%s.",
+                chave_login,
+                chave_ip,
+            )
         else:
-            confere = senhas.verificar(senha, usuario.senha_hash)
-            if not usuario.ativo:
-                logger.warning("Falha de autenticação: usuario_id=%s inativo.", usuario.id)
-            elif usuario.bloqueado_ate is not None and agora < usuario.bloqueado_ate:
-                logger.warning("Falha de autenticação: usuario_id=%s bloqueado.", usuario.id)
+            usuario = UsuarioRepo(s).obter_por_login(login)
+            if usuario is None:
+                senhas.verificar(senha, _HASH_FICTICIO)
+                confere = False
             else:
-                if usuario.bloqueado_ate is not None:  # bloqueio vencido: nova contagem
-                    usuario.bloqueado_ate = None
-                    usuario.tentativas_falhas = 0
-                    s.flush()
-                if confere:
-                    usuario.tentativas_falhas = 0
-                    if senhas.precisa_rehash(usuario.senha_hash):
-                        usuario.senha_hash = senhas.gerar_hash(senha)
-                    ator = _ator_de(usuario)
-                    logger.info("Login bem-sucedido: usuario_id=%s.", usuario.id)
-                else:
-                    # Incremento feito no banco, para não perder tentativas simultâneas.
-                    usuario.tentativas_falhas = Usuario.tentativas_falhas + 1
-                    s.flush()
-                    s.refresh(usuario)
-                    if usuario.tentativas_falhas >= MAX_TENTATIVAS:
-                        usuario.bloqueado_ate = agora + timedelta(minutes=MINUTOS_DE_BLOQUEIO)
-                        logger.warning(
-                            "Falha de autenticação: usuario_id=%s bloqueado por %s minutos "
-                            "após %s tentativas.",
-                            usuario.id,
-                            MINUTOS_DE_BLOQUEIO,
-                            usuario.tentativas_falhas,
-                        )
-                    else:
-                        logger.warning(
-                            "Falha de autenticação: usuario_id=%s senha incorreta (tentativa %s).",
-                            usuario.id,
-                            usuario.tentativas_falhas,
-                        )
+                confere = senhas.verificar(senha, usuario.senha_hash) and usuario.ativo
+            if confere:
+                protecao_login.registrar_sucesso(por_login, agora)
+                if senhas.precisa_rehash(usuario.senha_hash):
+                    usuario.senha_hash = senhas.gerar_hash(senha)
+                ator = _ator_de(usuario)
+                logger.info(
+                    "Login bem-sucedido: usuario_id=%s login=%s ip=%s.",
+                    usuario.id,
+                    chave_login,
+                    chave_ip,
+                )
+            else:
+                protecao_login.registrar_falha(por_login, agora)
+                protecao_login.registrar_falha(por_ip, agora)
+                logger.warning(
+                    "Falha de autenticação: login=%s (falha %s) ip=%s (falha %s).",
+                    chave_login,
+                    por_login.falhas,
+                    chave_ip,
+                    por_ip.falhas,
+                )
+    if recusada:
+        raise ErroMuitasTentativas()
     if ator is None:
         raise ErroAutenticacao()
     return ator

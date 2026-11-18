@@ -719,3 +719,48 @@ teste em Android nem iOS reais; WebKit não está instalado aqui.
   só muda ao recarregar a tela.
 - `flet.testing` existe mas precisa de numpy e do app de teste do Flutter: o teste de
   integração foi feito com Playwright no navegador, fora do pytest.
+
+## Prompt 15 — proteção do login, IP do cliente, exposição na internet (18/11/2026)
+
+### O que mudou
+
+- **Atraso progressivo no lugar do bloqueio fixo** (`services/protecao_login.py`,
+  `services/auth.py`): por login, 3 falhas livres e depois 2, 4, 8... s até 15 min;
+  sucesso zera. Por IP, mais de 20 falhas em 15 min (contadas desde a última falha) põem
+  o IP na mesma regra. Antes do instante permitido a tentativa é recusada com
+  `ErroMuitasTentativas` (subclasse de `ErroAutenticacao`) sem conferir a senha.
+  Logins inexistentes e inativos contam igual. O servidor não dorme: grava
+  `proximo_permitido_em`.
+- **Tabela `tentativas_login`** (migração `0006`): `chave` (HMAC-SHA256 hex com
+  `OS_HMAC_SEGREDO`), `tipo` (LOGIN/IP), `falhas`, `proximo_permitido_em`,
+  `atualizado_em`; único (tipo, chave). Linhas travadas com INSERT ... ON CONFLICT DO
+  NOTHING + SELECT ... FOR UPDATE (login antes de IP, sempre). A mesma migração remove
+  `usuarios.tentativas_falhas` e `usuarios.bloqueado_ate`; o downgrade as recria zeradas.
+- `autenticar(login, senha, ip=None)`; a tela de login passa `page.client_ip` e mostra
+  "Muitas tentativas. Aguarde alguns instantes e tente novamente." (única mudança de tela).
+- Sem IP: chave fixa `desconhecido` e um aviso no log por tentativa.
+- Logs de autenticação: só chaves HMAC (e o id do usuário no sucesso).
+- `redefinir-senha` apaga o contador daquele login. CLI nova: `limpar-tentativas`
+  (apaga contadores sem atividade há mais de 30 dias).
+- `OS_HMAC_SEGREDO` obrigatória (mínimo 32 caracteres): sem ela o app não inicia.
+- `docker/iniciar.sh`: `--forwarded-allow-ips "${OS_PROXIES_CONFIAVEIS:-127.0.0.1}"`
+  (antes `'*'`) e `--no-access-log`.
+- `docs/GO_LIVE.md` (checklist para a TI); `pip-audit` nas dependências de
+  desenvolvimento (resultado: 69 pacotes, 0 vulnerabilidades conhecidas).
+
+### Como o IP chega ao app
+
+`uvicorn --proxy-headers` reescreve o cliente da conexão (inclusive do WebSocket) a
+partir de `X-Forwarded-For` só quando a conexão vem de um endereço confiável; o flet-web
+lê `websocket.client.host` e o entrega em `Page.client_ip`
+(`flet_web/fastapi/flet_app.py`, flet 1.1.2). `Forwarded` (RFC 7239) não é lido pelo
+uvicorn.
+
+### Lacunas
+
+- Endereço do proxy do Render não confirmado (ver GO_LIVE.md). Sem
+  `OS_PROXIES_CONFIAVEIS` correta, todos os acessos aparecem com o IP do proxy e o limite
+  por IP vale para todos juntos.
+- A limpeza de `tentativas_login` precisa ser agendada fora do app.
+- Contagem por login não expira com o tempo (só com sucesso, `redefinir-senha` ou a
+  limpeza de 30 dias), como pedido.
