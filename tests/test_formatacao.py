@@ -57,7 +57,6 @@ def test_ler_brl(texto, esperado):
     [
         "",
         "abc",
-        "1234",
         "1234.56",
         "1,234.56",
         "12,3",
@@ -76,6 +75,16 @@ def test_ler_brl(texto, esperado):
 def test_ler_brl_invalido(texto):
     with pytest.raises(ValueError):
         ler_brl(texto)
+
+
+def test_ler_brl_sem_centavos_e_em_reais():
+    """Regra aprovada (prompt 13): '150' = R$ 150,00; o ponto só separa milhares."""
+    assert ler_brl("150") == 15000
+    assert ler_brl("150,50") == 15050
+    assert ler_brl("1.234") == 123400
+    assert ler_brl("R$ 1234") == 123400
+    with pytest.raises(ValueError):
+        ler_brl("150.50")
 
 
 def test_brl_ida_e_volta():

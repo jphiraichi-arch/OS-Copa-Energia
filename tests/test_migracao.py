@@ -37,10 +37,7 @@ def test_indices_e_constraints_existem(banco):
     indices_ev = {i["name"]: i["column_names"] for i in insp.get_indexes("os_eventos")}
     assert indices_ev["ix_os_eventos_os_id"] == ["os_id"]
     checks = {c["name"] for c in insp.get_check_constraints("ordens_servico")}
-    assert checks == {
-        "ck_ordens_servico_valor_previsto_nao_negativo",
-        "ck_ordens_servico_tempo_previsto_positivo",
-    }
+    assert checks == {"ck_ordens_servico_tempo_previsto_positivo"}  # o preço saiu no 0005
 
 
 def test_alembic_ini_nao_contem_url():
@@ -109,7 +106,9 @@ def test_migracoes_com_dados_existentes(banco_vazio):
         assert (usuario["login"], usuario["is_gerente"]) == ("marina.teste", False)
         assert conexao.execute(select(tabelas.tables["os_eventos"])).all()
         os_ = conexao.execute(select(tabelas.tables["ordens_servico"])).mappings().one()
-        assert os_["valor_previsto_centavos"] == 100
+        assert "valor_previsto_centavos" not in os_  # virou item de custo (0005)
+        item = conexao.execute(select(tabelas.tables["os_itens_custo"])).mappings().one()
+        assert (item["fase"], item["valor_unitario_centavos"]) == ("PREVISTO", 100)
 
 
 def test_instancias_simultaneas_migram_e_semeiam_uma_de_cada_vez(banco_vazio):

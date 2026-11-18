@@ -8,7 +8,7 @@ from osapp.models import Usuario
 from osapp.services import ordens, relatorios, relogio, status
 from osapp.services.erros import ErroAutenticacao, ErroPermissao, ErroValidacao
 from osapp.services.relatorios import RelatorioBasico, gerar_relatorio, limites_do_mes
-from tests.fabricas import novo_usuario
+from tests.fabricas import itens, novo_usuario
 
 MAIO = datetime(2026, 5, 20, 15, 0, tzinfo=UTC)
 
@@ -28,14 +28,22 @@ def dados(cenario, monkeypatch):
 
     def concluida(criador, executor, previsto, realizado, minutos, quando, filial_id=None):
         em(quando - timedelta(hours=5))
-        d = ordens.criar_os(criador, "Serviço de teste", "Descrição.", previsto, 60, filial_id)
+        d = ordens.criar_os(
+            criador,
+            "Serviço de teste",
+            "Descrição.",
+            itens(previsto),
+            60,
+            filial_id,
+            equipamento_outro="Equipamento de teste",
+        )
         d = ordens.iniciar_execucao(executor, d.id, d.versao)
         em(quando)
         return ordens.concluir_os(
             executor,
             d.id,
             d.versao,
-            realizado,
+            itens(realizado),
             quando - timedelta(minutes=minutos),
             quando,
             "Feito.",
@@ -50,8 +58,22 @@ def dados(cenario, monkeypatch):
     concluida(c["marina"], c["joao"], 1000, 99999, 10, datetime(2026, 5, 1, 2, 0, tzinfo=UTC))
     # F001, ainda aberta e em execução (criadas em maio)
     em(MAIO)
-    ordens.criar_os(c["marina"], "Aberta em maio", "Descrição.", 100, 30)
-    d = ordens.criar_os(c["joao"], "Em execução", "Descrição.", 100, 30)
+    ordens.criar_os(
+        c["marina"],
+        "Aberta em maio",
+        "Descrição.",
+        itens(100),
+        30,
+        equipamento_outro="Equipamento de teste",
+    )
+    d = ordens.criar_os(
+        c["joao"],
+        "Em execução",
+        "Descrição.",
+        itens(100),
+        30,
+        equipamento_outro="Equipamento de teste",
+    )
     ordens.iniciar_execucao(c["pedro"], d.id, d.versao)
     # F002, concluída em maio
     concluida(c["carlos"], c["carlos"], 30000, 40000, 120, MAIO)  # +100,00
@@ -167,13 +189,20 @@ def test_mes_sem_movimento(dados):
 def test_no_maximo_cinco_maiores_desvios(cenario, monkeypatch):
     monkeypatch.setattr(relogio, "agora", lambda: MAIO)
     for extra in range(7):
-        d = ordens.criar_os(cenario["admin"], "Estouro", "Descrição.", 1000, 60)
+        d = ordens.criar_os(
+            cenario["admin"],
+            "Estouro",
+            "Descrição.",
+            itens(1000),
+            60,
+            equipamento_outro="Equipamento de teste",
+        )
         d = ordens.iniciar_execucao(cenario["admin"], d.id, d.versao)
         ordens.concluir_os(
             cenario["admin"],
             d.id,
             d.versao,
-            2000 + extra * 100,
+            itens(2000 + extra * 100),
             MAIO - timedelta(hours=1),
             MAIO,
             "Feito.",

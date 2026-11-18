@@ -7,7 +7,7 @@ from decimal import Decimal
 
 import pytest
 from alembic import command
-from sqlalchemy import MetaData, inspect, select
+from sqlalchemy import MetaData, func, inspect, select
 from sqlalchemy.exc import IntegrityError, StatementError
 
 from osapp import cli, db
@@ -165,7 +165,7 @@ def test_migracao_0004_preserva_os_dados(banco_vazio):
                 set(m.tables),
             )
 
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0004")
     os_, gerente, eventos, tabelas = ler()
     assert {"categorias_custo", "os_itens_custo", "equipamentos", "os_sequencias"} <= tabelas
     assert (os_["numero"], os_["valor_previsto_centavos"], os_["valor_realizado_centavos"]) == (
@@ -193,7 +193,7 @@ def test_migracao_0004_preserva_os_dados(banco_vazio):
         True,
         1,
     )
-    command.upgrade(cfg, "head")
+    command.upgrade(cfg, "0004")
     assert not [n for n in inspect(db.obter_engine()).get_table_names() if n.startswith("_alembic")]
 
 
@@ -258,3 +258,150 @@ def test_cli_consolidar(producao_simulada, capsys):
     assert cli.main(["consolidar-1007", "--aplicar"]) == 1  # sem --responsavel
     assert cli.main(["consolidar-1007", "--aplicar", "--responsavel", "admin"]) == 0
     assert "APLICADO" in capsys.readouterr().out
+
+
+# --- Migração 0005: o preço único vira itens -------------------------------------------
+
+
+def test_migracao_0005_mantem_os_totais_e_o_downgrade_os_restaura(banco_vazio):
+    cfg = config_alembic()
+    command.upgrade(cfg, "0004")
+    db.reiniciar()
+    engine = db.obter_engine()
+    t = MetaData()
+    t.reflect(bind=engine)
+    eq = None
+    with engine.begin() as c:
+        c.execute(t.tables["filiais"].insert().values(id=1, codigo="1007", nome="Jardinópolis"))
+        c.execute(
+            t.tables["usuarios"]
+            .insert()
+            .values(id=1, nome="Ana", login="ana", senha_hash="x", filial_id=1)
+        )
+        eq = c.execute(
+            t.tables["equipamentos"].insert().values(filial_id=1, nome="Compressor 1")
+        ).inserted_primary_key[0]
+        base = {
+            "filial_id": 1,
+            "criado_por_id": 1,
+            "titulo": "T",
+            "descricao": "D",
+            "tempo_previsto_minutos": 60,
+            "criado_em": AGORA,
+            "atualizado_em": AGORA,
+            "versao": 1,
+        }
+        ordens_ = t.tables["ordens_servico"]
+        c.execute(
+            ordens_.insert().values(
+                id=1, numero="A1", status="ABERTA", valor_previsto_centavos=15000, **base
+            )
+        )
+        c.execute(
+            ordens_.insert().values(
+                id=2,
+                numero="A2",
+                status="CONCLUIDA",
+                valor_previsto_centavos=10000,
+                valor_realizado_centavos=12345,
+                **base,
+            )
+        )
+        c.execute(
+            ordens_.insert().values(
+                id=3,
+                numero="A3",
+                status="ABERTA",
+                valor_previsto_centavos=0,
+                equipamento_id=eq,
+                **base,
+            )
+        )
+    antes = {1: (15000, None), 2: (10000, 12345), 3: (0, None)}
+
+    def estado():
+        db.reiniciar()
+        e = db.obter_engine()
+        m = MetaData()
+        m.reflect(bind=e)
+        with e.connect() as c:
+            return (
+                [
+                    dict(r)
+                    for r in c.execute(
+                        select(m.tables["ordens_servico"]).order_by(m.tables["ordens_servico"].c.id)
+                    ).mappings()
+                ],
+                [dict(r) for r in c.execute(select(m.tables["os_itens_custo"])).mappings()],
+            )
+
+    command.upgrade(cfg, "0005")
+    linhas, itens_ = estado()
+    assert all("valor_previsto_centavos" not in linha for linha in linhas)
+    with sessao() as s:
+        for os_id, (previsto, realizado) in antes.items():
+            ordem = s.get(OrdemServico, os_id)
+            totais = {"PREVISTO": 0, "REALIZADO": 0}
+            for item in ordem.itens:
+                assert (item.descricao, item.quantidade, item.categoria.codigo) == (
+                    "Valor total (migrado)",
+                    Decimal("1.00"),
+                    "OUTROS",
+                )
+                totais[item.fase] += item.valor_unitario_centavos
+            assert totais["PREVISTO"] == previsto
+            assert totais["REALIZADO"] == (realizado or 0)
+            assert any(i.fase == "REALIZADO" for i in ordem.itens) == (realizado is not None)
+    equipamentos = {
+        linha["id"]: (linha["equipamento_id"], linha["equipamento_outro"]) for linha in linhas
+    }
+    assert equipamentos == {1: (None, "Não informado"), 2: (None, "Não informado"), 3: (eq, None)}
+
+    command.downgrade(cfg, "0004")
+    linhas, itens_ = estado()
+    assert {
+        r["id"]: (r["valor_previsto_centavos"], r["valor_realizado_centavos"]) for r in linhas
+    } == antes
+    assert itens_ == []  # os itens migrados saem; os totais voltam às colunas
+    assert all(r["equipamento_outro"] is None for r in linhas)
+
+    command.upgrade(cfg, "head")  # e sobe de novo sem duplicar
+    with sessao() as s:
+        assert s.scalar(select(func.count()).select_from(OsItemCusto)) == 4
+
+
+def test_migracao_0005_soma_itens_reais_no_downgrade(banco):
+    """Itens criados depois do 0005 também voltam como soma (arredondada) no downgrade."""
+    from osapp.services import ordens
+    from tests.fabricas import categoria_id
+
+    with sessao() as s:
+        f = nova_filial(s, "1007", "Jardinópolis")
+        u = novo_usuario(s, f, is_admin=True)
+        uid = u.id
+    from osapp.services.custos import ItemEntrada
+
+    d = ordens.criar_os(
+        uid,
+        "Titulo",
+        "Descrição.",
+        [
+            ItemEntrada(
+                categoria_id("MAO_DE_OBRA"), "Hora", Decimal("1.5"), 3333
+            ),  # 49,995 -> 50,00
+            ItemEntrada(categoria_id("PECAS_MATERIAIS"), "Peça", Decimal("2"), 1000),
+        ],
+        60,
+        equipamento_outro="Equipamento de teste",
+    )
+    assert d.resumo_custos.total_previsto_centavos == 7000
+    command.downgrade(config_alembic(), "0004")
+    db.reiniciar()
+    m = MetaData()
+    m.reflect(bind=db.obter_engine())
+    with db.obter_engine().connect() as c:
+        assert (
+            c.execute(select(m.tables["ordens_servico"].c.valor_previsto_centavos)).scalar_one()
+            == 7000
+        )
+        assert len(c.execute(select(m.tables["os_itens_custo"])).all()) == 2  # itens reais ficam

@@ -13,7 +13,7 @@ from osapp.models import OrdemServico, OsSequencia
 from osapp.repositories import OrdemServicoRepo
 from osapp.services import ordens, relogio
 from osapp.services.erros import ErroConflito
-from tests.fabricas import nova_filial, novo_usuario
+from tests.fabricas import itens, nova_filial, novo_usuario
 
 MEIO_DE_2026 = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
 
@@ -33,7 +33,14 @@ def jardinopolis(banco, monkeypatch):
 
 
 def criar(ator_id):
-    return ordens.criar_os(ator_id, "Troca de rolamento", "Descrição.", 100, 60)
+    return ordens.criar_os(
+        ator_id,
+        "Troca de rolamento",
+        "Descrição.",
+        itens(100),
+        60,
+        equipamento_outro="Equipamento de teste",
+    )
 
 
 def contador(filial_id, ano):
@@ -112,7 +119,6 @@ def test_numeros_antigos_continuam_valendo(jardinopolis):
                 titulo="Antiga",
                 descricao="Antiga.",
                 status="ABERTA",
-                valor_previsto_centavos=1,
                 tempo_previsto_minutos=1,
                 criado_em=MEIO_DE_2026,
                 atualizado_em=MEIO_DE_2026,

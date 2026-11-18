@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, Index, String, Text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from osapp.db import Base
+from osapp.models.custos import OsItemCusto
+from osapp.models.equipamento import Equipamento
 from osapp.models.filial import Filial
 from osapp.models.tipos import DataHoraUTC
 from osapp.models.usuario import Usuario
@@ -18,7 +20,6 @@ def _agora_utc() -> datetime:
 class OrdemServico(Base):
     __tablename__ = "ordens_servico"
     __table_args__ = (
-        CheckConstraint("valor_previsto_centavos >= 0", name="valor_previsto_nao_negativo"),
         CheckConstraint("tempo_previsto_minutos > 0", name="tempo_previsto_positivo"),
         Index("ix_ordens_servico_filial_id_status", "filial_id", "status"),
         Index("ix_ordens_servico_criado_em", "criado_em"),
@@ -34,11 +35,7 @@ class OrdemServico(Base):
     descricao: Mapped[str] = mapped_column(Text)
     # Os valores permitidos de status são verificados no serviço, não por constraint.
     status: Mapped[str] = mapped_column(String(20))
-    # BigInteger: o limite de negócio (9.999.999.999 centavos) não cabe no INTEGER de
-    # 32 bits do PostgreSQL.
-    valor_previsto_centavos: Mapped[int] = mapped_column(BigInteger)
     tempo_previsto_minutos: Mapped[int]
-    valor_realizado_centavos: Mapped[int | None] = mapped_column(BigInteger)
     inicio_realizado: Mapped[datetime | None] = mapped_column(DataHoraUTC())
     fim_realizado: Mapped[datetime | None] = mapped_column(DataHoraUTC())
     descricao_realizado: Mapped[str | None] = mapped_column(Text)
@@ -60,3 +57,8 @@ class OrdemServico(Base):
     criado_por: Mapped[Usuario] = relationship(foreign_keys=[criado_por_id])
     executor: Mapped[Usuario | None] = relationship(foreign_keys=[executor_id])
     concluido_por: Mapped[Usuario | None] = relationship(foreign_keys=[concluido_por_id])
+    equipamento: Mapped[Equipamento | None] = relationship()
+    # Itens de custo (os totais são sempre calculados a partir deles).
+    itens: Mapped[list[OsItemCusto]] = relationship(
+        order_by="OsItemCusto.id", lazy="selectin", viewonly=True
+    )

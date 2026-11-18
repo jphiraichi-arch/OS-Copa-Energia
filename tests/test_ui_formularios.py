@@ -15,7 +15,7 @@ def test_ler_valor(texto, esperado):
     assert f.ler_valor(texto) == esperado
 
 
-@pytest.mark.parametrize("texto", ["", None, "abc", "-10,00", "10", "10.5", "1,2"])
+@pytest.mark.parametrize("texto", ["", None, "abc", "-10,00", "10.5", "1,2"])
 def test_ler_valor_invalido_tem_mensagem_em_portugues(texto):
     with pytest.raises(ValueError) as info:
         f.ler_valor(texto)

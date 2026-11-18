@@ -9,11 +9,13 @@ from __future__ import annotations
 import os
 import re
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from osapp.config import TZ_PADRAO
 
-_RE_BRL = re.compile(r"^(?:R\$\s*)?(\d{1,3}(?:\.\d{3})+|\d+),(\d{2})$")
+_RE_BRL = re.compile(r"^(?:R\$\s*)?(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d{2}))?$")
+_RE_QUANTIDADE = re.compile(r"^(\d{1,5})(?:,(\d{1,2}))?$")
 _RE_DURACAO = re.compile(r"^(\d{1,4}):([0-5]\d)$")
 
 
@@ -44,13 +46,33 @@ def formatar_brl(centavos: int) -> str:
 
 
 def ler_brl(texto: str) -> int:
-    """Lê '1234,56', '1.234,56' ou 'R$ 1.234,56' e devolve centavos."""
+    """Lê '150', '150,50', '1.234,56' ou 'R$ 1.234,56' e devolve centavos.
+
+    Sem vírgula, o número é em reais ('150' = R$ 150,00). O ponto só separa milhares:
+    '150.50' é recusado, para não confundir com o formato americano.
+    """
     if not isinstance(texto, str):
         raise ValueError("Valor inválido.")
-    m = _RE_BRL.match(texto.replace(" ", " ").strip())
+    m = _RE_BRL.match(texto.replace("\u00a0", " ").strip())
     if not m:
         raise ValueError(f"Valor inválido: {texto!r}. Use o formato 1.234,56.")
-    return int(m.group(1).replace(".", "")) * 100 + int(m.group(2))
+    return int(m.group(1).replace(".", "")) * 100 + int(m.group(2) or 0)
+
+
+def ler_quantidade(texto: str) -> Decimal:
+    """Lê '1', '1,5' ou '1,50' e devolve um Decimal com 2 casas. '1.5' é recusado."""
+    if not isinstance(texto, str):
+        raise ValueError("Quantidade inválida.")
+    m = _RE_QUANTIDADE.match(texto.strip())
+    if not m:
+        raise ValueError(f"Quantidade inválida: {texto!r}. Use o formato 1,5.")
+    return Decimal(f"{m.group(1)}.{(m.group(2) or '').ljust(2, '0')}")
+
+
+def formatar_quantidade(quantidade: Decimal) -> str:
+    """Decimal('1.50') -> '1,5'; Decimal('2.00') -> '2'; Decimal('0.25') -> '0,25'."""
+    texto = f"{Decimal(quantidade):.2f}".rstrip("0").rstrip(".")
+    return texto.replace(".", ",")
 
 
 def formatar_data(dt: date | datetime, tz: str | None = None) -> str:

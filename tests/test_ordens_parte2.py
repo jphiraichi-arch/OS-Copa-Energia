@@ -14,6 +14,7 @@ from osapp.services.erros import (
     ErroPermissao,
     ErroValidacao,
 )
+from tests.fabricas import args_de_conclusao, args_de_criacao
 
 T0 = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
 INICIO = T0 - timedelta(hours=3)
@@ -33,7 +34,7 @@ def criar(ator_id, **extras):
         "tempo_previsto_minutos": 60,
     }
     dados.update(extras)
-    return ordens.criar_os(ator_id, **dados)
+    return ordens.criar_os(ator_id, **args_de_criacao(dados))
 
 
 def concluir(ator_id, d, **extras):
@@ -44,7 +45,7 @@ def concluir(ator_id, d, **extras):
         "descricao_realizado": "Rolamento trocado.",
     }
     dados.update(extras)
-    return ordens.concluir_os(ator_id, d.id, d.versao, **dados)
+    return ordens.concluir_os(ator_id, d.id, d.versao, **args_de_conclusao(dados))
 
 
 def preparar(cenario, destino, **extras):
@@ -77,7 +78,7 @@ def estado_bruto(os_id):
             o.titulo,
             o.executor_id,
             o.filial_id,
-            o.valor_realizado_centavos,
+            tuple((i.fase, i.valor_unitario_centavos) for i in o.itens),
             n_eventos,
         )
 
@@ -194,6 +195,7 @@ def test_iniciar_define_executor_e_evento(cenario):
     assert d.iniciado_em == T0 and d.versao == 2 and d.atualizado_em == T0
     assert eventos(cenario, d.id) == [
         ("CRIACAO", None, None, None),
+        ("ITEM_ADICIONADO", "item 1", None, "Outros | Valor total | 1 x R$ 100,00"),
         ("STATUS", "status", "ABERTA", "EM_EXECUCAO"),
     ]
 
@@ -251,18 +253,18 @@ def test_concluir_preenche_realizado_e_eventos(cenario):
         "Pedro Modelo",
         T0,
     )
-    assert (c.valor_realizado_centavos, c.inicio_realizado, c.fim_realizado) == (
+    assert (c.resumo_custos.total_realizado_centavos, c.inicio_realizado, c.fim_realizado) == (
         12000,
         INICIO,
         FIM,
     )
     assert c.descricao_realizado == "Rolamento trocado." and c.versao == d.versao + 1
-    assert eventos(cenario, d.id)[2:] == [
+    assert eventos(cenario, d.id)[3:] == [  # depois de CRIACAO, item previsto e início
         ("STATUS", "status", "EM_EXECUCAO", "CONCLUIDA"),
-        ("REALIZADO", "valor_realizado_centavos", None, "12000"),
         ("REALIZADO", "inicio_realizado", None, INICIO.isoformat()),
         ("REALIZADO", "fim_realizado", None, FIM.isoformat()),
         ("REALIZADO", "descricao_realizado", None, "Rolamento trocado."),
+        ("ITEM_ADICIONADO", "item 2", None, "Outros | Valor total | 1 x R$ 120,00"),
     ]
 
 
@@ -293,7 +295,9 @@ def test_concluir_recusa_campo_ausente_ou_invalido(cenario, campo, valor):
     antes = estado_bruto(d.id)
     with pytest.raises(ErroValidacao) as info:
         concluir(cenario["pedro"], d, **{campo: valor})
-    assert info.value.campo == campo and info.value.mensagem
+    # o valor realizado virou item de custo: é validado como valor unitário do item
+    esperado = "valor_unitario_centavos" if campo == "valor_realizado_centavos" else campo
+    assert info.value.campo == esperado and info.value.mensagem
     assert estado_bruto(d.id) == antes
 
 
@@ -338,16 +342,26 @@ def test_editar_dois_campos_grava_dois_eventos(cenario):
         d.versao,
         {
             "titulo": "  Troca do motor  ",
-            "valor_previsto_centavos": 15000,
+            "tempo_previsto_minutos": 90,
             "descricao": "Esteira com ruído.",
-            "tempo_previsto_minutos": 60,
+            "equipamento_outro": "Equipamento de teste",
         },  # dois não mudam
     )
-    assert (e.titulo, e.valor_previsto_centavos, e.versao) == ("Troca do motor", 15000, 2)
-    assert eventos(cenario, d.id)[1:] == [
+    assert (e.titulo, e.tempo_previsto_minutos, e.versao) == ("Troca do motor", 90, 2)
+    assert eventos(cenario, d.id)[2:] == [  # depois de CRIACAO e do item previsto
         ("EDICAO", "titulo", "Troca de rolamento", "Troca do motor"),
-        ("EDICAO", "valor_previsto_centavos", "10000", "15000"),
+        ("EDICAO", "tempo_previsto_minutos", "60", "90"),
     ]
+
+
+@pytest.mark.parametrize("campo", ["valor_previsto_centavos", "valor_realizado_centavos"])
+def test_editar_os_nao_aceita_mais_preco_unico(cenario, campo):
+    """O preço único saiu (prompt 13): valores só mudam pelos itens de custo."""
+    d = preparar(cenario, status.CONCLUIDA)
+    for ator in ("marina", "admin"):
+        with pytest.raises(ErroPermissao):
+            ordens.editar_os(cenario[ator], d.id, d.versao, {campo: 100})
+    assert ordens.obter_os(cenario["admin"], d.id).versao == d.versao
 
 
 def test_edicao_sem_mudanca_nao_grava_evento_nem_muda_versao(cenario):
@@ -355,7 +369,10 @@ def test_edicao_sem_mudanca_nao_grava_evento_nem_muda_versao(cenario):
     for alteracoes in ({}, {"titulo": "Troca de rolamento"}, {"titulo": " Troca de rolamento "}):
         e = ordens.editar_os(cenario["marina"], d.id, d.versao, alteracoes)
         assert e == d
-    assert eventos(cenario, d.id) == [("CRIACAO", None, None, None)]
+    assert eventos(cenario, d.id) == [
+        ("CRIACAO", None, None, None),
+        ("ITEM_ADICIONADO", "item 1", None, "Outros | Valor total | 1 x R$ 100,00"),
+    ]
 
 
 @pytest.mark.parametrize(
@@ -365,8 +382,6 @@ def test_edicao_sem_mudanca_nao_grava_evento_nem_muda_versao(cenario):
         ("titulo", "t" * 121),
         ("descricao", " "),
         ("descricao", "d" * 2001),
-        ("valor_previsto_centavos", -1),
-        ("valor_previsto_centavos", "10"),
         ("tempo_previsto_minutos", 0),
         ("tempo_previsto_minutos", 60_000),
     ],
@@ -427,21 +442,18 @@ def test_depois_de_concluida_so_admin_edita_inclusive_o_realizado(cenario):
         c.versao,
         {
             "titulo": "Título corrigido",
-            "valor_realizado_centavos": 9000,
             "fim_realizado": novo_fim,
             "descricao_realizado": "Texto corrigido.",
         },
     )
-    assert (e.titulo, e.valor_realizado_centavos, e.fim_realizado, e.descricao_realizado) == (
+    assert (e.titulo, e.fim_realizado, e.descricao_realizado) == (
         "Título corrigido",
-        9000,
         novo_fim,
         "Texto corrigido.",
     )
     assert e.tempo_realizado_minutos == 120 and e.status == status.CONCLUIDA
-    assert eventos(cenario, c.id)[-4:] == [
+    assert eventos(cenario, c.id)[-3:] == [
         ("EDICAO", "titulo", "Troca de rolamento", "Título corrigido"),
-        ("EDICAO", "valor_realizado_centavos", "12000", "9000"),
         ("EDICAO", "fim_realizado", FIM.isoformat(), novo_fim.isoformat()),
         ("EDICAO", "descricao_realizado", "Rolamento trocado.", "Texto corrigido."),
     ]
@@ -454,7 +466,6 @@ def test_admin_corrigindo_realizado_passa_pela_validacao(cenario):
         ({"inicio_realizado": FIM + timedelta(minutes=1)}, "fim_realizado"),
         ({"fim_realizado": T0 + timedelta(hours=1)}, "fim_realizado"),
         ({"inicio_realizado": datetime(2026, 5, 4, 9, 0)}, "inicio_realizado"),
-        ({"valor_realizado_centavos": -1}, "valor_realizado_centavos"),
         ({"descricao_realizado": ""}, "descricao_realizado"),
     ]:
         with pytest.raises(ErroValidacao) as info:
@@ -468,6 +479,8 @@ def test_admin_corrigindo_realizado_passa_pela_validacao(cenario):
             pode_desfazer_inicio=False,
             pode_concluir=False,
             pode_editar_realizado=True,
+            pode_editar_itens_previstos=True,
+            pode_editar_itens_realizados=True,
         ),
     )
 
@@ -542,12 +555,8 @@ def test_se_o_evento_falha_a_alteracao_e_desfeita(cenario, monkeypatch):
 def test_diferencas_sao_none_antes_da_conclusao(cenario):
     for st in (status.ABERTA, status.EM_EXECUCAO):
         d = preparar(cenario, st)
-        assert (
-            d.tempo_realizado_minutos,
-            d.diferenca_valor_centavos,
-            d.diferenca_valor_percentual,
-            d.diferenca_tempo_minutos,
-        ) == (None,) * 4
+        assert (d.tempo_realizado_minutos, d.diferenca_tempo_minutos) == (None, None)
+        assert d.resumo_custos.total_realizado_centavos == 0  # nada realizado ainda
 
 
 @pytest.mark.parametrize(
@@ -572,8 +581,8 @@ def test_diferencas(cenario, previsto, realizado, minutos, esperado):
     )
     assert c.tempo_realizado_minutos == minutos
     assert (
-        c.diferenca_valor_centavos,
-        c.diferenca_valor_percentual,
+        c.resumo_custos.diferenca_centavos,
+        c.resumo_custos.diferenca_percentual,
         c.diferenca_tempo_minutos,
     ) == esperado
 

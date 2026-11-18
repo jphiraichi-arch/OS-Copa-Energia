@@ -11,6 +11,7 @@ from osapp import formatacao
 from osapp.services import administracao, ordens
 from osapp.ui import theme
 from osapp.ui.marca import PASTA_ASSETS
+from tests.fabricas import itens
 
 RAIZ = Path(__file__).resolve().parents[1]
 TEXTO = "Ação Conclusão Jardinópolis ÇÃÕÉÊÍÓÚ àâêôü"
@@ -47,7 +48,9 @@ def test_todo_arquivo_de_texto_e_utf8_valido(pasta):
 
 
 def test_texto_acentuado_ida_e_volta_pelo_banco(cenario):
-    d = ordens.criar_os(cenario["marina"], TEXTO, TEXTO, 100, 60)
+    d = ordens.criar_os(
+        cenario["marina"], TEXTO, TEXTO, itens(100), 60, equipamento_outro="Equipamento de teste"
+    )
     lida = ordens.obter_os(cenario["marina"], d.id)
     assert (lida.titulo, lida.descricao) == (TEXTO, TEXTO)
     # a busca sem diferenciar maiúsculas também funciona com acentos

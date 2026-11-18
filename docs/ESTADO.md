@@ -607,3 +607,56 @@ implanta. Este commit foi deixado só no repositório local, sem push.
 - Itens de custo e equipamentos ainda não têm serviços nem telas (prompts 13 e 14).
 - O perfil gerente (pedido em 17/11) continua; o prompt 12 citava só usuário comum e admin.
 - `OrdemServicoRepo.proximo_numero` (numeração antiga) ficou sem uso.
+
+## Prompt 13 — itens de custo e equipamentos nos serviços (18/11/2026)
+
+**As telas atuais não funcionam com estes serviços: implantar só junto com o prompt 14.**
+
+### Funções novas
+
+- `services/custos.py`: `ItemEntrada`, `ItemDTO`, `ResumoCustos`, `ResumoCategoria`,
+  `total_da_linha` (Decimal, ROUND_HALF_UP), `calcular_resumo(itens)` (puro, sem banco),
+  `percentual`, validações, `listar_categorias(ator_id)`, `adicionar_item`, `editar_item`,
+  `remover_item`.
+- `services/equipamentos.py`: `listar_equipamentos(ator_id, filial_id=None)`,
+  `criar_equipamento` e `desativar_equipamento` (administrador, pela CLI).
+- CLI: `criar-equipamento --responsavel --filial --nome [--codigo-sap]` e
+  `desativar-equipamento --responsavel --id`.
+- `formatacao.ler_quantidade` ('1', '1,5', '1,50'; '1.5' recusado) e `formatar_quantidade`.
+
+### Assinaturas que mudaram
+
+- `criar_os(ator_id, titulo, descricao, itens_previstos, tempo_previsto_minutos,
+  filial_id=None, *, equipamento_id=None, equipamento_outro=None)`.
+- `concluir_os(ator_id, os_id, versao, itens_realizados, inicio_realizado, fim_realizado,
+  descricao_realizado)`.
+- `editar_os` aceita `equipamento_id` / `equipamento_outro` e recusa campos de dinheiro.
+- `OsDetalhe`: saem `valor_previsto_centavos`, `valor_realizado_centavos`,
+  `diferenca_valor_*`; entram `equipamento_id`, `equipamento_outro`, `equipamento`,
+  `numero_sap`, `itens`, `resumo_custos`; `AcoesOs` ganha `pode_editar_itens_previstos` e
+  `pode_editar_itens_realizados`. `OsResumo.total_previsto_centavos` (calculado).
+- `formatacao.ler_brl`: '150' passa a valer R$ 150,00 (regra aprovada no prompt 13);
+  '150.50' continua recusado.
+
+### Regras
+
+- Itens PREVISTO: criadora ou admin antes da conclusão; depois, só admin. Itens REALIZADO:
+  chegam com a conclusão (executor ou admin); depois, só admin. Mínimo de 1 item em cada
+  fase; máximo de 100. Cada inclusão, alteração e remoção grava ITEM_ADICIONADO /
+  ITEM_ALTERADO / ITEM_REMOVIDO e incrementa a versão da OS.
+- Equipamento: exatamente um entre um equipamento ativo da filial da OS e "Outro" (3 a 120
+  caracteres). Mudar a filial exige equipamento da nova filial.
+- Relatórios passaram a somar os itens de custo (o preço único deixou de existir).
+
+### Migração `0005`
+
+- Cada OS ganha um item PREVISTO (e um REALIZADO, se havia valor realizado) na categoria
+  OUTROS, "Valor total (migrado)", quantidade 1. OS sem equipamento recebem
+  `equipamento_outro` "Não informado" (a migração registra quantas no log). Depois saem as
+  colunas de preço único. O downgrade recria as colunas com a soma dos itens e apaga os
+  itens migrados.
+
+### Lacunas
+
+- Interface ainda no modelo antigo (prompt 14).
+- Percentuais são calculados em Decimal e entregues como float só para exibição.

@@ -14,13 +14,21 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.orm.exc import StaleDataError
 
 from osapp.config import carregar_config
 from osapp.db import sessao
-from osapp.models import OrdemServico, OsEvento
-from osapp.repositories import FilialRepo, OrdemServicoRepo, OsEventoRepo, OsSequenciaRepo
-from osapp.services import relogio
+from osapp.models import OrdemServico, OsEvento, OsItemCusto
+from osapp.repositories import (
+    CategoriaCustoRepo,
+    EquipamentoRepo,
+    FilialRepo,
+    OrdemServicoRepo,
+    OsEventoRepo,
+    OsSequenciaRepo,
+)
+from osapp.services import custos, relogio
 from osapp.services import status as _status
 from osapp.services.auth import Ator, carregar_ator
 from osapp.services.erros import (
@@ -36,7 +44,6 @@ logger = logging.getLogger(__name__)
 TITULO_MIN = 3
 TITULO_MAX = 120
 DESCRICAO_MAX = 2000
-VALOR_MAX_CENTAVOS = 9_999_999_999
 TEMPO_MAX_MINUTOS = 59_999
 BUSCA_MAX = 100
 ITENS_POR_PAGINA = 50
@@ -48,14 +55,12 @@ TIPO_REALIZADO = "REALIZADO"  # campos preenchidos na conclusão (valor_antigo �
 
 TOLERANCIA_FUTURO_MINUTOS = 5
 
-CAMPOS_PREVISTO = ("titulo", "descricao", "valor_previsto_centavos", "tempo_previsto_minutos")
-CAMPOS_REALIZADO = (
-    "valor_realizado_centavos",
-    "inicio_realizado",
-    "fim_realizado",
-    "descricao_realizado",
-)
+CAMPOS_PREVISTO = ("titulo", "descricao", "tempo_previsto_minutos")
+CAMPOS_REALIZADO = ("inicio_realizado", "fim_realizado", "descricao_realizado")
+CAMPOS_EQUIPAMENTO = ("equipamento_id", "equipamento_outro")
 CAMPO_FILIAL = "filial_id"
+EQUIPAMENTO_OUTRO_MIN = 3
+EQUIPAMENTO_OUTRO_MAX = 120
 
 
 # --- DTOs -----------------------------------------------------------------------------
@@ -75,7 +80,7 @@ class OsResumo:
     titulo: str
     status: str
     filial_codigo: str
-    valor_previsto_centavos: int
+    total_previsto_centavos: int  # calculado dos itens previstos
     criado_em: datetime
 
 
@@ -104,6 +109,8 @@ class AcoesOs:
     pode_desfazer_inicio: bool
     pode_concluir: bool
     pode_editar_realizado: bool
+    pode_editar_itens_previstos: bool
+    pode_editar_itens_realizados: bool
 
 
 @dataclass(frozen=True)
@@ -121,23 +128,25 @@ class OsDetalhe:
     criado_por_nome: str
     criado_em: datetime
     atualizado_em: datetime
-    valor_previsto_centavos: int
     tempo_previsto_minutos: int
+    equipamento_id: int | None
+    equipamento_outro: str | None
+    equipamento: str | None  # nome do equipamento ou o texto de 'Outro'
+    numero_sap: str | None
     executor_id: int | None
     executor_nome: str | None
     iniciado_em: datetime | None
-    valor_realizado_centavos: int | None
     inicio_realizado: datetime | None
     fim_realizado: datetime | None
     descricao_realizado: str | None
     concluido_por_id: int | None
     concluido_por_nome: str | None
     concluido_em: datetime | None
-    # Os quatro abaixo são None até a OS ser concluída.
+    # Os dois abaixo são None até a OS ser concluída.
     tempo_realizado_minutos: int | None
-    diferenca_valor_centavos: int | None  # realizado - previsto
-    diferenca_valor_percentual: float | None  # None quando o valor previsto é 0
     diferenca_tempo_minutos: int | None  # realizado - previsto
+    itens: tuple[custos.ItemDTO, ...]  # previstos e realizados, cada um com o total da linha
+    resumo_custos: custos.ResumoCustos  # por categoria e geral; sempre calculado
     acoes: AcoesOs
 
 
@@ -161,16 +170,6 @@ def _validar_texto_longo(campo: str, valor: object) -> str:
     valor = valor.strip()
     if len(valor) > DESCRICAO_MAX:
         raise ErroValidacao(campo, f"A descrição deve ter no máximo {DESCRICAO_MAX} caracteres.")
-    return valor
-
-
-def _validar_valor(campo: str, valor: object) -> int:
-    if isinstance(valor, bool) or not isinstance(valor, int):
-        raise ErroValidacao(campo, "Informe um valor válido.")
-    if valor < 0:
-        raise ErroValidacao(campo, "O valor não pode ser negativo.")
-    if valor > VALOR_MAX_CENTAVOS:
-        raise ErroValidacao(campo, "O valor é maior que o máximo permitido.")
     return valor
 
 
@@ -220,6 +219,14 @@ def _pode_editar_realizado(ator: Ator, ordem: OrdemServico) -> bool:
     return ator.is_admin and _status.encerrado(ordem.status)
 
 
+def _pode_editar_itens(ator: Ator, ordem: OrdemServico, fase: str) -> bool:
+    """PREVISTO: quem pode editar a OS. REALIZADO: só administrador, depois da conclusão
+    (antes disso os itens realizados chegam apenas junto com a conclusão)."""
+    if fase == custos.FASE_PREVISTO:
+        return _pode_editar(ator, ordem)
+    return _pode_editar_realizado(ator, ordem)
+
+
 def _pode_transicionar(ator: Ator, ordem: OrdemServico, destino: str) -> bool:
     quem = _status.quem_pode_transicionar(ordem.status, destino)
     if quem is None or not pode_acessar_filial(ator, ordem.filial_id):
@@ -238,6 +245,8 @@ def _acoes(ator: Ator, ordem: OrdemServico) -> AcoesOs:
         pode_desfazer_inicio=_pode_transicionar(ator, ordem, _status.ABERTA),
         pode_concluir=_pode_transicionar(ator, ordem, _status.CONCLUIDA),
         pode_editar_realizado=_pode_editar_realizado(ator, ordem),
+        pode_editar_itens_previstos=_pode_editar_itens(ator, ordem, custos.FASE_PREVISTO),
+        pode_editar_itens_realizados=_pode_editar_itens(ator, ordem, custos.FASE_REALIZADO),
     )
 
 
@@ -260,19 +269,28 @@ def _carregar_visivel(s: Session, ator: Ator, os_id: object) -> OrdemServico:
     return ordem
 
 
+def _itens_ordenados(ordem: OrdemServico) -> tuple[custos.ItemDTO, ...]:
+    ordem_fase = {custos.FASE_PREVISTO: 0, custos.FASE_REALIZADO: 1}
+    dtos = [custos.item_dto(item) for item in ordem.itens]
+    return tuple(sorted(dtos, key=lambda d: (ordem_fase[d.fase], d.categoria_ordem, d.id)))
+
+
+def _nome_do_equipamento(ordem: OrdemServico) -> str | None:
+    if ordem.equipamento is not None:
+        return ordem.equipamento.nome
+    return ordem.equipamento_outro
+
+
 def _detalhe(ordem: OrdemServico, ator: Ator) -> OsDetalhe:
-    tempo_realizado = dif_valor = dif_percentual = dif_tempo = None
+    tempo_realizado = dif_tempo = None
     if (
         _status.encerrado(ordem.status)
-        and ordem.valor_realizado_centavos is not None
         and ordem.inicio_realizado is not None
         and ordem.fim_realizado is not None
     ):
         tempo_realizado = _minutos_entre(ordem.inicio_realizado, ordem.fim_realizado)
-        dif_valor = ordem.valor_realizado_centavos - ordem.valor_previsto_centavos
-        if ordem.valor_previsto_centavos != 0:
-            dif_percentual = round(dif_valor * 100 / ordem.valor_previsto_centavos, 2)
         dif_tempo = tempo_realizado - ordem.tempo_previsto_minutos
+    itens = _itens_ordenados(ordem)
     return OsDetalhe(
         id=ordem.id,
         numero=ordem.numero,
@@ -287,12 +305,14 @@ def _detalhe(ordem: OrdemServico, ator: Ator) -> OsDetalhe:
         criado_por_nome=ordem.criado_por.nome,
         criado_em=ordem.criado_em,
         atualizado_em=ordem.atualizado_em,
-        valor_previsto_centavos=ordem.valor_previsto_centavos,
         tempo_previsto_minutos=ordem.tempo_previsto_minutos,
+        equipamento_id=ordem.equipamento_id,
+        equipamento_outro=ordem.equipamento_outro,
+        equipamento=_nome_do_equipamento(ordem),
+        numero_sap=ordem.numero_sap,
         executor_id=ordem.executor_id,
         executor_nome=ordem.executor.nome if ordem.executor else None,
         iniciado_em=ordem.iniciado_em,
-        valor_realizado_centavos=ordem.valor_realizado_centavos,
         inicio_realizado=ordem.inicio_realizado,
         fim_realizado=ordem.fim_realizado,
         descricao_realizado=ordem.descricao_realizado,
@@ -300,9 +320,9 @@ def _detalhe(ordem: OrdemServico, ator: Ator) -> OsDetalhe:
         concluido_por_nome=ordem.concluido_por.nome if ordem.concluido_por else None,
         concluido_em=ordem.concluido_em,
         tempo_realizado_minutos=tempo_realizado,
-        diferenca_valor_centavos=dif_valor,
-        diferenca_valor_percentual=dif_percentual,
         diferenca_tempo_minutos=dif_tempo,
+        itens=itens,
+        resumo_custos=custos.calcular_resumo(itens),
         acoes=_acoes(ator, ordem),
     )
 
@@ -341,6 +361,64 @@ def _ano_local(instante: datetime) -> int:
     return instante.astimezone(ZoneInfo(carregar_config().tz)).year
 
 
+def _validar_equipamento(
+    s: Session, filial_id: int, equipamento_id: object, equipamento_outro: object
+) -> tuple[int | None, str | None]:
+    """Exatamente um: equipamento ativo da filial da OS, ou 'Outro' com texto de 3 a 120."""
+    tem_id = equipamento_id is not None
+    tem_outro = equipamento_outro is not None and (
+        not isinstance(equipamento_outro, str) or equipamento_outro.strip() != ""
+    )
+    if tem_id == tem_outro:
+        raise ErroValidacao(
+            "equipamento_id", "Escolha um equipamento da lista ou informe 'Outro', não os dois."
+        )
+    if tem_id:
+        equipamento = EquipamentoRepo(s).obter(equipamento_id) if _e_int(equipamento_id) else None
+        if equipamento is None or equipamento.filial_id != filial_id or not equipamento.ativo:
+            raise ErroValidacao("equipamento_id", "Escolha um equipamento ativo desta filial.")
+        return equipamento.id, None
+    if not isinstance(equipamento_outro, str):
+        raise ErroValidacao("equipamento_outro", "Descreva o equipamento.")
+    texto = equipamento_outro.strip()
+    if not EQUIPAMENTO_OUTRO_MIN <= len(texto) <= EQUIPAMENTO_OUTRO_MAX:
+        raise ErroValidacao(
+            "equipamento_outro",
+            f"Descreva o equipamento com {EQUIPAMENTO_OUTRO_MIN} a {EQUIPAMENTO_OUTRO_MAX} "
+            "caracteres.",
+        )
+    return None, texto
+
+
+def _gravar_itens(
+    s: Session, ordem: OrdemServico, ator: Ator, fase: str, itens: list[tuple], agora: datetime
+) -> None:
+    """Grava itens já validados, com um evento ITEM_ADICIONADO por item."""
+    for categoria, descricao, quantidade, valor in itens:
+        item = OsItemCusto(
+            os_id=ordem.id,
+            fase=fase,
+            categoria_id=categoria.id,
+            descricao=descricao,
+            quantidade=quantidade,
+            valor_unitario_centavos=valor,
+            criado_em=agora,
+            atualizado_em=agora,
+        )
+        s.add(item)
+        s.flush()
+        registrar_evento(
+            s,
+            ordem.id,
+            ator.usuario_id,
+            custos.TIPO_ITEM_ADICIONADO,
+            agora,
+            f"item {item.id}",
+            None,
+            custos.texto_do_item(categoria.nome, descricao, quantidade, valor),
+        )
+
+
 # --- Funções públicas -----------------------------------------------------------------
 
 
@@ -348,10 +426,15 @@ def criar_os(
     ator_id: int,
     titulo: str,
     descricao: str,
-    valor_previsto_centavos: int,
+    itens_previstos: list[custos.ItemEntrada],
     tempo_previsto_minutos: int,
     filial_id: int | None = None,
+    *,
+    equipamento_id: int | None = None,
+    equipamento_outro: str | None = None,
 ) -> OsDetalhe:
+    """Cria a OS e seus itens previstos numa só transação (um evento CRIACAO e um
+    ITEM_ADICIONADO por item). Equipamento: ``equipamento_id`` ou ``equipamento_outro``."""
     ator = carregar_ator(ator_id)
     if filial_id is not None and not _e_int(filial_id):
         raise ErroValidacao("filial_id", "Filial inválida.")
@@ -361,7 +444,6 @@ def criar_os(
 
     titulo = _validar_titulo(titulo)
     descricao = _validar_texto_longo("descricao", descricao)
-    valor = _validar_valor("valor_previsto_centavos", valor_previsto_centavos)
     tempo = _validar_tempo("tempo_previsto_minutos", tempo_previsto_minutos)
 
     try:
@@ -369,6 +451,8 @@ def criar_os(
             filial = FilialRepo(s).obter(filial_destino)
             if filial is None:
                 raise ErroValidacao("filial_id", "Filial não encontrada.")
+            eq_id, eq_outro = _validar_equipamento(s, filial.id, equipamento_id, equipamento_outro)
+            itens = custos.validar_itens_de_entrada(s, itens_previstos, "itens_previstos")
             agora = relogio.agora()
             ano = _ano_local(agora)
             sequencia = OsSequenciaRepo(s).reservar_proximo(filial.id, ano)
@@ -380,13 +464,17 @@ def criar_os(
                     titulo=titulo,
                     descricao=descricao,
                     status=_status.STATUS_INICIAL,
-                    valor_previsto_centavos=valor,
                     tempo_previsto_minutos=tempo,
+                    equipamento_id=eq_id,
+                    equipamento_outro=eq_outro,
                     criado_em=agora,
                     atualizado_em=agora,
                 )
             )
             registrar_evento(s, ordem.id, ator.usuario_id, TIPO_CRIACAO, agora)
+            _gravar_itens(s, ordem, ator, custos.FASE_PREVISTO, itens, agora)
+            s.flush()
+            s.refresh(ordem)
             logger.info("OS criada: os_id=%s usuario_id=%s.", ordem.id, ator.usuario_id)
             return _detalhe(ordem, ator)
     except IntegrityError:
@@ -442,7 +530,11 @@ def listar_os(
                 titulo=o.titulo,
                 status=o.status,
                 filial_codigo=o.filial.codigo,
-                valor_previsto_centavos=o.valor_previsto_centavos,
+                total_previsto_centavos=sum(
+                    custos.total_da_linha(i.quantidade, i.valor_unitario_centavos)
+                    for i in o.itens
+                    if i.fase == custos.FASE_PREVISTO
+                ),
                 criado_em=o.criado_em,
             )
             for o in ordens[:ITENS_POR_PAGINA]
@@ -529,7 +621,7 @@ def editar_os(ator_id: int, os_id: int, versao: int, alteracoes: dict) -> OsDeta
                 raise ErroValidacao("alteracoes", "Dados inválidos.")
             if not _pode_editar(ator, ordem):
                 raise _negar(ator, "editar OS")
-            permitidos = set(CAMPOS_PREVISTO)
+            permitidos = set(CAMPOS_PREVISTO) | set(CAMPOS_EQUIPAMENTO)
             if ator.is_admin:
                 permitidos.add(CAMPO_FILIAL)
             if _pode_editar_realizado(ator, ordem):
@@ -545,8 +637,6 @@ def editar_os(ator_id: int, os_id: int, versao: int, alteracoes: dict) -> OsDeta
                     novos[campo] = _validar_titulo(valor)
                 elif campo in ("descricao", "descricao_realizado"):
                     novos[campo] = _validar_texto_longo(campo, valor)
-                elif campo in ("valor_previsto_centavos", "valor_realizado_centavos"):
-                    novos[campo] = _validar_valor(campo, valor)
                 elif campo == "tempo_previsto_minutos":
                     novos[campo] = _validar_tempo(campo, valor)
                 elif campo in ("inicio_realizado", "fim_realizado"):
@@ -555,6 +645,17 @@ def editar_os(ator_id: int, os_id: int, versao: int, alteracoes: dict) -> OsDeta
                     if not _e_int(valor) or FilialRepo(s).obter(valor) is None:
                         raise ErroValidacao(campo, "Filial não encontrada.")
                     novos[campo] = valor
+            if set(alteracoes) & {*CAMPOS_EQUIPAMENTO, CAMPO_FILIAL}:
+                # Informar um dos dois troca o tipo: escolher da lista apaga o 'Outro' e
+                # vice-versa. Mudar a filial exige que o equipamento seja da nova filial.
+                if "equipamento_id" in alteracoes or "equipamento_outro" in alteracoes:
+                    eq_id = alteracoes.get("equipamento_id")
+                    eq_outro = alteracoes.get("equipamento_outro")
+                else:
+                    eq_id, eq_outro = ordem.equipamento_id, ordem.equipamento_outro
+                filial_final = novos.get(CAMPO_FILIAL, ordem.filial_id)
+                eq_id, eq_outro = _validar_equipamento(s, filial_final, eq_id, eq_outro)
+                novos["equipamento_id"], novos["equipamento_outro"] = eq_id, eq_outro
             if "inicio_realizado" in novos or "fim_realizado" in novos:
                 _validar_periodo(
                     novos.get("inicio_realizado", ordem.inicio_realizado),
@@ -569,6 +670,15 @@ def editar_os(ator_id: int, os_id: int, versao: int, alteracoes: dict) -> OsDeta
                     continue
                 if campo == CAMPO_FILIAL:  # no histórico vai o código da filial, não o id
                     mudancas.append((campo, ordem.filial.codigo, FilialRepo(s).obter(novo).codigo))
+                elif campo == "equipamento_id":  # e o nome do equipamento, não o id
+                    repo = EquipamentoRepo(s)
+                    mudancas.append(
+                        (
+                            campo,
+                            repo.obter(antigo).nome if antigo else None,
+                            repo.obter(novo).nome if novo else None,
+                        )
+                    )
                 else:
                     mudancas.append((campo, _como_texto(antigo), _como_texto(novo)))
                 setattr(ordem, campo, novo)
@@ -645,11 +755,12 @@ def concluir_os(
     ator_id: int,
     os_id: int,
     versao: int,
-    valor_realizado_centavos: int,
+    itens_realizados: list[custos.ItemEntrada],
     inicio_realizado: datetime,
     fim_realizado: datetime,
     descricao_realizado: str,
 ) -> OsDetalhe:
+    """Conclui a OS com os itens realizados (pelo menos 1), numa só transação."""
     ator = carregar_ator(ator_id)
     try:
         with sessao() as s:
@@ -658,10 +769,8 @@ def concluir_os(
                 raise _negar(ator, f"concluir OS em status {ordem.status}")
             _conferir_versao(ordem, versao)
             agora = relogio.agora()
+            itens = custos.validar_itens_de_entrada(s, itens_realizados, "itens_realizados")
             realizado = {
-                "valor_realizado_centavos": _validar_valor(
-                    "valor_realizado_centavos", valor_realizado_centavos
-                ),
                 "inicio_realizado": _validar_instante("inicio_realizado", inicio_realizado),
                 "fim_realizado": _validar_instante("fim_realizado", fim_realizado),
                 "descricao_realizado": _validar_texto_longo(
@@ -690,9 +799,131 @@ def concluir_os(
                     None,
                     _como_texto(valor),
                 )
+            _gravar_itens(s, ordem, ator, custos.FASE_REALIZADO, itens, agora)
             s.flush()
             s.refresh(ordem)
             logger.info("OS concluída: os_id=%s usuario_id=%s.", ordem.id, ator.usuario_id)
+            return _detalhe(ordem, ator)
+    except StaleDataError:
+        raise ErroConflito() from None
+
+
+# --- Itens de custo (chamado por services/custos.py) ----------------------------------
+
+
+def _marcar_alterada(ordem: OrdemServico, agora: datetime) -> None:
+    """Força a gravação da OS (e o incremento de ``versao``) mesmo se ``atualizado_em``
+    não mudar de valor (duas alterações no mesmo instante do relógio)."""
+    ordem.atualizado_em = agora
+    flag_modified(ordem, "atualizado_em")
+
+
+def _alterar_itens(
+    ator_id: int,
+    os_id: int,
+    versao: int,
+    fase: str | None,
+    acao: tuple[str, int | None],
+    dados: dict,
+) -> OsDetalhe:
+    """Inclui, altera ou remove um item, com as regras de visibilidade, permissão,
+    versão, mínimo de itens e histórico. Cada mudança incrementa a versão da OS."""
+    ator = carregar_ator(ator_id)
+    operacao, item_id = acao
+    try:
+        with sessao() as s:
+            ordem = _carregar_visivel(s, ator, os_id)
+            item = None
+            if operacao == "adicionar":
+                fase = custos.validar_fase(fase)
+            else:
+                item = s.get(OsItemCusto, item_id) if _e_int(item_id) else None
+                if item is None or item.os_id != ordem.id:
+                    raise ErroNaoEncontrado()
+                fase = item.fase
+            if not _pode_editar_itens(ator, ordem, fase):
+                raise _negar(ator, f"{operacao} item {fase}")
+            if operacao == "editar" and (
+                not isinstance(dados, dict) or not set(dados) <= set(custos.CAMPOS_DO_ITEM)
+            ):
+                raise _negar(ator, "editar campo de item não permitido")
+            _conferir_versao(ordem, versao)
+            agora = relogio.agora()
+            da_fase = [i for i in ordem.itens if i.fase == fase]
+
+            if operacao == "adicionar":
+                if len(da_fase) >= custos.ITENS_MAX_POR_FASE:
+                    raise ErroValidacao(
+                        "itens", f"No máximo {custos.ITENS_MAX_POR_FASE} itens por fase."
+                    )
+                entrada = custos.ItemEntrada(**dados)
+                validado = custos.validar_itens_de_entrada(s, [entrada], "item")
+                _marcar_alterada(ordem, agora)
+                _gravar_itens(s, ordem, ator, fase, validado, agora)
+
+            elif operacao == "editar":
+                novos = {}
+                for campo, valor in dados.items():
+                    if campo == "categoria_id":
+                        novos[campo] = custos.categoria_ativa(s, valor).id
+                    elif campo == "descricao":
+                        novos[campo] = custos.validar_descricao(valor)
+                    elif campo == "quantidade":
+                        novos[campo] = custos.validar_quantidade(valor)
+                    else:
+                        novos[campo] = custos.validar_valor_unitario(valor)
+                mudancas = [
+                    (c, getattr(item, c), v) for c, v in novos.items() if getattr(item, c) != v
+                ]
+                if not mudancas:
+                    return _detalhe(ordem, ator)
+                nomes = {c.id: c.nome for c in CategoriaCustoRepo(s).listar(so_ativas=False)}
+                _marcar_alterada(ordem, agora)
+                for campo, _antigo, novo in mudancas:
+                    setattr(item, campo, novo)
+                item.atualizado_em = agora
+                s.flush()
+                for campo, antigo, novo in mudancas:
+                    registrar_evento(
+                        s,
+                        ordem.id,
+                        ator.usuario_id,
+                        custos.TIPO_ITEM_ALTERADO,
+                        agora,
+                        f"item {item.id} - {custos.CAMPOS_DO_ITEM[campo]}",
+                        custos.texto_do_campo(campo, antigo, nomes),
+                        custos.texto_do_campo(campo, novo, nomes),
+                    )
+
+            else:  # remover
+                if len(da_fase) <= 1:
+                    raise ErroValidacao(
+                        "itens", "A Ordem de Serviço precisa de pelo menos um item nesta fase."
+                    )
+                texto = custos.texto_do_item(
+                    item.categoria.nome,
+                    item.descricao,
+                    item.quantidade,
+                    item.valor_unitario_centavos,
+                )
+                _marcar_alterada(ordem, agora)
+                registrar_evento(
+                    s,
+                    ordem.id,
+                    ator.usuario_id,
+                    custos.TIPO_ITEM_REMOVIDO,
+                    agora,
+                    f"item {item.id}",
+                    texto,
+                    None,
+                )
+                s.delete(item)
+
+            s.flush()
+            s.refresh(ordem)
+            logger.info(
+                "Item de custo (%s): os_id=%s usuario_id=%s.", operacao, ordem.id, ator.usuario_id
+            )
             return _detalhe(ordem, ator)
     except StaleDataError:
         raise ErroConflito() from None

@@ -11,8 +11,14 @@ import sys
 
 from osapp.config import ConfigError
 from osapp.logs import configurar_logging
-from osapp.services import administracao
-from osapp.services.erros import ErroConflito, ErroDominio, ErroNaoEncontrado, ErroValidacao
+from osapp.services import administracao, equipamentos
+from osapp.services.erros import (
+    ErroConflito,
+    ErroDominio,
+    ErroNaoEncontrado,
+    ErroPermissao,
+    ErroValidacao,
+)
 
 
 def _perguntar(valor: str | None, rotulo: str) -> str:
@@ -72,6 +78,16 @@ def _consolidar_1007(args) -> str:
     return "\n".join(linhas)
 
 
+def _criar_equipamento(args) -> str:
+    e = equipamentos.criar_equipamento(args.responsavel, args.filial, args.nome, args.codigo_sap)
+    return f"Equipamento {e.id} criado: {e.nome}."
+
+
+def _desativar_equipamento(args) -> str:
+    e = equipamentos.desativar_equipamento(args.responsavel, args.id)
+    return f"Equipamento {e.id} desativado: {e.nome}."
+
+
 def _redefinir_senha(args) -> str:
     login = _perguntar(args.login, "Login")
     administracao.redefinir_senha(login, _ler_senha())
@@ -114,6 +130,18 @@ def criar_parser() -> argparse.ArgumentParser:
     p.add_argument("--responsavel", help="Login do administrador que aplica")
     p.set_defaults(func=_consolidar_1007)
 
+    p = sub.add_parser("criar-equipamento", help="Cadastra um equipamento (administrador)")
+    p.add_argument("--responsavel", required=True, help="Login do administrador")
+    p.add_argument("--filial", required=True, help="Código da filial")
+    p.add_argument("--nome", required=True)
+    p.add_argument("--codigo-sap", dest="codigo_sap")
+    p.set_defaults(func=_criar_equipamento)
+
+    p = sub.add_parser("desativar-equipamento", help="Desativa um equipamento (administrador)")
+    p.add_argument("--responsavel", required=True, help="Login do administrador")
+    p.add_argument("--id", required=True, type=int)
+    p.set_defaults(func=_desativar_equipamento)
+
     p = sub.add_parser("redefinir-senha", help="Redefine a senha e remove o bloqueio")
     p.add_argument("--login")
     p.set_defaults(func=_redefinir_senha)
@@ -140,7 +168,10 @@ def main(argv: list[str] | None = None) -> int:
         print("Erro: já existe um registro com esse código ou login.", file=sys.stderr)
         return 1
     except ErroNaoEncontrado:
-        print("Erro: usuário não encontrado.", file=sys.stderr)
+        print("Erro: registro não encontrado.", file=sys.stderr)
+        return 1
+    except ErroPermissao:
+        print("Erro: é preciso um administrador ativo (--responsavel).", file=sys.stderr)
         return 1
     except ErroDominio:
         print("Erro: não foi possível concluir a operação.", file=sys.stderr)

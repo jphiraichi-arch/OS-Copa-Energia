@@ -54,7 +54,7 @@ def test_padroes_do_usuario(banco):
         assert (u.is_admin, u.ativo, u.tentativas_falhas, u.bloqueado_ate) == (False, True, 0, None)
 
 
-@pytest.mark.parametrize("extras", [{"valor_previsto_centavos": -1}, {"tempo_previsto_minutos": 0}])
+@pytest.mark.parametrize("extras", [{"tempo_previsto_minutos": 0}, {"tempo_previsto_minutos": -1}])
 def test_check_constraints(banco, extras):
     with pytest.raises(IntegrityError), sessao() as s:
         f = nova_filial(s)

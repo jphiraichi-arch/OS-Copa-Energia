@@ -97,12 +97,9 @@ def test_realizado_de_cada_campo(campo, novo, esperado):
 
 
 def test_todo_campo_editavel_tem_rotulo_e_formatador():
-    assert set(historico.CAMPOS) == {
-        "status",
-        *CAMPOS_PREVISTO,
-        *CAMPOS_REALIZADO,
-        CAMPO_FILIAL,
-    }
+    # Os campos antigos de preço único continuam com rótulo: aparecem no histórico de OS
+    # anteriores ao prompt 13.
+    assert {"status", *CAMPOS_PREVISTO, *CAMPOS_REALIZADO, CAMPO_FILIAL} <= set(historico.CAMPOS)
 
 
 def test_texto_longo_e_cortado_e_quebras_de_linha_viram_espaco():

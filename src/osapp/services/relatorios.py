@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 from osapp.config import carregar_config
 from osapp.db import sessao
 from osapp.repositories import FilialRepo, OrdemServicoRepo
+from osapp.services import custos
 from osapp.services import status as _status
 from osapp.services.auth import Ator, carregar_ator
 from osapp.services.erros import ErroPermissao, ErroValidacao
@@ -181,9 +182,22 @@ def gerar_relatorio(ator_id: int, ano: int, mes: int, filial_id: int | None = No
         )
 
 
+def _totais(ordem) -> tuple[int, int]:
+    """(previsto, realizado) da OS, somados dos itens de custo."""
+    previsto = realizado = 0
+    for item in ordem.itens:
+        total = custos.total_da_linha(item.quantidade, item.valor_unitario_centavos)
+        if item.fase == custos.FASE_PREVISTO:
+            previsto += total
+        else:
+            realizado += total
+    return previsto, realizado
+
+
 def _completo(concluidas, consolidado: bool) -> RelatorioCompleto:
-    previsto = sum(o.valor_previsto_centavos for o in concluidas)
-    realizado = sum(o.valor_realizado_centavos or 0 for o in concluidas)
+    totais = {o.id: _totais(o) for o in concluidas}
+    previsto = sum(p for p, _ in totais.values())
+    realizado = sum(r for _, r in totais.values())
     tempo_previsto = sum(o.tempo_previsto_minutos for o in concluidas)
     tempo_realizado = sum(
         _minutos(o.inicio_realizado, o.fim_realizado)
@@ -197,9 +211,9 @@ def _completo(concluidas, consolidado: bool) -> RelatorioCompleto:
                 numero=o.numero,
                 titulo=o.titulo,
                 filial_codigo=o.filial.codigo,
-                valor_previsto_centavos=o.valor_previsto_centavos,
-                valor_realizado_centavos=o.valor_realizado_centavos or 0,
-                diferenca_centavos=(o.valor_realizado_centavos or 0) - o.valor_previsto_centavos,
+                valor_previsto_centavos=totais[o.id][0],
+                valor_realizado_centavos=totais[o.id][1],
+                diferenca_centavos=totais[o.id][1] - totais[o.id][0],
             )
             for o in concluidas
         ),
@@ -211,19 +225,17 @@ def _completo(concluidas, consolidado: bool) -> RelatorioCompleto:
         pessoa = o.executor or o.concluido_por
         linha = por_executor[pessoa.nome if pessoa else "-"]
         linha[0] += 1
-        linha[1] += o.valor_realizado_centavos or 0
+        linha[1] += totais[o.id][1]
         if o.inicio_realizado is not None and o.fim_realizado is not None:
             linha[2] += _minutos(o.inicio_realizado, o.fim_realizado)
         filial = por_filial[o.filial.codigo]
         filial[0] += 1
-        filial[1] += o.valor_realizado_centavos or 0
+        filial[1] += totais[o.id][1]
     return RelatorioCompleto(
         valor_previsto_centavos=previsto,
         valor_realizado_centavos=realizado,
         diferenca_valor_centavos=realizado - previsto,
-        diferenca_valor_percentual=round((realizado - previsto) * 100 / previsto, 2)
-        if previsto
-        else None,
+        diferenca_valor_percentual=custos.percentual(realizado - previsto, previsto),
         tempo_previsto_minutos=tempo_previsto,
         tempo_realizado_minutos=tempo_realizado,
         diferenca_tempo_minutos=tempo_realizado - tempo_previsto,

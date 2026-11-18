@@ -14,6 +14,7 @@ from osapp.services.erros import (
     ErroPermissao,
     ErroValidacao,
 )
+from tests.fabricas import args_de_criacao
 
 T0 = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
 
@@ -26,7 +27,7 @@ def criar(ator_id, **extras):
         "tempo_previsto_minutos": 90,
     }
     dados.update(extras)
-    return ordens.criar_os(ator_id, **dados)
+    return ordens.criar_os(ator_id, **args_de_criacao(dados))
 
 
 def contar(modelo) -> int:
@@ -45,13 +46,15 @@ def test_usuario_comum_cria_os_na_propria_filial(cenario, monkeypatch):
     assert d.status == status.ABERTA
     assert re.fullmatch(r"F001-2026-\d{6}", d.numero) and d.numero == "F001-2026-000001"
     assert (d.titulo, d.descricao) == ("Troca de rolamento", "Esteira com ruído.")
-    assert (d.valor_previsto_centavos, d.tempo_previsto_minutos) == (15000, 90)
+    assert (d.resumo_custos.total_previsto_centavos, d.tempo_previsto_minutos) == (15000, 90)
+    assert d.equipamento == "Equipamento de teste"
     assert (d.criado_por_id, d.criado_por_nome) == (cenario["marina"], "Marina Teste")
     assert d.criado_em == T0 and d.versao == 1
-    assert d.executor_id is None and d.valor_realizado_centavos is None
+    assert d.executor_id is None and d.resumo_custos.total_realizado_centavos == 0
 
     eventos = ordens.listar_eventos(cenario["marina"], d.id)
-    assert len(eventos) == 1
+    assert [x.tipo for x in eventos] == ["CRIACAO", "ITEM_ADICIONADO"]
+    assert eventos[1].valor_novo == "Outros | Valor total | 1 x R$ 150,00"
     e = eventos[0]
     assert (e.tipo, e.campo, e.nome_usuario, e.data_hora) == ("CRIACAO", None, "Marina Teste", T0)
     assert (e.valor_antigo, e.valor_novo) == (None, None)
@@ -113,7 +116,9 @@ def test_numero_usa_o_ano_no_fuso_da_aplicacao(cenario, monkeypatch):
 def test_validacao_recusa(cenario, campo, valor):
     with pytest.raises(ErroValidacao) as info:
         criar(cenario["admin"], **{campo: valor})
-    assert info.value.campo == campo and info.value.mensagem
+    # o preço único virou item de custo: o valor é validado como valor unitário do item
+    esperado = "valor_unitario_centavos" if campo == "valor_previsto_centavos" else campo
+    assert info.value.campo == esperado and info.value.mensagem
     assert contar(OrdemServico) == 0 and contar(OsEvento) == 0
 
 
@@ -131,7 +136,11 @@ def test_validacao_recusa(cenario, campo, valor):
     ],
 )
 def test_validacao_aceita_os_limites(cenario, campo, valor):
-    assert getattr(criar(cenario["marina"], **{campo: valor}), campo) == valor
+    d = criar(cenario["marina"], **{campo: valor})
+    if campo == "valor_previsto_centavos":
+        assert d.resumo_custos.total_previsto_centavos == valor
+    else:
+        assert getattr(d, campo) == valor
 
 
 def test_criacoes_em_sequencia_recebem_numeros_diferentes(cenario, monkeypatch):
@@ -174,7 +183,7 @@ def test_colega_da_mesma_filial_le_a_os(cenario):
     # Tudo igual, exceto as ações, que dependem de quem olha (prompt 5).
     assert replace(visto, acoes=d.acoes) == d
     assert d.acoes.pode_editar and not visto.acoes.pode_editar
-    assert len(ordens.listar_eventos(cenario["joao"], d.id)) == 1
+    assert len(ordens.listar_eventos(cenario["joao"], d.id)) == 2  # criação + item
 
 
 @pytest.mark.parametrize("os_id", [None, "1", 1.0, True])
@@ -187,7 +196,7 @@ def test_obter_com_id_de_tipo_errado(cenario, os_id):
 def test_admin_le_qualquer_os_e_lista_todas(cenario):
     a, b = criar(cenario["marina"]), criar(cenario["carlos"])
     assert ordens.obter_os(cenario["admin"], b.id).filial_codigo == "F002"
-    assert len(ordens.listar_eventos(cenario["admin"], b.id)) == 1
+    assert len(ordens.listar_eventos(cenario["admin"], b.id)) == 2  # criação + item
     assert {i.id for i in ordens.listar_os(cenario["admin"]).itens} == {a.id, b.id}
     so_f2 = ordens.listar_os(cenario["admin"], filial_id=cenario["f2"]).itens
     assert [i.id for i in so_f2] == [b.id]
@@ -232,7 +241,7 @@ def test_resumo_filtros_e_ordem(cenario, monkeypatch):
         status.ABERTA,
         "F001",
     )
-    assert (r.valor_previsto_centavos, r.criado_em) == (999, T0 + timedelta(hours=1))
+    assert (r.total_previsto_centavos, r.criado_em) == (999, T0 + timedelta(hours=1))
     assert ordens.listar_os(cenario["marina"], status=status.CONCLUIDA).itens == ()
     assert len(ordens.listar_os(cenario["marina"], busca="  segunda  ").itens) == 1
 
