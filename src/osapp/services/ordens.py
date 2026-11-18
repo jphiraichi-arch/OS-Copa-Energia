@@ -19,7 +19,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from osapp.config import carregar_config
 from osapp.db import sessao
 from osapp.models import OrdemServico, OsEvento
-from osapp.repositories import FilialRepo, OrdemServicoRepo, OsEventoRepo
+from osapp.repositories import FilialRepo, OrdemServicoRepo, OsEventoRepo, OsSequenciaRepo
 from osapp.services import relogio
 from osapp.services import status as _status
 from osapp.services.auth import Ator, carregar_ator
@@ -40,7 +40,6 @@ VALOR_MAX_CENTAVOS = 9_999_999_999
 TEMPO_MAX_MINUTOS = 59_999
 BUSCA_MAX = 100
 ITENS_POR_PAGINA = 50
-REPETICOES_DE_NUMERO = 3
 
 TIPO_CRIACAO = "CRIACAO"
 TIPO_EDICAO = "EDICAO"
@@ -332,6 +331,11 @@ def registrar_evento(
     )
 
 
+def formatar_numero(codigo_filial: str, ano: int, sequencia: int) -> str:
+    """Número da OS: '{código da filial}-{ano}-{sequência de 6 dígitos}', ex. 1007-2026-000001."""
+    return f"{codigo_filial}-{ano}-{sequencia:06d}"
+
+
 def _ano_local(instante: datetime) -> int:
     """Ano do número da OS, no fuso da aplicação (OS_TZ)."""
     return instante.astimezone(ZoneInfo(carregar_config().tz)).year
@@ -360,35 +364,36 @@ def criar_os(
     valor = _validar_valor("valor_previsto_centavos", valor_previsto_centavos)
     tempo = _validar_tempo("tempo_previsto_minutos", tempo_previsto_minutos)
 
-    for _tentativa in range(1 + REPETICOES_DE_NUMERO):
-        try:
-            with sessao() as s:
-                if FilialRepo(s).obter(filial_destino) is None:
-                    raise ErroValidacao("filial_id", "Filial não encontrada.")
-                agora = relogio.agora()
-                repo = OrdemServicoRepo(s)
-                ordem = repo.adicionar(
-                    OrdemServico(
-                        numero=repo.proximo_numero(_ano_local(agora)),
-                        filial_id=filial_destino,
-                        criado_por_id=ator.usuario_id,
-                        titulo=titulo,
-                        descricao=descricao,
-                        status=_status.STATUS_INICIAL,
-                        valor_previsto_centavos=valor,
-                        tempo_previsto_minutos=tempo,
-                        criado_em=agora,
-                        atualizado_em=agora,
-                    )
+    try:
+        with sessao() as s:
+            filial = FilialRepo(s).obter(filial_destino)
+            if filial is None:
+                raise ErroValidacao("filial_id", "Filial não encontrada.")
+            agora = relogio.agora()
+            ano = _ano_local(agora)
+            sequencia = OsSequenciaRepo(s).reservar_proximo(filial.id, ano)
+            ordem = OrdemServicoRepo(s).adicionar(
+                OrdemServico(
+                    numero=formatar_numero(filial.codigo, ano, sequencia),
+                    filial_id=filial.id,
+                    criado_por_id=ator.usuario_id,
+                    titulo=titulo,
+                    descricao=descricao,
+                    status=_status.STATUS_INICIAL,
+                    valor_previsto_centavos=valor,
+                    tempo_previsto_minutos=tempo,
+                    criado_em=agora,
+                    atualizado_em=agora,
                 )
-                registrar_evento(s, ordem.id, ator.usuario_id, TIPO_CRIACAO, agora)
-                logger.info("OS criada: os_id=%s usuario_id=%s.", ordem.id, ator.usuario_id)
-                return _detalhe(ordem, ator)
-        except IntegrityError:
-            # Outro processo usou o mesmo número; a transação foi desfeita. Tenta de novo.
-            logger.info("Conflito ao numerar a OS; nova tentativa.")
-    logger.error("Não foi possível numerar a OS após %s tentativas.", 1 + REPETICOES_DE_NUMERO)
-    raise ErroConflito()
+            )
+            registrar_evento(s, ordem.id, ator.usuario_id, TIPO_CRIACAO, agora)
+            logger.info("OS criada: os_id=%s usuario_id=%s.", ordem.id, ator.usuario_id)
+            return _detalhe(ordem, ator)
+    except IntegrityError:
+        # Rede de segurança: a restrição de unicidade de "numero" recusou. Com o contador
+        # travado isso não deveria ocorrer; a transação inteira foi desfeita.
+        logger.exception("Número de OS repetido apesar do contador.")
+        raise ErroConflito() from None
 
 
 def obter_os(ator_id: int, os_id: int) -> OsDetalhe:

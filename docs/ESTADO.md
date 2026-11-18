@@ -564,3 +564,46 @@ implanta. Este commit foi deixado só no repositório local, sem push.
 
 - Continua sendo baixado `rive_native.wasm` de `cdn.jsdelivr.net` (animações Rive, não usadas
   pelo app). Bloqueado, nada mudou nas telas verificadas.
+
+## Prompt 12 — modelo de dados: custos, equipamentos, numeração, SAP (18/11/2026)
+
+### Tabelas e colunas (migração `0004`, com downgrade)
+
+- `categorias_custo` (codigo único, nome, ordem, ativo) com MAO_DE_OBRA, PECAS_MATERIAIS,
+  SERVICOS_TERCEIROS e OUTROS inseridas pela migração.
+- `os_itens_custo` (os_id com ON DELETE RESTRICT, fase PREVISTO/REALIZADO, categoria,
+  descricao, quantidade, valor_unitario_centavos, criado_em, atualizado_em); restrições
+  quantidade > 0, valor >= 0, fase válida; índice (os_id, fase). Nenhuma coluna de total.
+- `quantidade` usa o tipo `Quantidade` (`models/tipos.py`): NUMERIC(12,2) no PostgreSQL,
+  inteiro de centésimos no SQLite; sempre `decimal.Decimal`, recusa float e mais de 2 casas.
+- `equipamentos` (filial, nome, codigo_sap, ativo).
+- `ordens_servico`: `numero` até 30, `numero_sap` (indexado, não único), `equipamento_id`,
+  `equipamento_outro`. As colunas de preço único continuam (os serviços ainda as usam).
+- `os_sequencias` (filial_id, ano) -> ultimo_numero.
+
+### Numeração
+
+- `{código da filial}-{ano}-{sequência de 6 dígitos}`, ex. `1007-2026-000001`; uma sequência
+  por filial e ano (no fuso `OS_TZ`).
+- `OsSequenciaRepo.reservar_proximo`: INSERT ... ON CONFLICT DO NOTHING para criar a linha,
+  depois SELECT ... FOR UPDATE e incremento, na mesma transação da OS. Falha = número não
+  consumido. A restrição única de `numero` continua como rede de segurança (vira
+  `ErroConflito`). OS antigas mantêm o número.
+- PostgreSQL: 20 criações simultâneas recebem 20 números distintos e consecutivos (teste).
+  SQLite: o teste de concorrência é pulado (o SQLite trava o arquivo inteiro e responde
+  "database is locked"; não há FOR UPDATE); a lógica sequencial é testada nos dois.
+
+### Seed e consolidação
+
+- Seed: filial 1007 Jardinópolis, categorias, 3 equipamentos de exemplo e `admin`. Usuários
+  fictícios só com `OS_SEED_EXEMPLOS=1`.
+- `python -m osapp.cli consolidar-1007` lista (sem alterar) os usuários fictícios a
+  desativar e os usuários e OS de outras filiais a mover para 1007; `--aplicar
+  --responsavel LOGIN` aplica numa transação, com evento EDICAO de filial em cada OS movida.
+  Nada é apagado; as filiais antigas ficam vazias (não há coluna "ativo" em filiais).
+
+### Lacunas
+
+- Itens de custo e equipamentos ainda não têm serviços nem telas (prompts 13 e 14).
+- O perfil gerente (pedido em 17/11) continua; o prompt 12 citava só usuário comum e admin.
+- `OrdemServicoRepo.proximo_numero` (numeração antiga) ficou sem uso.

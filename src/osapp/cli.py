@@ -49,6 +49,29 @@ def _definir_perfil(args) -> str:
     return f"Perfil alterado para {args.perfil}."
 
 
+def _consolidar_1007(args) -> str:
+    if args.aplicar:
+        if not args.responsavel:
+            raise ErroValidacao(
+                "responsavel", "Informe --responsavel com o login de um administrador."
+            )
+        plano = administracao.aplicar_consolidacao(args.responsavel)
+        titulo = "APLICADO"
+    else:
+        plano = administracao.planejar_consolidacao()
+        titulo = "SIMULAÇÃO (nada foi alterado; para aplicar use --aplicar --responsavel LOGIN)"
+    linhas = [titulo, f"Filial de destino: {plano.filial_destino}", "Filiais de origem:"]
+    linhas += [f"  {f}" for f in plano.filiais_de_origem] or ["  (nenhuma)"]
+    for rotulo, itens in (
+        ("Usuários a desativar", plano.desativar_usuarios),
+        ("Usuários a mover para 1007", plano.mover_usuarios),
+        ("OS a mover para 1007", plano.mover_ordens),
+    ):
+        linhas.append(f"{rotulo}: {len(itens)}")
+        linhas += [f"  {item}" for item in itens]
+    return "\n".join(linhas)
+
+
 def _redefinir_senha(args) -> str:
     login = _perguntar(args.login, "Login")
     administracao.redefinir_senha(login, _ler_senha())
@@ -82,6 +105,14 @@ def criar_parser() -> argparse.ArgumentParser:
     p.add_argument("--login")
     p.add_argument("--perfil", required=True, choices=administracao.PERFIS)
     p.set_defaults(func=_definir_perfil)
+
+    p = sub.add_parser(
+        "consolidar-1007",
+        help="Lista (ou aplica) a passagem de usuários e OS para a filial 1007; nada é apagado",
+    )
+    p.add_argument("--aplicar", action="store_true", help="Aplica de fato (padrão: só lista)")
+    p.add_argument("--responsavel", help="Login do administrador que aplica")
+    p.set_defaults(func=_consolidar_1007)
 
     p = sub.add_parser("redefinir-senha", help="Redefine a senha e remove o bloqueio")
     p.add_argument("--login")

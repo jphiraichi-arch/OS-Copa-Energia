@@ -266,19 +266,52 @@ def test_duplicados_geram_conflito(usuarios):
 
 
 def test_seed_duas_vezes_nao_duplica(banco):
-    assert seed.executar(SENHA) == {"filiais": 2, "usuarios": 5}
-    assert seed.executar(SENHA) == {"filiais": 0, "usuarios": 0}
+    from osapp.models import CategoriaCusto, Equipamento
+
+    # As categorias já vêm da migração 0004; o seed só completa o que faltar.
+    assert seed.executar(SENHA) == {"filiais": 1, "categorias": 0, "equipamentos": 3, "usuarios": 1}
+    assert seed.executar(SENHA) == {"filiais": 0, "categorias": 0, "equipamentos": 0, "usuarios": 0}
     with sessao() as s:
-        assert sorted(f.codigo for f in s.query(Filial)) == ["F001", "F002"]
+        assert [(f.codigo, f.nome) for f in s.query(Filial)] == [("1007", "Jardinópolis")]
+        assert [c.codigo for c in s.query(CategoriaCusto).order_by(CategoriaCusto.ordem)] == [
+            "MAO_DE_OBRA",
+            "PECAS_MATERIAIS",
+            "SERVICOS_TERCEIROS",
+            "OUTROS",
+        ]
+        assert sorted(e.nome for e in s.query(Equipamento)) == [
+            "Equipamento exemplo 1",
+            "Equipamento exemplo 2",
+            "Equipamento exemplo 3",
+        ]
+        usuarios = {u.login: (u.filial.codigo, u.is_admin) for u in s.query(Usuario)}
+    assert usuarios == {"admin": ("1007", True)}  # sem exemplos por padrão
+
+
+def test_seed_com_exemplos(banco):
+    assert seed.executar(SENHA, exemplos=True)["usuarios"] == 4
+    assert seed.executar(SENHA, exemplos=True)["usuarios"] == 0
+    with sessao() as s:
         usuarios = {u.login: (u.filial.codigo, u.is_admin, u.is_gerente) for u in s.query(Usuario)}
     assert usuarios == {
-        "admin": ("F001", True, False),
-        "gerente.norte": ("F001", False, True),
-        "marina.teste": ("F001", False, False),
-        "joao.ficticio": ("F001", False, False),
-        "carlos.exemplo": ("F002", False, False),
+        "admin": ("1007", True, False),
+        "gerente.norte": ("1007", False, True),
+        "marina.teste": ("1007", False, False),
+        "joao.ficticio": ("1007", False, False),
     }
     assert autenticar("joao.ficticio", SENHA).nome == "João Fictício"
+
+
+def test_seed_le_os_seed_exemplos(banco, monkeypatch):
+    monkeypatch.setenv("OS_SEED_SENHA", SENHA)
+    monkeypatch.delenv("OS_SEED_EXEMPLOS", raising=False)
+    assert seed.main() == 0
+    with sessao() as s:
+        assert [u.login for u in s.query(Usuario)] == ["admin"]
+    monkeypatch.setenv("OS_SEED_EXEMPLOS", "1")
+    assert seed.main() == 0
+    with sessao() as s:
+        assert s.query(Usuario).count() == 4
 
 
 def test_seed_exige_senha_e_nao_a_imprime(banco, monkeypatch, capsys):
@@ -368,7 +401,7 @@ def test_cli_nao_aceita_senha_por_argumento():
 
 
 def test_perfil_gerente_e_definir_perfil(banco, monkeypatch, capsys):
-    seed.executar(SENHA)
+    seed.executar(SENHA, exemplos=True)
     gerente = autenticar("gerente.norte", SENHA)
     assert (gerente.is_gerente, gerente.is_admin) == (True, False)
     assert autenticar("marina.teste", SENHA).is_gerente is False

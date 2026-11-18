@@ -7,11 +7,9 @@ from sqlalchemy import func, select
 
 from osapp.db import sessao
 from osapp.models import OrdemServico, OsEvento
-from osapp.repositories import OrdemServicoRepo
 from osapp.services import ordens, relogio, status
 from osapp.services.erros import (
     ErroAutenticacao,
-    ErroConflito,
     ErroNaoEncontrado,
     ErroPermissao,
     ErroValidacao,
@@ -45,7 +43,7 @@ def test_usuario_comum_cria_os_na_propria_filial(cenario, monkeypatch):
     assert d.filial_id == cenario["f1"] and d.filial_codigo == "F001"
     assert d.filial_nome == "Filial Modelo Norte"
     assert d.status == status.ABERTA
-    assert re.fullmatch(r"OS-2026-\d{6}", d.numero) and d.numero == "OS-2026-000001"
+    assert re.fullmatch(r"F001-2026-\d{6}", d.numero) and d.numero == "F001-2026-000001"
     assert (d.titulo, d.descricao) == ("Troca de rolamento", "Esteira com ruído.")
     assert (d.valor_previsto_centavos, d.tempo_previsto_minutos) == (15000, 90)
     assert (d.criado_por_id, d.criado_por_nome) == (cenario["marina"], "Marina Teste")
@@ -82,7 +80,7 @@ def test_admin_cria_em_qualquer_filial(cenario):
 def test_numero_usa_o_ano_no_fuso_da_aplicacao(cenario, monkeypatch):
     monkeypatch.setenv("OS_TZ", "America/Sao_Paulo")
     monkeypatch.setattr(relogio, "agora", lambda: datetime(2027, 1, 1, 1, 0, tzinfo=UTC))
-    assert criar(cenario["marina"]).numero == "OS-2026-000001"  # ainda 31/12/2026 às 22h
+    assert criar(cenario["marina"]).numero == "F001-2026-000001"  # ainda 31/12/2026 às 22h
 
 
 @pytest.mark.parametrize(
@@ -138,36 +136,12 @@ def test_validacao_aceita_os_limites(cenario, campo, valor):
 
 def test_criacoes_em_sequencia_recebem_numeros_diferentes(cenario, monkeypatch):
     monkeypatch.setattr(relogio, "agora", lambda: T0)
-    numeros = [criar(cenario["marina"]).numero, criar(cenario["carlos"]).numero]
-    assert numeros == ["OS-2026-000001", "OS-2026-000002"]  # sequência única, não por filial
+    numeros = [criar(cenario["marina"]).numero, criar(cenario["marina"]).numero]
+    assert numeros == ["F001-2026-000001", "F001-2026-000002"]
+    assert criar(cenario["carlos"]).numero == "F002-2026-000001"  # uma sequência por filial
 
 
-def test_conflito_de_numero_e_repetido(cenario, monkeypatch):
-    monkeypatch.setattr(relogio, "agora", lambda: T0)
-    primeira = criar(cenario["marina"])
-    original = OrdemServicoRepo.proximo_numero
-    chamadas = []
-
-    def numero_repetido_duas_vezes(self, ano):
-        chamadas.append(ano)
-        return primeira.numero if len(chamadas) <= 2 else original(self, ano)
-
-    monkeypatch.setattr(OrdemServicoRepo, "proximo_numero", numero_repetido_duas_vezes)
-    segunda = criar(cenario["marina"])
-    assert len(chamadas) == 3 and segunda.numero == "OS-2026-000002"
-    assert contar(OrdemServico) == 2 and contar(OsEvento) == 2
-
-
-def test_conflito_persistente_vira_erro_conflito(cenario, monkeypatch):
-    primeira = criar(cenario["marina"])
-    chamadas = []
-    monkeypatch.setattr(
-        OrdemServicoRepo, "proximo_numero", lambda self, ano: chamadas.append(1) or primeira.numero
-    )
-    with pytest.raises(ErroConflito):
-        criar(cenario["marina"])
-    assert len(chamadas) == 4  # 1 tentativa + 3 repetições
-    assert contar(OrdemServico) == 1 and contar(OsEvento) == 1
+# Numeração detalhada (contador, ano local, concorrência): tests/test_numeracao.py.
 
 
 def test_se_o_evento_falha_a_os_nao_e_criada(cenario, monkeypatch):

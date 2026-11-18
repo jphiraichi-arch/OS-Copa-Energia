@@ -25,7 +25,9 @@ class OrdemServico(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    numero: Mapped[str] = mapped_column(String(20), unique=True)
+    numero: Mapped[str] = mapped_column(String(30), unique=True)
+    # Integração SAP futura: indexado, ainda não único.
+    numero_sap: Mapped[str | None] = mapped_column(String(40), index=True)
     filial_id: Mapped[int] = mapped_column(ForeignKey("filiais.id"))
     criado_por_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id"))
     titulo: Mapped[str] = mapped_column(String(120))
@@ -41,6 +43,9 @@ class OrdemServico(Base):
     fim_realizado: Mapped[datetime | None] = mapped_column(DataHoraUTC())
     descricao_realizado: Mapped[str | None] = mapped_column(Text)
     executor_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
+    # Equipamento: um cadastrado da filial, ou "Outro" com texto livre.
+    equipamento_id: Mapped[int | None] = mapped_column(ForeignKey("equipamentos.id"))
+    equipamento_outro: Mapped[str | None] = mapped_column(String(120))
     iniciado_em: Mapped[datetime | None] = mapped_column(DataHoraUTC())
     concluido_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
     concluido_em: Mapped[datetime | None] = mapped_column(DataHoraUTC())

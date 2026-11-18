@@ -143,14 +143,16 @@ def test_instancias_simultaneas_migram_e_semeiam_uma_de_cada_vez(banco_vazio):
     ]
     saidas = [(p.wait(timeout=120), p.stdout.read()) for p in processos]
     assert [codigo for codigo, _ in saidas] == [0, 0, 0], saidas
-    assert sum("5 usuário(s) criados" in texto for _, texto in saidas) == 1
+    # só uma instância cria os dados; as outras esperam e encontram tudo pronto
+    assert sum("1 filial(is)" in texto for _, texto in saidas) == 1
+    assert sum("0 filial(is)" in texto for _, texto in saidas) == 2
     db.reiniciar()
     from sqlalchemy import func
 
     from osapp.models import Usuario
 
     with db.sessao() as s:
-        assert s.scalar(select(func.count()).select_from(Usuario)) == 5
+        assert s.scalar(select(func.count()).select_from(Usuario)) == 1  # só o admin
 
 
 def test_trava_de_inicializacao_nao_faz_nada_no_sqlite(tmp_path):

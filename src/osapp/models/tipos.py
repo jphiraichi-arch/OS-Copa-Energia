@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, Integer, Numeric
 from sqlalchemy.types import TypeDecorator
 
 
@@ -33,3 +34,41 @@ class DataHoraUTC(TypeDecorator):
         if value.tzinfo is None:
             return value.replace(tzinfo=UTC)
         return value.astimezone(UTC)
+
+
+CENTESIMOS = Decimal("0.01")
+
+
+class Quantidade(TypeDecorator):
+    """Decimal exato com 2 casas. Nunca float.
+
+    PostgreSQL: NUMERIC(12,2). SQLite (sem decimal exato): inteiro de centésimos.
+    Nos dois bancos o valor lido é um ``decimal.Decimal`` igual ao gravado.
+    """
+
+    impl = Numeric(12, 2)
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "sqlite":
+            return dialect.type_descriptor(Integer())
+        return dialect.type_descriptor(Numeric(12, 2, asdecimal=True))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if isinstance(value, bool) or not isinstance(value, Decimal | int):
+            raise TypeError("Quantidade exige Decimal ou int (nunca float).")
+        valor = Decimal(value)
+        if valor != valor.quantize(CENTESIMOS):
+            raise ValueError("Quantidade com mais de 2 casas decimais.")
+        if dialect.name == "sqlite":
+            return int(valor * 100)
+        return valor.quantize(CENTESIMOS)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        if dialect.name == "sqlite":
+            return (Decimal(value) / 100).quantize(CENTESIMOS)
+        return Decimal(value).quantize(CENTESIMOS)
