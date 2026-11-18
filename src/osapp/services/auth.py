@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from osapp.db import sessao
 from osapp.models import Usuario
 from osapp.models.tentativa_login import TIPO_IP, TIPO_LOGIN
-from osapp.repositories import TentativaLoginRepo, UsuarioRepo
+from osapp.repositories import UsuarioRepo
 from osapp.services import protecao_login, relogio, senhas
 from osapp.services.erros import ErroAutenticacao, ErroMuitasTentativas
 
@@ -72,10 +72,9 @@ def autenticar(login: str, senha: str, ip: str | None = None) -> Ator:
     # só é levantado depois de a sessão fechar com commit.
     with sessao() as s:
         agora = relogio.agora()
-        repo = TentativaLoginRepo(s)
         # Sempre na mesma ordem (login, depois IP), para duas transações não se travarem.
-        por_login = repo.travar(TIPO_LOGIN, chave_login, agora)
-        por_ip = repo.travar(TIPO_IP, chave_ip, agora)
+        por_login = protecao_login.travar_contador(s, TIPO_LOGIN, chave_login, agora)
+        por_ip = protecao_login.travar_contador(s, TIPO_IP, chave_ip, agora)
         if protecao_login.bloqueada(por_login, agora) or protecao_login.bloqueada(por_ip, agora):
             recusada = True
             logger.warning(

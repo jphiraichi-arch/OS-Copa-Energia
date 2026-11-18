@@ -764,3 +764,43 @@ uvicorn.
 - A limpeza de `tentativas_login` precisa ser agendada fora do app.
 - Contagem por login não expira com o tempo (só com sucesso, `redefinir-senha` ou a
   limpeza de 30 dias), como pedido.
+
+## Decisões depois do prompt 15 (18/11/2026)
+
+### IP do cliente (`osapp/rede.py`)
+
+- O app resolve o IP num middleware ASGI em volta do app Flet; o uvicorn roda com
+  `--no-proxy-headers`. Só com conexão direta vinda de `OS_PROXIES_CONFIAVEIS` (padrão
+  `10.0.0.0/8`, loopback sempre): 1) `True-Client-Ip`; 2) `X-Forwarded-For` da direita
+  para a esquerda, pulando confiáveis (a entrada mais à esquerda nunca vale por ser a
+  primeira; lixo na cadeia interrompe a leitura); 3) o endereço direto. O valor escolhido
+  precisa ser um IP válido. `X-Forwarded-Proto` de proxy confiável ajusta o esquema.
+- `OS_DEPURAR_CABECALHOS_IP=1` (temporário, desligado por padrão) grava os cabeçalhos de
+  encaminhamento e o IP escolhido. `*` em `OS_PROXIES_CONFIAVEIS` é recusado ao iniciar.
+
+### Limite por IP e 4G (CGNAT)
+
+- Por IP: `OS_LIMITE_FALHAS_IP` (padrão 100) falhas em 15 min, depois espera de 2, 4, 8...
+  s até `OS_ATRASO_MAX_IP_SEGUNDOS` (padrão 60). Nunca bloqueia. Por login continua 3
+  falhas livres e teto de 15 min (a proteção principal).
+
+### Limpeza sem tarefa agendada
+
+- Contador expirado (IP: 15 min sem falha; login: 30 dias sem atividade; nunca com espera
+  pendente) é apagado antes de travar a chave numa nova tentativa, e numa varredura ao
+  iniciar o app (`protecao_login.limpeza_ao_iniciar`; uma falha ali só gera aviso).
+  `limpar-tentativas` fica para uso manual.
+
+### Hospedagem
+
+- Render só para teste com dados fictícios até a TI aprovar. `docker/iniciar.sh` recusa
+  `OS_DATABASE_URL` em SQLite antes de migrar.
+
+### Conferido
+
+- Totais calculados: `test_custos.py` (`test_total_da_linha`, `test_resumo_por_categoria_e_total`,
+  `test_detalhe_traz_itens_e_resumo`, `test_itens_nunca_tem_total_gravado`),
+  `test_ordens_parte1.py::test_resumo_filtros_e_ordem` (total da Home),
+  `test_relatorios.py`, `test_ui_formularios.py::test_resumo_previa_usa_o_calculo_do_servico`.
+- Numeração concorrente: `test_numeracao.py::test_vinte_criacoes_simultaneas` (20
+  threads; roda no PostgreSQL, pulado no SQLite).

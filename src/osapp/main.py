@@ -7,10 +7,12 @@ Produção (ASGI):  uvicorn osapp.main:app --host 0.0.0.0 --port 8000
 from __future__ import annotations
 
 import logging
+import os
 import sys
 
 import flet as ft
 
+from osapp import rede
 from osapp.config import Config, ConfigError, carregar_config
 from osapp.logs import configurar_logging
 from osapp.services import protecao_login
@@ -31,8 +33,9 @@ def _iniciar() -> Config:
     """Valida a configuração antes de servir qualquer página; aborta com mensagem clara."""
     try:
         config = carregar_config()
-        protecao_login.segredo()  # OS_HMAC_SEGREDO é obrigatória para o login funcionar
-    except ConfigError as exc:
+        protecao_login.validar_configuracao()  # OS_HMAC_SEGREDO e limites por IP
+        rede.ler_redes(os.environ.get(rede.VARIAVEL_PROXIES))
+    except (ConfigError, ValueError) as exc:
         sys.exit(f"Erro de configuração: {exc}")
     configurar_logging(config.log_level)
     return config
@@ -51,4 +54,9 @@ if __name__ == "__main__":
 else:
     # Importado por um servidor ASGI (uvicorn, hypercorn, gunicorn...).
     _iniciar()
-    app = ft.run(main, export_asgi_app=True, assets_dir=str(PASTA_ASSETS), no_cdn=True)
+    protecao_login.limpeza_ao_iniciar()
+    # O IP do cliente é resolvido aqui (True-Client-Ip, X-Forwarded-For da direita para
+    # a esquerda), só para conexões vindas de OS_PROXIES_CONFIAVEIS; ver osapp/rede.py.
+    app = rede.ResolverIpCliente(
+        ft.run(main, export_asgi_app=True, assets_dir=str(PASTA_ASSETS), no_cdn=True)
+    )

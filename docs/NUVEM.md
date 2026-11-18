@@ -1,5 +1,9 @@
 # Publicar na nuvem sem custo (Render + Neon)
 
+> **O Render é só ambiente de teste, com dados fictícios**, até a TI da empresa aprovar a
+> hospedagem definitiva. Produção usa PostgreSQL; nunca SQLite em contêiner (o disco é
+> apagado a cada reinício, e `docker/iniciar.sh` recusa SQLite).
+
 Combinação testada no desenho do projeto: o app roda como contêiner no plano gratuito do
 **Render** e o banco fica no plano gratuito do **Neon** (PostgreSQL). Nenhum dos dois é
 indicado para produção; servem para demonstração e piloto.
@@ -33,8 +37,8 @@ Os limites mudam com frequência: confira as páginas oficiais antes de depender
      (`admin`, `marina.teste`, `joao.ficticio`, `carlos.exemplo`).
    - `OS_HMAC_SEGREDO` (desde o prompt 15): 32 ou mais caracteres aleatórios; sem ela o
      app não inicia.
-   - `OS_PROXIES_CONFIAVEIS` (desde o prompt 15): endereço do proxy que informa o IP do
-     cliente; veja `docs/GO_LIVE.md`.
+   - `OS_PROXIES_CONFIAVEIS`: não precisa no Render (o padrão `10.0.0.0/8` cobre a rede
+     interna); veja `docs/GO_LIVE.md`.
 4. Confirme. O Render constrói a imagem (`Dockerfile`), e o contêiner, ao iniciar, roda
    `alembic upgrade head`, o seed (se `OS_SEED_SENHA` existir) e o servidor.
 5. Abra o endereço mostrado pelo Render e entre com `admin` e a senha do passo 3.

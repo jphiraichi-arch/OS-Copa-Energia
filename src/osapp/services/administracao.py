@@ -8,7 +8,6 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from datetime import timedelta
 
 from sqlalchemy import select
 
@@ -152,11 +151,9 @@ def redefinir_senha(login: str, senha: str) -> None:
 
 
 def limpar_tentativas_antigas() -> int:
-    """Apaga contadores de falha de login sem atividade há mais de 30 dias. Devolve quantos."""
-    limite = relogio.agora() - timedelta(days=protecao_login.DIAS_DE_RETENCAO)
-    with sessao() as s:
-        apagadas = TentativaLoginRepo(s).apagar_anteriores(limite)
-    logger.info("Tentativas de login antigas apagadas: %s.", apagadas)
+    """Apaga contadores de login expirados (uso manual; o app também limpa sozinho)."""
+    apagadas = protecao_login.apagar_expiradas(relogio.agora())
+    logger.info("Tentativas de login expiradas apagadas: %s.", apagadas)
     return apagadas
 
 

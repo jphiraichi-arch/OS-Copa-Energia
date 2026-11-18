@@ -8,9 +8,8 @@ from pathlib import Path
 
 import pytest
 from starlette.websockets import WebSocket
-from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-from osapp import cli
+from osapp import cli, rede
 from osapp.config import ConfigError
 from osapp.db import sessao
 from osapp.models import TentativaLogin
@@ -82,9 +81,10 @@ def test_atraso_por_login(falhas, segundos):
     assert atraso(falhas, protecao_login.FALHAS_LIVRES_LOGIN) == timedelta(seconds=segundos)
 
 
-def test_atraso_por_ip_e_teto():
-    assert atraso(20, protecao_login.FALHAS_LIVRES_IP) == timedelta(0)
-    assert atraso(21, protecao_login.FALHAS_LIVRES_IP) == timedelta(seconds=2)
+def test_atraso_com_teto_proprio():
+    assert atraso(100, 100) == timedelta(0)
+    assert atraso(101, 100, timedelta(seconds=60)) == timedelta(seconds=2)
+    assert atraso(106, 100, timedelta(seconds=60)) == timedelta(seconds=60)  # 64 s -> teto
     assert atraso(10**6, 3) == ATRASO_MAXIMO == timedelta(minutes=15)
 
 
@@ -170,28 +170,61 @@ def test_redefinir_senha_zera_a_espera(usuarios, tempo):
     assert tentar("marina.teste", "nova-senha-456") == "ok"
 
 
-# --- Por IP -----------------------------------------------------------------------------
+# --- Por IP (CGNAT: limite alto, espera curta, nunca bloqueia) ---------------------------
 
 
-def test_limite_por_ip_apos_20_falhas_em_logins_diferentes(usuarios, tempo):
-    for n in range(20):
+def test_limites_por_ip_padrao_e_configuraveis(monkeypatch):
+    monkeypatch.setattr(protecao_login, "load_dotenv", lambda: None)
+    monkeypatch.delenv("OS_LIMITE_FALHAS_IP", raising=False)
+    monkeypatch.delenv("OS_ATRASO_MAX_IP_SEGUNDOS", raising=False)
+    assert protecao_login.falhas_livres_ip() == 100  # bem acima das 3 do login
+    assert protecao_login.atraso_maximo_ip() == timedelta(seconds=60)
+    monkeypatch.setenv("OS_LIMITE_FALHAS_IP", "250")
+    monkeypatch.setenv("OS_ATRASO_MAX_IP_SEGUNDOS", "30")
+    assert protecao_login.falhas_livres_ip() == 250
+    assert protecao_login.atraso_maximo_ip() == timedelta(seconds=30)
+    for valor in ("0", "-1", "abc"):
+        monkeypatch.setenv("OS_LIMITE_FALHAS_IP", valor)
+        with pytest.raises(ConfigError, match="OS_LIMITE_FALHAS_IP"):
+            protecao_login.validar_configuracao()
+
+
+@pytest.fixture
+def limite_ip_baixo(monkeypatch):
+    """Limite por IP pequeno só para o teste andar rápido (o padrão é 100)."""
+    monkeypatch.setenv("OS_LIMITE_FALHAS_IP", "5")
+    monkeypatch.setenv("OS_ATRASO_MAX_IP_SEGUNDOS", "8")
+
+
+def test_limite_por_ip_em_logins_diferentes_e_outro_ip_livre(usuarios, tempo, limite_ip_baixo):
+    for n in range(5):
         assert tentar(f"login.{n}", ip=IP_A) == "falha"
         tempo.avancar(seconds=10)
-    assert linha(TIPO_IP, IP_A) == (20, None)
-    assert tentar("login.20", ip=IP_A) == "falha"  # 21ª falha do IP: 2 s
-    assert linha(TIPO_IP, IP_A) == (21, tempo.agora + timedelta(seconds=2))
-    # O IP está em espera para qualquer login, mesmo com a senha certa.
-    assert tentar("admin", SENHA, ip=IP_A) == "espera"
-    # Outro IP não é afetado.
-    assert tentar("admin", SENHA, ip=IP_B) == "ok"
+    assert linha(TIPO_IP, IP_A) == (5, None)
+    assert tentar("login.5", ip=IP_A) == "falha"  # 6ª falha do IP: 2 s
+    assert linha(TIPO_IP, IP_A) == (6, tempo.agora + timedelta(seconds=2))
+    assert tentar("admin", SENHA, ip=IP_A) == "espera"  # vale para qualquer login
+    assert tentar("admin", SENHA, ip=IP_B) == "ok"  # outro IP não é afetado
     tempo.avancar(seconds=2)
     assert tentar("admin", SENHA, ip=IP_A) == "ok"
 
 
-def test_falhas_do_ip_contam_numa_janela_de_15_minutos(usuarios, tempo):
-    for n in range(20):
+def test_ip_nunca_fica_bloqueado_espera_curta(usuarios, tempo, limite_ip_baixo):
+    esperas = []
+    for n in range(12):
+        assert tentar(f"login.{n}", ip=IP_A) == "falha"  # cada login falha só uma vez
+        proximo = linha(TIPO_IP, IP_A)[1]
+        espera = 0 if proximo is None else int((proximo - tempo.agora).total_seconds())
+        esperas.append(espera)
+        tempo.avancar(seconds=espera)  # quem espera o pouco pedido sempre consegue tentar
+    assert esperas == [0, 0, 0, 0, 0, 2, 4, 8, 8, 8, 8, 8]
+    assert tentar("admin", SENHA, ip=IP_A) == "ok"
+
+
+def test_contador_de_ip_expirado_nao_conta(usuarios, tempo, limite_ip_baixo):
+    for n in range(6):
         tentar(f"login.{n}", ip=IP_A)
-    tempo.avancar(minutes=16)  # a última falha ficou para trás: a contagem do IP recomeça
+    tempo.avancar(minutes=15, seconds=1)  # 15 min sem falha: o contador do IP expirou
     assert tentar("outro.login", ip=IP_A) == "falha"
     assert linha(TIPO_IP, IP_A) == (1, None)
 
@@ -245,64 +278,201 @@ def test_segredo_ausente_ou_curto_impede_iniciar(monkeypatch, valor):
         protecao_login.segredo()
 
 
-# --- Limpeza ----------------------------------------------------------------------------
+# --- Limpeza (sem tarefa agendada) -----------------------------------------------------
 
 
-def test_cli_apaga_contadores_com_mais_de_30_dias(usuarios, tempo, capsys):
+def _quantas() -> int:
+    with sessao() as s:
+        return s.query(TentativaLogin).count()
+
+
+def test_contador_de_login_expira_em_30_dias(usuarios, tempo):
+    for _ in range(6):
+        tentar("marina.teste")
+    tempo.avancar(days=30, seconds=1)
+    assert tentar("marina.teste") == "falha"
+    assert linha(TIPO_LOGIN, "marina.teste") == (1, None)  # a contagem antiga não contou
+
+
+def test_nova_tentativa_apaga_o_contador_expirado_da_chave(usuarios, tempo, monkeypatch):
+    tentar("marina.teste", ip=IP_A)
+    tempo.avancar(minutes=16)
+    apagadas = []
+    original = protecao_login.TentativaLoginRepo.apagar_expiradas
+
+    def espiao(self, agora, limites, chave=None):
+        n = original(self, agora, limites, chave)
+        apagadas.append((tuple(limites), chave is not None, n))
+        return n
+
+    monkeypatch.setattr(protecao_login.TentativaLoginRepo, "apagar_expiradas", espiao)
+    tentar("marina.teste", ip=IP_A)
+    # Login (ainda válido): nada apagado. IP (16 min sem falha): a linha da chave sai.
+    assert apagadas == [(("LOGIN",), True, 0), (("IP",), True, 1)]
+    assert linha(TIPO_IP, IP_A) == (1, None)
+    assert linha(TIPO_LOGIN, "marina.teste")[0] == 2
+
+
+def test_varredura_ao_iniciar_apaga_so_os_expirados(usuarios, tempo):
+    tentar("antigo", ip=IP_A)  # login e IP_A
+    tempo.avancar(minutes=20)
+    tentar("recente", ip=IP_B)  # login e IP_B
+    assert _quantas() == 4
+    protecao_login.limpeza_ao_iniciar()
+    assert _quantas() == 3  # só o IP_A (15 min sem falha); o login 'antigo' vale 30 dias
+    tempo.avancar(days=31)
+    protecao_login.limpeza_ao_iniciar()
+    assert _quantas() == 0
+
+
+def test_espera_pendente_nao_e_apagada(usuarios, tempo):
+    for _ in range(13):  # espera do login chega a 15 min
+        tentar("marina.teste", ip=f"192.0.2.{_quantas()}")
+        tempo.avancar(seconds=1000)
+    proximo = linha(TIPO_LOGIN, "marina.teste")[1]
+    assert proximo > tempo.agora - timedelta(seconds=1000)
+    protecao_login.limpeza_ao_iniciar()
+    assert linha(TIPO_LOGIN, "marina.teste") is not None
+
+
+def test_falha_na_varredura_nao_impede_iniciar(monkeypatch, caplog):
+    def quebra(_agora):
+        raise RuntimeError("banco fora do ar")
+
+    monkeypatch.setattr(protecao_login, "apagar_expiradas", quebra)
+    with caplog.at_level(logging.WARNING):
+        protecao_login.limpeza_ao_iniciar()  # não levanta
+    assert "Limpeza de contadores" in caplog.text
+
+
+def test_comando_manual_continua(usuarios, tempo, capsys):
     tentar("antigo")
     tempo.avancar(days=30, seconds=1)
     tentar("recente", ip=IP_B)
     assert cli.main(["limpar-tentativas"]) == 0
-    assert "2 contador(es)" in capsys.readouterr().out  # login e IP do antigo
+    assert "2 contador(es)" in capsys.readouterr().out  # login 'antigo' e IP_A
     assert linha(TIPO_LOGIN, "antigo") is None and linha(TIPO_LOGIN, "recente") is not None
 
 
-# --- IP atrás de proxy ------------------------------------------------------------------
+# --- IP do cliente atrás de proxy (osapp/rede.py) ---------------------------------------
 
-
-async def _cliente_visto(trusted, cliente, xff):
-    """IP que o Flet leria (WebSocket.client.host) depois do middleware do uvicorn."""
-    visto = {}
-
-    async def app(scope, receive, send):
-        visto["host"] = WebSocket(scope, receive, send).client.host
-
-    scope = {
-        "type": "websocket",
-        "path": "/ws",
-        "headers": [(b"x-forwarded-for", xff.encode())] if xff else [],
-        "client": (cliente, 50000),
-        "scheme": "ws",
-    }
-    await ProxyHeadersMiddleware(app, trusted_hosts=trusted)(scope, None, None)
-    return visto["host"]
+REDES = rede.ler_redes(None)  # padrão: 10.0.0.0/8 + loopback
+RENDER = "10.204.1.7"  # um endereço interno do proxy (fictício)
 
 
 @pytest.mark.parametrize(
-    ("confiaveis", "cliente", "xff", "esperado"),
+    ("par", "cabecalhos", "esperado"),
     [
-        # Cabeçalho forjado por quem não é proxy confiável: ignorado.
-        ("10.0.0.0/8", "203.0.113.10", "1.2.3.4", "203.0.113.10"),
-        ("127.0.0.1", "203.0.113.10", "1.2.3.4", "203.0.113.10"),
-        # Vindo do proxy confiável: usado.
-        ("10.0.0.0/8", "10.1.2.3", "198.51.100.20", "198.51.100.20"),
-        # Cliente que forja o cabeçalho atrás do proxy: vale o último IP não confiável.
-        ("10.0.0.0/8", "10.1.2.3", "1.2.3.4, 198.51.100.20", "198.51.100.20"),
-        # '*' confia em qualquer um e usa o primeiro IP da lista (forjável).
-        ("*", "203.0.113.10", "1.2.3.4, 198.51.100.20", "1.2.3.4"),
+        # XFF forjado à esquerda é ignorado: vale o primeiro não confiável pela direita.
+        (RENDER, {"x-forwarded-for": "1.2.3.4, 198.51.100.20"}, "198.51.100.20"),
+        (RENDER, {"x-forwarded-for": "1.2.3.4, 198.51.100.20, 10.0.0.9"}, "198.51.100.20"),
+        # True-Client-Ip tem preferência.
+        (
+            RENDER,
+            {"true-client-ip": "198.51.100.7", "x-forwarded-for": "203.0.113.9"},
+            "198.51.100.7",
+        ),
+        # True-Client-Ip inválido: segue para o XFF.
+        (RENDER, {"true-client-ip": "abc", "x-forwarded-for": "203.0.113.9"}, "203.0.113.9"),
+        # Cadeia só de endereços confiáveis: o próprio par.
+        (RENDER, {"x-forwarded-for": "10.0.0.7, 127.0.0.1"}, RENDER),
+        (RENDER, {}, RENDER),
+        # Lixo na cadeia: não se confia no que está à esquerda dele.
+        (RENDER, {"x-forwarded-for": "198.51.100.20, lixo"}, RENDER),
+        # Portas e IPv6.
+        (RENDER, {"x-forwarded-for": "198.51.100.20:5555"}, "198.51.100.20"),
+        (RENDER, {"x-forwarded-for": "[2001:db8::1]:443"}, "2001:db8::1"),
+        # Conexão direta de fora (não é proxy): nenhum cabeçalho é aceito.
+        (
+            "203.0.113.50",
+            {"true-client-ip": "1.1.1.1", "x-forwarded-for": "2.2.2.2"},
+            "203.0.113.50",
+        ),
+        (None, {"x-forwarded-for": "2.2.2.2"}, None),
     ],
 )
-def test_cabecalho_encaminhado_so_de_proxy_confiavel(confiaveis, cliente, xff, esperado):
-    assert asyncio.run(_cliente_visto(confiaveis, cliente, xff)) == esperado
+def test_resolver_ip(par, cabecalhos, esperado):
+    assert rede.resolver_ip(par, cabecalhos, REDES) == esperado
 
 
-def test_inicializacao_limita_o_proxy_confiavel_e_sem_log_de_acesso():
+def test_redes_confiaveis():
+    assert rede.confiavel("10.1.1.1", REDES) and rede.confiavel("127.0.0.1", REDES)
+    assert rede.confiavel("::1", REDES) and not rede.confiavel("192.168.0.1", REDES)
+    proprias = rede.ler_redes("172.16.0.0/12, 192.0.2.5")
+    assert rede.confiavel("172.20.0.1", proprias) and rede.confiavel("127.0.0.1", proprias)
+    assert not rede.confiavel("10.1.1.1", proprias)  # a variável substitui o padrão
+    for invalido in ("*", "10.0.0.0/8, banana"):
+        with pytest.raises(ValueError, match="OS_PROXIES_CONFIAVEIS"):
+            rede.ler_redes(invalido)
+
+
+async def _pela_porta(cabecalhos, par=RENDER, depurar=False, tipo="websocket"):
+    """O que o Flet veria (WebSocket.client.host) depois do middleware."""
+    visto = {}
+
+    async def app(scope, receive, send):
+        visto["host"] = (
+            WebSocket(scope, receive, send).client.host
+            if tipo == "websocket"
+            else (scope["client"][0])
+        )
+        visto["scheme"] = scope.get("scheme")
+
+    scope = {
+        "type": tipo,
+        "path": "/ws",
+        "headers": [(n.encode(), v.encode()) for n, v in cabecalhos],
+        "client": (par, 50000),
+        "scheme": "ws" if tipo == "websocket" else "http",
+    }
+    await rede.ResolverIpCliente(app, REDES, depurar)(scope, None, None)
+    return visto
+
+
+def test_middleware_no_websocket_e_no_http():
+    visto = asyncio.run(
+        _pela_porta(
+            [
+                ("X-Forwarded-For", "1.2.3.4"),
+                ("X-Forwarded-For", "198.51.100.20"),
+                ("X-Forwarded-Proto", "https"),
+            ]
+        )
+    )
+    assert visto == {"host": "198.51.100.20", "scheme": "wss"}  # cabeçalho repetido somado
+    visto = asyncio.run(_pela_porta([("True-Client-Ip", "198.51.100.7")], tipo="http"))
+    assert visto["host"] == "198.51.100.7"
+    forjado = asyncio.run(_pela_porta([("X-Forwarded-Proto", "https")], par="203.0.113.50"))
+    assert forjado == {"host": "203.0.113.50", "scheme": "ws"}
+
+
+def test_depuracao_desligada_por_padrao(monkeypatch, caplog):
+    monkeypatch.delenv("OS_DEPURAR_CABECALHOS_IP", raising=False)
+    assert rede.ResolverIpCliente(lambda *_: None).depurar is False
+    with caplog.at_level(logging.DEBUG):
+        asyncio.run(_pela_porta([("X-Forwarded-For", "198.51.100.20")]))
+    assert "198.51.100.20" not in caplog.text
+    with caplog.at_level(logging.WARNING):
+        asyncio.run(_pela_porta([("X-Forwarded-For", "198.51.100.20")], depurar=True))
+    assert "Depuração de IP" in caplog.text and "198.51.100.20" in caplog.text
+    monkeypatch.setenv("OS_DEPURAR_CABECALHOS_IP", "1")
+    assert rede.ResolverIpCliente(lambda *_: None).depurar is True
+
+
+def test_inicializacao_sem_proxy_headers_do_uvicorn_e_sem_sqlite():
     script = (RAIZ / "docker" / "iniciar.sh").read_text(encoding="utf-8")
-    assert '--forwarded-allow-ips "${OS_PROXIES_CONFIAVEIS:-127.0.0.1}"' in script
-    assert "--forwarded-allow-ips '*'" not in script
-    assert "--no-access-log" in script  # o log de acesso do uvicorn traria o IP cru
-    resultado = subprocess.run(["sh", "-n", str(RAIZ / "docker" / "iniciar.sh")], check=False)
-    assert resultado.returncode == 0
+    assert "--no-proxy-headers" in script and "--no-access-log" in script
+    assert "forwarded-allow-ips" not in script
+    assert subprocess.run(["sh", "-n", str(RAIZ / "docker" / "iniciar.sh")]).returncode == 0
+    # Com SQLite o contêiner para antes de migrar.
+    resultado = subprocess.run(
+        ["sh", str(RAIZ / "docker" / "iniciar.sh")],
+        env={"OS_DATABASE_URL": "sqlite:///x.db", "PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert resultado.returncode == 1 and "use PostgreSQL" in resultado.stderr
 
 
 def test_falhas_simultaneas_nao_se_perdem(usuarios, tempo):

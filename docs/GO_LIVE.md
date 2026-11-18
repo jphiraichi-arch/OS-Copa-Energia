@@ -34,22 +34,30 @@ Cada pessoa conectada mantém **um WebSocket aberto** com o servidor durante tod
       **`X-Forwarded-Proto`**. Ele deve **acrescentar** o IP de quem conectou nele (não
       repassar o cabeçalho do cliente sem acrescentar).
 
-### Qual endereço o app deve considerar proxy confiável
+### Como o app descobre o IP do cliente
 
-- [ ] Descobrir o endereço IP (ou a rede) **de onde o proxy se conecta ao contêiner do
-      app**, como o contêiner o vê (por exemplo `10.0.0.5` ou `10.0.0.0/24`).
-- [ ] Colocar esse valor em **`OS_PROXIES_CONFIAVEIS`** (vários separados por vírgula).
-- Só requisições vindas desses endereços podem informar o IP do cliente. Para qualquer
-  outra origem, `X-Forwarded-For` é ignorado (não dá para forjar o IP).
-- **Não usar `*`**: com `*`, o app confia em qualquer origem e usa o primeiro IP da lista,
-  que o próprio cliente pode escrever. Isso anula o limite por IP do login.
-- Sem a variável, só `127.0.0.1` é confiável (proxy na mesma máquina).
-- O cabeçalho padronizado `Forwarded` (RFC 7239) **não** é lido: o servidor (uvicorn)
-  só entende `X-Forwarded-For` / `X-Forwarded-Proto`.
+O próprio app resolve o IP (`osapp/rede.py`); o uvicorn roda com `--no-proxy-headers`.
+Os cabeçalhos só são lidos quando a conexão direta vem de um endereço em
+**`OS_PROXIES_CONFIAVEIS`** (padrão: `10.0.0.0/8`; loopback sempre incluído):
+
+1. `True-Client-Ip` (Render, Cloudflare), se for um IP válido;
+2. senão, `X-Forwarded-For` lido **da direita para a esquerda**, pulando os endereços
+   confiáveis: o primeiro não confiável é o cliente. A entrada mais à esquerda nunca é
+   usada só por ser a primeira (o cliente pode escrevê-la);
+3. senão, o endereço da conexão direta.
+
+- [ ] Se o proxy da empresa não estiver em `10.0.0.0/8`, colocar o endereço (ou rede) de
+      onde ele se conecta ao app em `OS_PROXIES_CONFIAVEIS` (vários separados por vírgula).
+      `*` é recusado.
+- [ ] Se o proxy da empresa **não** sobrescreve `True-Client-Ip`, ele deve **remover** esse
+      cabeçalho quando vier do cliente (senão o cliente escolhe o próprio IP).
+- O cabeçalho `Forwarded` (RFC 7239) não é lido.
+- Para conferir depois de implantar: `OS_DEPURAR_CABECALHOS_IP=1` grava no log, por
+  pedido, os cabeçalhos de encaminhamento, o endereço direto e o IP escolhido. **Grava IPs
+  crus**: ligar só por alguns minutos e desligar.
 
 Se o IP do cliente não puder ser determinado, o app usa um limite comum chamado
-`desconhecido` para todos e registra um aviso no log ("IP do cliente desconhecido"). Se
-esse aviso aparecer em produção, a configuração do proxy está errada.
+`desconhecido` e registra um aviso no log ("IP do cliente desconhecido").
 
 ## 3. Variáveis de ambiente (nomes)
 
@@ -57,7 +65,10 @@ esse aviso aparecer em produção, a configuração do proxy está errada.
 |---|---|---|
 | `OS_DATABASE_URL` | sim | Conexão com o PostgreSQL (contém senha: tratar como segredo). |
 | `OS_HMAC_SEGREDO` | sim | Segredo do HMAC das tentativas de login. Mínimo de 32 caracteres aleatórios, diferente em cada ambiente. Sem ela o app não inicia. Trocá-la zera, na prática, os contadores de tentativas. |
-| `OS_PROXIES_CONFIAVEIS` | sim, atrás de proxy | Endereço(s) do proxy reverso (item 2). |
+| `OS_PROXIES_CONFIAVEIS` | não (padrão `10.0.0.0/8`) | Endereço(s) do proxy reverso (item 2). |
+| `OS_LIMITE_FALHAS_IP` | não (padrão 100) | Falhas de login de um mesmo IP em 15 min antes da espera por IP. |
+| `OS_ATRASO_MAX_IP_SEGUNDOS` | não (padrão 60) | Teto da espera por IP. |
+| `OS_DEPURAR_CABECALHOS_IP` | não (desligada) | `1` grava cabeçalhos de encaminhamento no log (temporário). |
 | `OS_TZ` | não | Fuso das datas (padrão `America/Sao_Paulo`). |
 | `OS_SESSAO_TIMEOUT_MIN` | não | Minutos de inatividade até sair (padrão 30). |
 | `OS_LOG_LEVEL` | não | Nível do log (padrão `INFO`). |
@@ -89,15 +100,19 @@ esse aviso aparecer em produção, a configuração do proxy está errada.
 
 ## 6. Proteção do login (como funciona, para o suporte)
 
-- Por login: as 3 primeiras senhas erradas não têm custo; a partir da 4ª, a próxima
-  tentativa daquele login só é aceita depois de 2, 4, 8, 16... segundos, no máximo 15
-  minutos. Acertar a senha zera a contagem. Não há bloqueio fixo da conta.
-- Por IP: mais de 20 falhas do mesmo IP em 15 minutos colocam o IP na mesma regra, para
-  qualquer login.
+- **Por login (a proteção principal):** as 3 primeiras senhas erradas não têm custo; a
+  partir da 4ª, a próxima tentativa daquele login só é aceita depois de 2, 4, 8, 16...
+  segundos, no máximo 15 minutos. Acertar a senha zera a contagem. Não há bloqueio fixo.
+- **Por IP (complemento):** operadoras de celular usam CGNAT, então muita gente divide o
+  mesmo IP. Por isso o limite é alto (`OS_LIMITE_FALHAS_IP`, padrão 100 falhas em 15
+  minutos) e a espera é curta (até `OS_ATRASO_MAX_IP_SEGUNDOS`, padrão 60 s). O IP nunca
+  fica bloqueado.
 - Mensagem para o usuário: "Muitas tentativas. Aguarde alguns instantes e tente
   novamente." Para liberar alguém na hora: `redefinir-senha` daquele login.
-- [ ] Agendar a limpeza diária: `python -m osapp.cli limpar-tentativas` (apaga contadores
-      sem atividade há mais de 30 dias). Ela **não** roda sozinha.
+- **Limpeza automática, sem tarefa agendada:** contadores expirados (IP: 15 minutos sem
+  falha; login: 30 dias sem atividade) não contam, são apagados quando a mesma chave tenta
+  de novo e numa varredura a cada início do app. `python -m osapp.cli limpar-tentativas`
+  faz a mesma limpeza à mão.
 
 ## 7. Auditoria de dependências
 
@@ -124,7 +139,7 @@ esse aviso aparecer em produção, a configuração do proxy está errada.
 |---|---|---|
 | Nome, login, filial, perfil, hash da senha (Argon2id) | tabela `usuarios` | Identificar quem usa o sistema e o que pode ver. |
 | Nome de quem criou, executou, concluiu ou alterou cada OS | tabelas `ordens_servico` e `os_eventos` (pelo id do usuário) | Histórico/auditoria das ordens. |
-| HMAC do login digitado e HMAC do IP, com contagem de falhas | tabela `tentativas_login`, por até 30 dias (com a limpeza agendada) | Proteção contra tentativa de senha. Não é possível obter o IP ou o login a partir do HMAC sem o segredo. |
+| HMAC do login digitado e HMAC do IP, com contagem de falhas | tabela `tentativas_login`: IP até 15 min, login até 30 dias sem atividade (apagados ao tentar de novo ou ao iniciar o app) | Proteção contra tentativa de senha. Não é possível obter o IP ou o login a partir do HMAC sem o segredo. |
 
 Não há e-mail, telefone, CPF nem localização.
 
@@ -142,12 +157,19 @@ Não há e-mail, telefone, CPF nem localização.
    decidir anonimizar, um DBA, **depois de um backup**, troca nome e login no banco:
    `UPDATE usuarios SET nome = 'Usuário removido', login = 'removido-' || id WHERE login = '<login>';`
    (o sistema ainda não tem comando para isso; ver pendências).
-3. As entradas em `tentativas_login` somem sozinhas em até 30 dias com a limpeza
-   agendada; para apagar antes, `redefinir-senha` do login remove a entrada do login.
+3. As entradas em `tentativas_login` expiram em até 30 dias e são apagadas na próxima
+   tentativa ou no próximo início do app; para apagar antes, `redefinir-senha` do login
+   remove a entrada do login.
+
+## 10. Hospedagem
+
+- O Render (`render.yaml`) é **só ambiente de teste, com dados fictícios**, até a TI da
+  empresa aprovar a hospedagem definitiva.
+- [ ] Produção usa **PostgreSQL**. SQLite num contêiner perde os dados a cada reinício: o
+      `docker/iniciar.sh` se recusa a iniciar com `OS_DATABASE_URL` em SQLite.
 
 ## Pendências conhecidas
 
-- O endereço do proxy do Render (hospedagem atual de teste) não foi confirmado; até lá o
-  limite por IP pode tratar todos os acessos como vindos do mesmo endereço.
+- Confirmar no Render (com `OS_DEPURAR_CABECALHOS_IP=1` por alguns minutos) de onde vem a
+  conexão e quais cabeçalhos chegam, e se o Render sobrescreve `True-Client-Ip`.
 - Não há comando de anonimização de usuário (item 9).
-- A limpeza de `tentativas_login` precisa de agendamento externo (item 6).

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.orm import Session
 
@@ -46,8 +46,24 @@ class TentativaLoginRepo:
         )
         return resultado.rowcount or 0
 
-    def apagar_anteriores(self, limite: datetime) -> int:
-        resultado = self._s.execute(
-            delete(TentativaLogin).where(TentativaLogin.atualizado_em < limite)
+    def apagar_expiradas(
+        self, agora: datetime, limites: dict[str, datetime], chave: str | None = None
+    ) -> int:
+        """Apaga contadores sem atividade desde o limite do seu tipo e sem espera pendente.
+
+        ``limites``: tipo -> instante limite. Com ``chave``, só os daquela chave.
+        """
+        condicoes = [
+            and_(TentativaLogin.tipo == tipo, TentativaLogin.atualizado_em < limite)
+            for tipo, limite in limites.items()
+        ]
+        consulta = delete(TentativaLogin).where(
+            or_(*condicoes),
+            or_(
+                TentativaLogin.proximo_permitido_em.is_(None),
+                TentativaLogin.proximo_permitido_em <= agora,
+            ),
         )
-        return resultado.rowcount or 0
+        if chave is not None:
+            consulta = consulta.where(TentativaLogin.chave == chave)
+        return self._s.execute(consulta).rowcount or 0

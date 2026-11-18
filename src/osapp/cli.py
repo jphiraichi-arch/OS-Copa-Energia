@@ -149,7 +149,7 @@ def criar_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser(
         "limpar-tentativas",
-        help="Apaga contadores de falha de login sem atividade há mais de 30 dias",
+        help="Apaga contadores de falha de login expirados (o app também limpa sozinho)",
     )
     p.set_defaults(func=_limpar_tentativas)
 
