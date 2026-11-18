@@ -29,7 +29,7 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-osapp = ["assets/*.png"]
+osapp = ["assets/*.png", "assets/fonts/*.ttf", "assets/fonts/OFL.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

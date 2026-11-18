@@ -61,6 +61,10 @@ ALTURA_LOGO_CABECALHO = 30
 ALTURA_LOGO_LOGIN = 56
 
 # --- Tipografia ------------------------------------------------------------
+# Fonte embutida no app (src/osapp/assets/fonts, licença SIL OFL 1.1): o texto não
+# depende de baixar fontes de uma CDN. Roboto estática, latim + Latim Estendido-A.
+FONTE_FAMILIA = "Roboto Copa"
+FONTE_ARQUIVOS = {FONTE_FAMILIA: "/fonts/Roboto-Regular.ttf"}
 FONTE_SAUDACAO = 22
 FONTE_TITULO = 18
 FONTE_SUBTITULO = 14
@@ -79,6 +83,7 @@ def criar_tema() -> ft.Theme:
     """
     return ft.Theme(
         use_material3=True,
+        font_family=FONTE_FAMILIA,
         scaffold_bgcolor=COR_FUNDO_PAGINA,
         color_scheme=ft.ColorScheme(
             primary=COR_BOTAO_PRIMARIO,
@@ -97,6 +102,7 @@ def criar_tema() -> ft.Theme:
 
 
 def aplicar_tema(page: ft.Page) -> None:
+    page.fonts = dict(FONTE_ARQUIVOS)
     page.theme = criar_tema()
     page.theme_mode = ft.ThemeMode.LIGHT
     page.bgcolor = COR_FUNDO_PAGINA

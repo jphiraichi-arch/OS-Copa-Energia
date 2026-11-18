@@ -529,3 +529,38 @@ implanta. Este commit foi deixado só no repositório local, sem push.
 - Lacuna: o arquivo tem 94 px de altura. No login (56 px de tela), celulares de alta
   densidade ampliam a imagem e ela pode ficar levemente menos nítida. Um arquivo maior
   (ou SVG) resolveria.
+
+## Prompt 11 — caracteres quebrados (18/11/2026)
+
+### Diagnóstico
+
+- **Classe B (fonte), confirmada:** o app publicado baixava do Google a fonte Roboto
+  (`fonts.gstatic.com`) e o motor gráfico (`www.gstatic.com`). Com a CDN de fontes bloqueada,
+  a tela de login ficou **sem nenhum texto**; numa rede 4G simulada com a fonte lenta, o app
+  ainda estava na tela de carregamento após 12 s.
+- **Classe A (codificação), não encontrada:** arquivos do projeto em UTF-8 válido, toda
+  leitura/escrita de arquivo com `encoding` explícito, banco de produção com
+  `server_encoding` e `client_encoding` `UTF8` e nenhum texto gravado com padrão de
+  mojibake (consulta só de leitura).
+- **Classe C, não encontrada:** título da aba, `charset` da página e logs do servidor corretos.
+- **Classe D (teclado do celular):** não testável aqui, sem aparelho real; ver o relatório.
+
+### Correção
+
+- Fonte embutida: Roboto estática Regular (400) e Bold (700), recortada para Latim-1, Latim
+  Estendido-A e pontuação comum (65 KB cada), em `src/osapp/assets/fonts` com a licença
+  `OFL.txt` (SIL OFL 1.1, sem nome reservado). Gerada a partir da fonte variável oficial do
+  repositório google/fonts com fontTools (`instancer` + `subset`).
+- `theme.FONTE_FAMILIA` / `theme.FONTE_ARQUIVOS`; `aplicar_tema` registra `page.fonts` e o
+  tema usa `font_family`.
+- `main.py`: `no_cdn=True` no desenvolvimento e no ASGI — o motor (`/canvaskit/`) e as
+  fontes passam a vir do próprio app.
+- Só o arquivo Regular é registrado: o Flet aceita um arquivo por família, e o negrito
+  sintetizado ficou correto nas telas verificadas. O arquivo Bold fica no pacote para quando
+  o Flet aceitar pesos por família.
+- Testes: `tests/test_caracteres.py`.
+
+### Lacunas
+
+- Continua sendo baixado `rive_native.wasm` de `cdn.jsdelivr.net` (animações Rive, não usadas
+  pelo app). Bloqueado, nada mudou nas telas verificadas.

@@ -44,8 +44,9 @@ if __name__ == "__main__":
         view=ft.AppView.WEB_BROWSER,
         port=PORTA_DESENVOLVIMENTO,
         assets_dir=str(PASTA_ASSETS),
+        no_cdn=True,
     )
 else:
     # Importado por um servidor ASGI (uvicorn, hypercorn, gunicorn...).
     _iniciar()
-    app = ft.run(main, export_asgi_app=True, assets_dir=str(PASTA_ASSETS))
+    app = ft.run(main, export_asgi_app=True, assets_dir=str(PASTA_ASSETS), no_cdn=True)

@@ -69,6 +69,9 @@ Se não for possível verificar uma API, pare e avise. Não adivinhe.
 
 - `src/osapp/ui/theme.py` é a única fonte de cores, raios e tamanhos. Nenhum valor hexadecimal
   de cor pode aparecer em outro arquivo de `src/osapp` (garantido por `tests/test_tema.py`).
+- Texto desenhado só com a fonte embutida (`theme.FONTE_FAMILIA`, arquivos em
+  `src/osapp/assets/fonts`), e o app sobe com `no_cdn=True`: nada de fonte ou motor gráfico
+  baixado de CDN. Todo caractere usado em rótulos precisa existir na fonte (há teste).
 - Celulares são o alvo principal: coluna única, sem rolagem horizontal a 390 px; alvo de toque
   mínimo de 48 px.
 - O único logotipo permitido é o arquivo oficial da Copa Energia fornecido pelo responsável,
