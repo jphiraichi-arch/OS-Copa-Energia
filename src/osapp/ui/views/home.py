@@ -170,7 +170,7 @@ class Home(Tela):
 
     def _cartao(self, item) -> ft.Control:
         detalhes = [
-            formatacao.formatar_brl(item.valor_previsto_centavos),
+            formatacao.formatar_brl(item.total_previsto_centavos),
             formatacao.formatar_data(item.criado_em),
         ]
         if self.app.sessao.is_admin:

@@ -1,54 +1,13 @@
 from datetime import UTC, date, datetime, time
+from decimal import Decimal
 
 import pytest
 
+from osapp.services import custos
+from osapp.services.custos import CategoriaDTO
 from osapp.ui import formularios as f
 
 SP = "America/Sao_Paulo"
-
-
-@pytest.mark.parametrize(
-    ("texto", "esperado"),
-    [("1234,56", 123456), ("1.234,56", 123456), ("R$ 1.234,56", 123456), ("0,00", 0)],
-)
-def test_ler_valor(texto, esperado):
-    assert f.ler_valor(texto) == esperado
-
-
-@pytest.mark.parametrize("texto", ["", None, "abc", "-10,00", "10.5", "1,2"])
-def test_ler_valor_invalido_tem_mensagem_em_portugues(texto):
-    with pytest.raises(ValueError) as info:
-        f.ler_valor(texto)
-    assert str(info.value) == f.MSG_VALOR == "Valor inválido. Use o formato 1.234,56."
-
-
-@pytest.mark.parametrize(("texto", "esperado"), [("1:30", 90), ("01:30", 90), ("0:01", 1)])
-def test_ler_tempo(texto, esperado):
-    assert f.ler_tempo(texto) == esperado
-
-
-@pytest.mark.parametrize("texto", ["", None, "90", "1h30", "abc", "1:60"])
-def test_ler_tempo_invalido(texto):
-    with pytest.raises(ValueError) as info:
-        f.ler_tempo(texto)
-    assert str(info.value) == f.MSG_TEMPO
-
-
-def test_ler_tempo_zero_e_recusado():
-    with pytest.raises(ValueError) as info:
-        f.ler_tempo("0:00")
-    assert str(info.value) == f.MSG_TEMPO_ZERO
-
-
-@pytest.mark.parametrize("minutos", [1, 59, 60, 90, 6005, 59_999])
-def test_tempo_ida_e_volta(minutos):
-    assert f.ler_tempo(f.tempo_para_campo(minutos)) == minutos
-    assert f.tempo_para_campo(90) == "1:30"
-
-
-@pytest.mark.parametrize("centavos", [0, 5, 123456, 9_999_999_999])
-def test_valor_ida_e_volta(centavos):
-    assert f.ler_valor(f.valor_para_campo(centavos)) == centavos
 
 
 def test_ler_data_e_hora():
@@ -107,51 +66,145 @@ def test_somente_alterados():
     assert f.somente_alterados({}, {"titulo": "B"}) == {"titulo": "B"}
 
 
-# --- Prévia das diferenças na tela Concluir OS ---------------------------------------
+# --- Itens de custo: dos campos para os argumentos dos serviços ----------------------
+
+CATEGORIAS = [
+    CategoriaDTO(1, "MAO_DE_OBRA", "Mão de obra", 1),
+    CategoriaDTO(2, "PECAS", "Peças", 2),
+]
 
 
-def previa(
-    valor="120,00",
-    inicio=("04/05/2026", "13:50"),
-    fim=("04/05/2026", "14:30"),
-    previsto=10000,
-    tempo=60,
-):
-    return f.previa_diferencas(previsto, tempo, valor, inicio, fim, SP)
+def digitado(**kw):
+    valores = {
+        "categoria_id": 2,
+        "descricao": "  Rolamento  ",
+        "quantidade": "1,5",
+        "valor_unitario_centavos": 3333,
+    }
+    valores.update(kw)
+    return valores
 
 
-def test_previa_com_entradas_validas():
-    assert previa() == (
-        "+R$ 20,00 (+20,0%) - Acima do previsto",
-        "-0h20 - Abaixo do previsto",  # 40 minutos realizados contra 60 previstos
-    )
-    assert previa(valor="100,00", fim=("04/05/2026", "14:50")) == (
-        "R$ 0,00 (0,0%) - Igual ao previsto",
-        "0h00 - Igual ao previsto",
-    )
+def test_ler_item_valido_vira_item_entrada():
+    item, erros = f.ler_item(CATEGORIAS, custos.FASE_PREVISTO, 7, None, digitado())
+    assert erros == {}
+    assert item.chave == 7 and item.id is None
+    assert (item.categoria_nome, item.categoria_ordem, item.descricao) == ("Peças", 2, "Rolamento")
+    assert item.quantidade == Decimal("1.50")
+    assert item.total_centavos == 5000  # 1,5 x 33,33 = 49,995 -> 50,00 (ROUND_HALF_UP)
+    assert f.para_entrada([item]) == [custos.ItemEntrada(2, "Rolamento", Decimal("1.50"), 3333)]
 
 
-def test_previa_sem_percentual_quando_o_previsto_e_zero():
-    assert previa(previsto=0)[0] == "+R$ 120,00 - Acima do previsto"
-
-
-def test_previa_cruzando_a_meia_noite():
-    assert previa(inicio=("04/05/2026", "23:30"), fim=("05/05/2026", "00:45"))[1] == (
-        "+0h15 - Acima do previsto"
-    )
+@pytest.mark.parametrize(("texto", "esperado"), [("1", "1.00"), ("1,5", "1.50"), ("1,50", "1.50")])
+def test_ler_item_quantidade_aceita_formatos(texto, esperado):
+    item, _ = f.ler_item(CATEGORIAS, "PREVISTO", 1, None, digitado(quantidade=texto))
+    assert item.quantidade == Decimal(esperado)
 
 
 @pytest.mark.parametrize(
-    ("kwargs", "esperado"),
+    ("kw", "campo", "mensagem"),
     [
-        ({"valor": ""}, (None, "-0h20 - Abaixo do previsto")),
-        ({"valor": "abc"}, (None, "-0h20 - Abaixo do previsto")),
-        ({"inicio": ("04/05/2026", "")}, ("+R$ 20,00 (+20,0%) - Acima do previsto", None)),
-        ({"fim": ("31/02/2026", "14:30")}, ("+R$ 20,00 (+20,0%) - Acima do previsto", None)),
-        # fim antes do início: sem prévia de tempo
-        ({"fim": ("04/05/2026", "13:00")}, ("+R$ 20,00 (+20,0%) - Acima do previsto", None)),
-        ({"valor": None, "inicio": (None, None), "fim": (None, None)}, (None, None)),
+        ({"categoria_id": None}, "categoria_id", f.MSG_CATEGORIA),
+        ({"categoria_id": 99}, "categoria_id", f.MSG_CATEGORIA),
+        ({"descricao": "  "}, "descricao", "Informe a descrição do item."),
+        ({"quantidade": "1.5"}, "quantidade", f.MSG_QUANTIDADE),
+        ({"quantidade": ""}, "quantidade", f.MSG_QUANTIDADE),
+        ({"quantidade": "0"}, "quantidade", "A quantidade deve ficar entre 0,01 e 99.999,99."),
+        ({"quantidade": "1,555"}, "quantidade", f.MSG_QUANTIDADE),
+        ({"valor_unitario_centavos": None}, "valor_unitario_centavos", "Informe um valor válido."),
     ],
 )
-def test_previa_some_enquanto_a_entrada_e_invalida(kwargs, esperado):
-    assert previa(**kwargs) == esperado
+def test_ler_item_erros_por_campo(kw, campo, mensagem):
+    item, erros = f.ler_item(CATEGORIAS, "PREVISTO", 1, None, digitado(**kw))
+    assert item is None
+    assert erros[campo] == mensagem
+
+
+def test_valor_zero_e_aceito():
+    item, erros = f.ler_item(CATEGORIAS, "PREVISTO", 1, None, digitado(valor_unitario_centavos=0))
+    assert erros == {} and item.total_centavos == 0
+
+
+def test_alteracoes_do_item_so_o_que_mudou():
+    antes, _ = f.ler_item(CATEGORIAS, "PREVISTO", 1, 10, digitado())
+    depois, _ = f.ler_item(
+        CATEGORIAS, "PREVISTO", 1, 10, digitado(categoria_id=1, valor_unitario_centavos=4000)
+    )
+    assert f.alteracoes_do_item(antes, depois) == {
+        "categoria_id": 1,
+        "valor_unitario_centavos": 4000,
+    }
+    assert f.alteracoes_do_item(antes, antes) == {}
+
+
+def test_copiar_itens_previstos_para_realizado():
+    a, _ = f.ler_item(CATEGORIAS, "PREVISTO", 1, 10, digitado())
+    b, _ = f.ler_item(CATEGORIAS, "PREVISTO", 2, 11, digitado(categoria_id=1))
+    copias = f.copiar_itens([a, b], custos.FASE_REALIZADO, 100)
+    assert [(c.chave, c.id, c.fase) for c in copias] == [
+        (100, None, "REALIZADO"),
+        (101, None, "REALIZADO"),
+    ]
+    assert copias[0].descricao == a.descricao and copias[0].quantidade == a.quantidade
+
+
+def test_resumo_previa_usa_o_calculo_do_servico():
+    a, _ = f.ler_item(CATEGORIAS, "PREVISTO", 1, None, digitado())  # Peças 50,00
+    b, _ = f.ler_item(
+        CATEGORIAS,
+        "PREVISTO",
+        2,
+        None,
+        digitado(categoria_id=1, quantidade="2", valor_unitario_centavos=1000),
+    )  # Mão de obra 20,00
+    resumo = f.resumo_previa([a, b])
+    assert [(c.categoria_nome, c.previsto_centavos) for c in resumo.por_categoria] == [
+        ("Mão de obra", 2000),
+        ("Peças", 5000),
+    ]
+    assert resumo.total_previsto_centavos == 7000
+
+
+def test_item_local_de_um_dto():
+    dto = custos.ItemDTO(
+        5, "REALIZADO", 1, "MAO_DE_OBRA", "Mão de obra", 1, "Troca", Decimal("2.00"), 1500, 3000
+    )
+    item = f.item_local(dto)
+    assert (item.chave, item.id, item.fase, item.total_centavos) == (5, 5, "REALIZADO", 3000)
+    assert f.itens_da_fase([dto], "PREVISTO") == []
+
+
+# --- Equipamento --------------------------------------------------------------------
+
+
+def test_equipamento_da_lista_outro_e_vazio():
+    assert f.ler_equipamento("3", "x") == {"equipamento_id": 3, "equipamento_outro": None}
+    assert f.ler_equipamento(f.OPCAO_OUTRO, "  Bomba nova ") == {
+        "equipamento_id": None,
+        "equipamento_outro": "Bomba nova",
+    }
+    assert f.ler_equipamento(None, "") == {"equipamento_id": None, "equipamento_outro": None}
+    assert f.chave_do_equipamento(3, None) == "3"
+    assert f.chave_do_equipamento(None, "Bomba") == f.OPCAO_OUTRO
+    assert f.chave_do_equipamento(None, None) is None
+
+
+# --- Conclusão: data + CampoHora --------------------------------------------------------
+
+
+def test_instante_converte_do_fuso_local_para_utc():
+    assert f.instante("04/05/2026", time(13, 50), SP) == datetime(2026, 5, 4, 16, 50, tzinfo=UTC)
+    with pytest.raises(ValueError):
+        f.instante("04/05/2026", None, SP)
+    with pytest.raises(ValueError):
+        f.instante("31/02/2026", time(13, 50), SP)
+
+
+def test_previa_tempo():
+    inicio, fim = ("04/05/2026", time(13, 50)), ("04/05/2026", time(14, 30))
+    assert f.previa_tempo(60, inicio, fim, SP) == "-0h20 - Abaixo do previsto"
+    assert f.previa_tempo(40, inicio, fim, SP) == "0h00 - Igual ao previsto"
+    meia_noite = (("04/05/2026", time(23, 30)), ("05/05/2026", time(0, 45)))
+    assert f.previa_tempo(60, *meia_noite, SP) == "+0h15 - Acima do previsto"
+    assert f.previa_tempo(60, inicio, ("04/05/2026", None), SP) is None
+    assert f.previa_tempo(60, fim, inicio, SP) is None  # fim antes do início

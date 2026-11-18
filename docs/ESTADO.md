@@ -660,3 +660,62 @@ implanta. Este commit foi deixado só no repositório local, sem push.
 
 - Interface ainda no modelo antigo (prompt 14).
 - Percentuais são calculados em Decimal e entregues como float só para exibição.
+
+## Prompt 14 — máscaras de dinheiro e hora, itens de custo e equipamento na interface (18/11/2026)
+
+**Bloqueio aberto: a máscara reescrita pelo servidor perde dígitos com latência de rede
+(ver "Máscaras: comportamento medido"). Não implantar sem decidir a alternativa.**
+
+### O que existe
+
+- `ui/mascaras.py` (puro): `mascara_dinheiro`, `mascara_hora` (duração até 999 h e hora de
+  relógio 00:00–23:59), `editar_digitos` (dígitos novos entram pela direita onde quer que
+  esteja o cursor; apagar tira o último dígito; substituir tudo fica com os dígitos colados).
+- `ui/components/campos.py`: `CampoDinheiro` (prefixo R$, centavos), `CampoDuracao`
+  (minutos) e `CampoHora` (`datetime.time`). A cada mudança o campo reescreve o texto e põe
+  o cursor no fim; ao focar ou tocar no campo, o cursor também vai para o fim.
+- `ui/components/editor_itens.py`: editor de uma fase, itens agrupados por categoria,
+  subtotal por categoria e total pela `custos.calcular_resumo`. "Adicionar item" abre uma
+  folha inferior (largura < 600 px) ou um diálogo. Remover pede confirmação. Modo local
+  (Criar, Concluir: tudo vai numa chamada) ou gravado (Alterar: cada mudança chama
+  `adicionar_item` / `editar_item` / `remover_item` e a tela recarrega com a versão nova).
+- `ui/components/formulario_os.py`: Título, Descrição, Filial (só admin muda), Equipamento
+  (lista da filial + "Outro" com campo obrigatório), Tempo previsto (`CampoDuracao`); para
+  admin em OS concluída também Início/Fim (data + `CampoHora`) e Descrição do realizado.
+- Telas: Criar (itens só na tela até "Salvar Ordem de Serviço"), Alterar (itens previstos
+  só leitura quando `acoes.pode_editar_itens_previstos` é falso; admin em OS concluída
+  edita os realizados), Concluir (itens previstos no topo, "Copiar itens previstos",
+  prévia por categoria, total e tempo), Detalhe (Equipamento, Nº SAP, cartão Custos em
+  tabela ou cartões pequenos no celular, com "Acima/Abaixo/Igual ao previsto", itens de
+  cada fase recolhidos), Home (total previsto calculado).
+- `ui/formularios.py`: `ItemLocal`, `ler_item` (usa os validadores puros do serviço),
+  `para_entrada`, `copiar_itens`, `alteracoes_do_item`, `ler_equipamento`, `instante`,
+  `previa_tempo`. Saíram `ler_valor`, `ler_tempo`, `valor_para_campo`, `tempo_para_campo`
+  e `previa_diferencas` (o preço único não existe mais).
+- `ui/historico.py`: frases dos eventos ITEM_ADICIONADO / ITEM_ALTERADO / ITEM_REMOVIDO e
+  dos campos de equipamento; "Ordem de Serviço criada".
+
+### Máscaras: comportamento medido (Chromium headless, Playwright)
+
+Digitando '123456' e depois 3 backspaces, com o intervalo indicado entre as teclas:
+
+| Ida e volta até o servidor | 0 ms | 40 ms | 80 ms | 150 ms | 300 ms |
+|---|---|---|---|---|---|
+| local (~0 ms) | ok / **12,32** | ok | ok | ok | ok |
+| proxy 50 ms | ok / **12,32** | **12,46** / **0,01** | ok | ok | ok |
+| proxy 150 ms | ok / **12,32** | **1,26** / **0,00** | **12,46** / **0,01** | **1.223,46** / **1,22** | ok |
+
+(ok = 1.234,56 e depois 1,23.) Quando a pessoa digita mais rápido do que a ida e volta,
+a reescrita do servidor chega atrasada e apaga teclas já digitadas. O proxy de teste
+atrasa cada pacote TCP (a emulação de rede do Chrome não atrasa WebSocket). Não houve
+teste em Android nem iOS reais; WebKit não está instalado aqui.
+
+### Lacunas
+
+- Decidir a alternativa para as máscaras (bloqueio acima).
+- Quantidade usa teclado de texto: o teclado numérico do Flet (`KeyboardType.NUMBER`) vira
+  `inputmode=numeric` no navegador, sem vírgula em alguns celulares.
+- O layout de Custos (tabela ou cartões) é escolhido ao abrir o Detalhe; girar o celular
+  só muda ao recarregar a tela.
+- `flet.testing` existe mas precisa de numpy e do app de teste do Flutter: o teste de
+  integração foi feito com Playwright no navegador, fora do pytest.

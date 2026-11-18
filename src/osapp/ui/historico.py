@@ -9,7 +9,7 @@ from collections.abc import Callable
 from datetime import datetime
 
 from osapp import formatacao
-from osapp.services import ordens, status
+from osapp.services import custos, ordens, status
 
 TEXTO_MAX = 80
 SETA = "->"
@@ -44,7 +44,14 @@ CAMPOS: dict[str, tuple[str, Callable[[str], str]]] = {
     "inicio_realizado": ("Início", _data_hora),
     "fim_realizado": ("Fim", _data_hora),
     "descricao_realizado": ("Descrição do que foi feito", _texto),
+    "equipamento_id": ("Equipamento", _texto),
+    "equipamento_outro": ("Equipamento (outro)", _texto),
 }
+
+# Eventos de item de custo: o campo gravado é 'item 12' ou 'item 12 - valor unitário'.
+FRASE_ITEM_ADICIONADO = "Item de custo adicionado"
+FRASE_ITEM_ALTERADO = "Item de custo alterado"
+FRASE_ITEM_REMOVIDO = "Item de custo removido"
 
 
 def _formatar(campo: str | None, valor: str | None) -> str:
@@ -57,6 +64,11 @@ def _formatar(campo: str | None, valor: str | None) -> str:
         return _texto(valor)  # valor fora do formato esperado: mostra como está
 
 
+def _item(valor: str | None) -> str:
+    """Texto do item já formatado pelo serviço ('Peças | Rolamento | 2 x R$ 10,00')."""
+    return "(vazio)" if valor is None else " ".join(valor.split())
+
+
 def rotulo_campo(campo: str | None) -> str:
     return CAMPOS[campo][0] if campo in CAMPOS else (campo or "Campo")
 
@@ -64,7 +76,18 @@ def rotulo_campo(campo: str | None) -> str:
 def frase(evento) -> str:
     """Frase de um evento (``EventoDTO``), por exemplo 'Status: Aberta -> Em execução'."""
     if evento.tipo == ordens.TIPO_CRIACAO:
-        return "OS criada"
+        return "Ordem de Serviço criada"
+    if evento.tipo == custos.TIPO_ITEM_ADICIONADO:
+        return f"{FRASE_ITEM_ADICIONADO}: {_item(evento.valor_novo)}"
+    if evento.tipo == custos.TIPO_ITEM_REMOVIDO:
+        return f"{FRASE_ITEM_REMOVIDO}: {_item(evento.valor_antigo)}"
+    if evento.tipo == custos.TIPO_ITEM_ALTERADO:
+        _item_gravado, _sep, campo_do_item = (evento.campo or "").partition(" - ")
+        detalhe = f" ({campo_do_item})" if campo_do_item else ""
+        return (
+            f"{FRASE_ITEM_ALTERADO}{detalhe}: {_item(evento.valor_antigo)} {SETA} "
+            f"{_item(evento.valor_novo)}"
+        )
     rotulo = rotulo_campo(evento.campo)
     novo = _formatar(evento.campo, evento.valor_novo)
     if evento.tipo == ordens.TIPO_REALIZADO:

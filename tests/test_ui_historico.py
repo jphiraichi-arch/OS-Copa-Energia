@@ -19,7 +19,7 @@ def fuso(monkeypatch):
 
 
 def test_criacao():
-    assert frase(ev("CRIACAO")) == "OS criada"
+    assert frase(ev("CRIACAO")) == "Ordem de Serviço criada"
 
 
 @pytest.mark.parametrize(
@@ -145,3 +145,32 @@ def test_texto_diferenca_valor(dif, pct, esperado):
 )
 def test_texto_diferenca_tempo(dif, esperado):
     assert texto_diferenca_tempo(dif) == esperado
+
+
+# --- Eventos de item de custo ---------------------------------------------------------
+
+
+def test_item_adicionado():
+    evento = ev("ITEM_ADICIONADO", "item 12", None, "Peças | Rolamento | 1,5 x R$ 33,33")
+    assert frase(evento) == "Item de custo adicionado: Peças | Rolamento | 1,5 x R$ 33,33"
+
+
+def test_item_alterado_diz_qual_campo_mudou():
+    evento = ev("ITEM_ALTERADO", "item 12 - valor unitário", "R$ 33,33", "R$ 40,00")
+    assert frase(evento) == "Item de custo alterado (valor unitário): R$ 33,33 -> R$ 40,00"
+    evento = ev("ITEM_ALTERADO", "item 12 - categoria", "Peças", "Mão de obra")
+    assert frase(evento) == "Item de custo alterado (categoria): Peças -> Mão de obra"
+
+
+def test_item_removido():
+    evento = ev("ITEM_REMOVIDO", "item 12", "Peças | Rolamento | 2 x R$ 10,00", None)
+    assert frase(evento) == "Item de custo removido: Peças | Rolamento | 2 x R$ 10,00"
+
+
+def test_equipamento_no_historico():
+    assert (
+        frase(ev("EDICAO", "equipamento_id", None, "Bomba 1")) == "Equipamento: (vazio) -> Bomba 1"
+    )
+    assert frase(ev("EDICAO", "equipamento_outro", "Motor", None)) == (
+        "Equipamento (outro): Motor -> (vazio)"
+    )

@@ -1,16 +1,41 @@
-"""Telas Criar OS (/os/nova) e Alterar OS (/os/{id}/editar)."""
+"""Telas Criar Ordem de Serviço (/os/nova) e Alterar Ordem de Serviço (/os/{id}/editar)."""
 
 from __future__ import annotations
 
+from functools import partial
+
 import flet as ft
 
-from osapp.services import ordens
+from osapp.services import custos, equipamentos, ordens
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao
-from osapp.ui import rotas, theme
+from osapp.ui import formularios, rotas, theme
 from osapp.ui.components import basicos
+from osapp.ui.components.editor_itens import ADICIONAR, EDITAR, EditorItens
 from osapp.ui.components.formulario_os import FormularioOs
 from osapp.ui.views.base import Tela
 from osapp.ui.views.detalhe import MENSAGEM_CONFLITO
+
+TITULO_PREVISTOS = "Custos previstos"
+TITULO_REALIZADOS = "Custos realizados"
+
+
+class AlvoDeErro:
+    """Faz o editor de itens receber, como um campo, a mensagem de ErroValidacao da lista."""
+
+    def __init__(self, editor: EditorItens) -> None:
+        self._editor = editor
+
+    @property
+    def error(self) -> str | None:
+        return self._editor.erro.value or None
+
+    @error.setter
+    def error(self, mensagem: str | None) -> None:
+        self._editor.erro.value = mensagem or ""
+        self._editor.erro.visible = bool(mensagem)
+
+    def update(self) -> None:
+        self._editor.marcar_erro(self._editor.erro.value or None)
 
 
 class _TelaDeFormulario(Tela):
@@ -20,6 +45,7 @@ class _TelaDeFormulario(Tela):
     def __init__(self, app) -> None:
         self.app = app
         self.formulario: FormularioOs | None = None
+        self.editores: list[EditorItens] = []
         self.aviso = ft.Text("", color=theme.COR_ERRO, size=theme.FONTE_SUBTITULO, visible=False)
         self.botao = basicos.botao_primario(self.rotulo_do_botao, ft.Icons.SAVE, self._salvar)
         self.conteudo = basicos.coluna([basicos.carregando()])
@@ -34,6 +60,7 @@ class _TelaDeFormulario(Tela):
                     [basicos.titulo(self.titulo_da_tela), self.formulario.controle, self.aviso]
                 )
             ),
+            *[basicos.cartao(editor.controle) for editor in self.editores],
             self.botao,
         ]
 
@@ -51,6 +78,12 @@ class _TelaDeFormulario(Tela):
             self.conteudo.update()
         except RuntimeError:
             pass  # a tela já foi trocada
+
+    def _avisar_conflito(self) -> None:
+        self.aviso.value = MENSAGEM_CONFLITO
+        self.aviso.visible = True
+        self.app.avisar(MENSAGEM_CONFLITO)
+        self._atualizar()
 
     async def _salvar(self, _e=None) -> None:
         if self.botao.disabled or self.formulario is None:
@@ -73,16 +106,27 @@ class _TelaDeFormulario(Tela):
 
 
 class CriarOs(_TelaDeFormulario):
-    titulo_da_tela = "Nova OS"
-    rotulo_do_botao = "Salvar OS"
+    titulo_da_tela = "Nova Ordem de Serviço"
+    rotulo_do_botao = "Salvar Ordem de Serviço"
 
     def __init__(self, app, **_params) -> None:
         super().__init__(app)
+        self.previstos: EditorItens | None = None
+
+    def tem_alteracoes(self) -> bool:
+        return super().tem_alteracoes() or bool(self.previstos and self.previstos.itens)
 
     async def carregar(self) -> None:
-        resultado = await self.app.chamar(ordens.listar_filiais, self.app.sessao.ator_id)
-        if resultado.ok:
-            self.formulario = FormularioOs(self.app, resultado.valor)
+        ator_id = self.app.sessao.ator_id
+        filiais = await self.app.chamar(ordens.listar_filiais, ator_id)
+        categorias = await self.app.chamar(custos.listar_categorias, ator_id)
+        lista = await self.app.chamar(equipamentos.listar_equipamentos, ator_id)
+        if filiais.ok and categorias.ok and lista.ok:
+            self.formulario = FormularioOs(self.app, filiais.valor, lista.valor)
+            self.previstos = EditorItens(
+                self.app, custos.FASE_PREVISTO, categorias.valor, titulo=TITULO_PREVISTOS
+            )
+            self.editores = [self.previstos]
             self._mostrar_formulario()
         else:
             self._mostrar_mensagem(
@@ -91,23 +135,31 @@ class CriarOs(_TelaDeFormulario):
         self._atualizar()
 
     async def _gravar(self, valores: dict) -> None:
+        campos = {**self.formulario.campos, "itens_previstos": AlvoDeErro(self.previstos)}
         resultado = await self.app.chamar(
-            ordens.criar_os,
+            partial(
+                ordens.criar_os,
+                equipamento_id=valores["equipamento_id"],
+                equipamento_outro=valores["equipamento_outro"],
+            ),
             self.app.sessao.ator_id,
             valores["titulo"],
             valores["descricao"],
-            valores["valor_previsto_centavos"],
+            formularios.para_entrada(self.previstos.itens),
             valores["tempo_previsto_minutos"],
             valores["filial_id"],
-            campos=self.formulario.campos,
+            campos=campos,
         )
         if resultado.ok:
             self.formulario.marcar_como_salvo()
-            await self.app.ir(rotas.rota_os(resultado.valor.id), mensagem="OS criada.")
+            self.previstos.definir_itens([])  # nada mais a perder ao sair
+            await self.app.ir(
+                rotas.rota_os(resultado.valor.id), mensagem="Ordem de Serviço criada."
+            )
 
 
 class EditarOs(_TelaDeFormulario):
-    titulo_da_tela = "Alterar OS"
+    titulo_da_tela = "Alterar Ordem de Serviço"
     rotulo_do_botao = "Salvar alterações"
 
     def __init__(self, app, os_id: int, **_params) -> None:
@@ -121,22 +173,52 @@ class EditarOs(_TelaDeFormulario):
             ordens.obter_os, ator_id, self.os_id, erros_tratados=(ErroNaoEncontrado,)
         )
         if isinstance(resultado.erro, ErroNaoEncontrado):
-            self._mostrar_mensagem("OS não encontrada.", rotas.HOME, "Voltar para a lista")
+            self._mostrar_mensagem(
+                "Ordem de Serviço não encontrada.", rotas.HOME, "Voltar para a lista"
+            )
         elif resultado.ok and not resultado.valor.acoes.pode_editar:
             # A rota foi aberta sem permissão: o serviço diz que não pode (acoes).
             self._mostrar_mensagem(
-                self.app.MENSAGEM_GENERICA, rotas.rota_os(self.os_id), "Voltar para a OS"
+                self.app.MENSAGEM_GENERICA,
+                rotas.rota_os(self.os_id),
+                "Voltar para a Ordem de Serviço",
             )
         elif resultado.ok:
+            os_ = resultado.valor
             filiais = await self.app.chamar(ordens.listar_filiais, ator_id)
-            if filiais.ok:
-                self.os = resultado.valor
+            categorias = await self.app.chamar(custos.listar_categorias, ator_id)
+            lista = await self.app.chamar(equipamentos.listar_equipamentos, ator_id, os_.filial_id)
+            if filiais.ok and categorias.ok and lista.ok:
+                self.os = os_
                 self.formulario = FormularioOs(
                     self.app,
                     filiais.valor,
-                    os=self.os,
-                    com_realizado=self.os.acoes.pode_editar_realizado,
+                    lista.valor,
+                    os=os_,
+                    com_realizado=os_.acoes.pode_editar_realizado,
                 )
+                self.editores = [
+                    EditorItens(
+                        self.app,
+                        custos.FASE_PREVISTO,
+                        categorias.valor,
+                        formularios.itens_da_fase(os_.itens, custos.FASE_PREVISTO),
+                        titulo=TITULO_PREVISTOS,
+                        somente_leitura=not os_.acoes.pode_editar_itens_previstos,
+                        ao_gravar=partial(self._gravar_item, custos.FASE_PREVISTO),
+                    )
+                ]
+                if os_.acoes.pode_editar_itens_realizados:
+                    self.editores.append(
+                        EditorItens(
+                            self.app,
+                            custos.FASE_REALIZADO,
+                            categorias.valor,
+                            formularios.itens_da_fase(os_.itens, custos.FASE_REALIZADO),
+                            titulo=TITULO_REALIZADOS,
+                            ao_gravar=partial(self._gravar_item, custos.FASE_REALIZADO),
+                        )
+                    )
                 self._mostrar_formulario()
         if self.formulario is None and len(self.conteudo.controls) == 1:
             # Nada foi mostrado ainda: a carga falhou (o aviso genérico já apareceu).
@@ -144,6 +226,51 @@ class EditarOs(_TelaDeFormulario):
                 "Não foi possível abrir o formulário.", rotas.HOME, "Voltar para a lista"
             )
         self._atualizar()
+
+    async def _gravar_item(self, fase: str, operacao: str, antes, depois) -> bool:
+        """Cada mudança de item é gravada na hora pelos serviços de item; a tela recarrega."""
+        ator_id = self.app.sessao.ator_id
+        versao = self.os.versao
+        if operacao == ADICIONAR:
+            chamada = (
+                custos.adicionar_item,
+                ator_id,
+                self.os_id,
+                versao,
+                fase,
+                depois.categoria_id,
+                depois.descricao,
+                depois.quantidade,
+                depois.valor_unitario_centavos,
+            )
+            mensagem = "Item incluído."
+        elif operacao == EDITAR:
+            chamada = (
+                custos.editar_item,
+                ator_id,
+                self.os_id,
+                antes.id,
+                versao,
+                formularios.alteracoes_do_item(antes, depois),
+            )
+            mensagem = "Item alterado."
+        else:
+            chamada = (custos.remover_item, ator_id, self.os_id, antes.id, versao)
+            mensagem = "Item removido."
+        resultado = await self.app.chamar(
+            *chamada, erros_tratados=(ErroConflito, ErroPermissao, ErroNaoEncontrado)
+        )
+        if resultado.ok:
+            self.os = resultado.valor  # nova versão, itens e totais calculados pelo servidor
+            for editor in self.editores:
+                editor.definir_itens(formularios.itens_da_fase(self.os.itens, editor.fase))
+            self.app.avisar(mensagem)
+            return True
+        if isinstance(resultado.erro, ErroConflito):
+            self._avisar_conflito()
+        elif isinstance(resultado.erro, ErroPermissao | ErroNaoEncontrado):
+            self.app.avisar(self.app.MENSAGEM_GENERICA)
+        return False
 
     async def _gravar(self, valores: dict) -> None:
         alteracoes = self.formulario.alteracoes(valores)
@@ -163,10 +290,8 @@ class EditarOs(_TelaDeFormulario):
         )
         if resultado.ok:
             self.formulario.marcar_como_salvo()
-            await self.app.ir(destino, mensagem="OS alterada.")
+            await self.app.ir(destino, mensagem="Ordem de Serviço alterada.")
         elif isinstance(resultado.erro, ErroConflito):
-            self.aviso.value = MENSAGEM_CONFLITO
-            self.aviso.visible = True
-            self.app.avisar(MENSAGEM_CONFLITO)
+            self._avisar_conflito()
         elif isinstance(resultado.erro, ErroPermissao | ErroNaoEncontrado):
             self.app.avisar(self.app.MENSAGEM_GENERICA)

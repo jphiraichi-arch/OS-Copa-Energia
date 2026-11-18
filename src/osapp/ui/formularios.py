@@ -6,47 +6,23 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from osapp import formatacao
+from osapp.services import custos
+from osapp.services.erros import ErroValidacao
 
-MSG_VALOR = "Valor inválido. Use o formato 1.234,56."
-MSG_TEMPO = "Tempo inválido. Use o formato H:MM, por exemplo 1:30."
-MSG_TEMPO_ZERO = "O tempo deve ser de pelo menos 1 minuto."
 MSG_DATA = "Data inválida. Use o formato dd/mm/aaaa."
 MSG_HORA = "Hora inválida. Use o formato HH:MM, por exemplo 13:50."
+MSG_QUANTIDADE = "Quantidade inválida. Use o formato 1 ou 1,5."
+MSG_CATEGORIA = "Escolha a categoria."
+OPCAO_OUTRO = "outro"  # chave da opção 'Outro' na lista de equipamentos
 
 _RE_DATA = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})$")
 _RE_HORA = re.compile(r"^(\d{1,2}):(\d{2})$")
-
-
-def ler_valor(texto: str | None) -> int:
-    """'1.234,56' -> 123456 centavos. ValueError com mensagem em português."""
-    try:
-        return formatacao.ler_brl(texto or "")
-    except ValueError:
-        raise ValueError(MSG_VALOR) from None
-
-
-def ler_tempo(texto: str | None) -> int:
-    """'1:30' -> 90 minutos. ValueError com mensagem em português; '0:00' é recusado."""
-    try:
-        minutos = formatacao.ler_duracao(texto or "")
-    except ValueError:
-        raise ValueError(MSG_TEMPO) from None
-    if minutos < 1:
-        raise ValueError(MSG_TEMPO_ZERO)
-    return minutos
-
-
-def tempo_para_campo(minutos: int) -> str:
-    """90 -> '1:30' (o formato que ``ler_tempo`` aceita)."""
-    return f"{minutos // 60}:{minutos % 60:02d}"
-
-
-def valor_para_campo(centavos: int) -> str:
-    return formatacao.formatar_brl(centavos)
 
 
 def ler_data(texto: str | None) -> date:
@@ -67,6 +43,18 @@ def ler_hora(texto: str | None) -> time:
         return time(int(m.group(1)), int(m.group(2)))
     except ValueError:
         raise ValueError(MSG_HORA) from None
+
+
+def ler_quantidade(texto: str | None) -> Decimal:
+    """'1', '1,5' ou '1,50' -> Decimal com 2 casas. ValueError com mensagem em português."""
+    try:
+        return formatacao.ler_quantidade(texto or "")
+    except ValueError:
+        raise ValueError(MSG_QUANTIDADE) from None
+
+
+def quantidade_para_campo(quantidade: Decimal) -> str:
+    return formatacao.formatar_quantidade(quantidade)
 
 
 def para_utc(dia: date, hora: time, tz: str) -> datetime:
@@ -93,36 +81,177 @@ def somente_alterados(original: dict, atual: dict) -> dict:
     return {campo: valor for campo, valor in atual.items() if original.get(campo) != valor}
 
 
-def previa_diferencas(
-    valor_previsto_centavos: int,
-    tempo_previsto_minutos: int,
-    texto_valor: str | None,
-    inicio: tuple[str | None, str | None],
-    fim: tuple[str | None, str | None],
-    tz: str,
-) -> tuple[str | None, str | None]:
-    """Prévia (diferença de valor, diferença de tempo) enquanto o usuário digita.
+# --- Itens de custo ---------------------------------------------------------------------
 
-    Cada item é None enquanto as entradas correspondentes não forem válidas. É só uma
-    prévia: os números oficiais são calculados pelo serviço na conclusão.
+
+@dataclass(frozen=True)
+class ItemLocal:
+    """Item como a tela o guarda. Tem os campos que ``custos.calcular_resumo`` lê.
+
+    ``id`` é o id gravado (None para um item que só existe na tela). ``chave`` identifica
+    o item na tela, gravado ou não.
     """
+
+    chave: int
+    id: int | None
+    fase: str
+    categoria_id: int
+    categoria_nome: str
+    categoria_ordem: int
+    descricao: str
+    quantidade: Decimal
+    valor_unitario_centavos: int
+
+    @property
+    def total_centavos(self) -> int:
+        return custos.total_da_linha(self.quantidade, self.valor_unitario_centavos)
+
+
+def item_local(dto, chave: int | None = None) -> ItemLocal:
+    """``custos.ItemDTO`` -> ItemLocal (a chave é o id gravado)."""
+    return ItemLocal(
+        chave=dto.id if chave is None else chave,
+        id=dto.id,
+        fase=dto.fase,
+        categoria_id=dto.categoria_id,
+        categoria_nome=dto.categoria_nome,
+        categoria_ordem=dto.categoria_ordem,
+        descricao=dto.descricao,
+        quantidade=dto.quantidade,
+        valor_unitario_centavos=dto.valor_unitario_centavos,
+    )
+
+
+def itens_da_fase(itens, fase: str) -> list[ItemLocal]:
+    return [item_local(i) for i in itens if i.fase == fase]
+
+
+def para_entrada(itens: list[ItemLocal]) -> list[custos.ItemEntrada]:
+    """Itens da tela -> argumento ``itens_previstos``/``itens_realizados`` dos serviços."""
+    return [
+        custos.ItemEntrada(
+            categoria_id=i.categoria_id,
+            descricao=i.descricao,
+            quantidade=i.quantidade,
+            valor_unitario_centavos=i.valor_unitario_centavos,
+        )
+        for i in itens
+    ]
+
+
+def copiar_itens(itens: list[ItemLocal], fase: str, primeira_chave: int) -> list[ItemLocal]:
+    """Cópias não gravadas dos itens, na fase ``fase`` ('Copiar itens previstos')."""
+    return [
+        replace(item, chave=primeira_chave + n, id=None, fase=fase) for n, item in enumerate(itens)
+    ]
+
+
+def ler_item(
+    categorias, fase: str, chave: int, item_id: int | None, valores: dict
+) -> tuple[ItemLocal | None, dict[str, str]]:
+    """Valores digitados no diálogo do item -> (ItemLocal, {}) ou (None, {campo: mensagem}).
+
+    ``valores``: categoria_id (int ou None), descricao (str), quantidade (texto),
+    valor_unitario_centavos (int ou None quando a máscara indica erro). Usa os validadores
+    puros do serviço; o serviço valida de novo ao gravar.
+    """
+    erros: dict[str, str] = {}
+    categoria = next((c for c in categorias if c.id == valores.get("categoria_id")), None)
+    if categoria is None:
+        erros["categoria_id"] = MSG_CATEGORIA
+    descricao = quantidade = valor = None
+    try:
+        descricao = custos.validar_descricao(valores.get("descricao"))
+    except ErroValidacao as exc:
+        erros["descricao"] = exc.mensagem
+    try:
+        quantidade = custos.validar_quantidade(ler_quantidade(valores.get("quantidade")))
+    except ValueError as exc:
+        erros["quantidade"] = str(exc)
+    except ErroValidacao as exc:
+        erros["quantidade"] = exc.mensagem
+    try:
+        valor = custos.validar_valor_unitario(valores.get("valor_unitario_centavos"))
+    except ErroValidacao as exc:
+        erros["valor_unitario_centavos"] = exc.mensagem
+    if erros:
+        return None, erros
+    return (
+        ItemLocal(
+            chave=chave,
+            id=item_id,
+            fase=fase,
+            categoria_id=categoria.id,
+            categoria_nome=categoria.nome,
+            categoria_ordem=categoria.ordem,
+            descricao=descricao,
+            quantidade=quantidade,
+            valor_unitario_centavos=valor,
+        ),
+        {},
+    )
+
+
+def alteracoes_do_item(antes: ItemLocal, depois: ItemLocal) -> dict:
+    """Só os campos do item que mudaram (argumento ``alteracoes`` de ``editar_item``)."""
+    return {
+        campo: getattr(depois, campo)
+        for campo in custos.CAMPOS_DO_ITEM
+        if getattr(antes, campo) != getattr(depois, campo)
+    }
+
+
+def resumo_previa(itens: list[ItemLocal]) -> custos.ResumoCustos:
+    """Prévia dos totais (o número oficial é o ``resumo_custos`` devolvido pelo serviço)."""
+    return custos.calcular_resumo(itens)
+
+
+# --- Equipamento ------------------------------------------------------------------------
+
+
+def chave_do_equipamento(equipamento_id: int | None, equipamento_outro: str | None) -> str | None:
+    """Valor do dropdown para a OS carregada."""
+    if equipamento_id is not None:
+        return str(equipamento_id)
+    if equipamento_outro:
+        return OPCAO_OUTRO
+    return None
+
+
+def ler_equipamento(chave: str | None, texto_outro: str | None) -> dict:
+    """Escolha do dropdown -> {'equipamento_id', 'equipamento_outro'} para os serviços."""
+    if chave == OPCAO_OUTRO:
+        return {"equipamento_id": None, "equipamento_outro": (texto_outro or "").strip()}
+    if chave:
+        return {"equipamento_id": int(chave), "equipamento_outro": None}
+    return {"equipamento_id": None, "equipamento_outro": None}
+
+
+# --- Conclusão --------------------------------------------------------------------------
+
+
+def instante(texto_data: str | None, hora: time | None, tz: str) -> datetime:
+    """Data 'dd/mm/aaaa' + hora do CampoHora no fuso ``tz`` -> UTC. ValueError se inválido."""
+    if hora is None:
+        raise ValueError(MSG_HORA)
+    return para_utc(ler_data(texto_data), hora, tz)
+
+
+def previa_tempo(
+    tempo_previsto_minutos: int,
+    inicio: tuple[str | None, time | None],
+    fim: tuple[str | None, time | None],
+    tz: str,
+) -> str | None:
+    """Diferença de tempo enquanto o usuário digita; None enquanto não for válida."""
     from osapp.ui import historico
 
-    previa_valor = previa_tempo = None
     try:
-        diferenca = ler_valor(texto_valor) - valor_previsto_centavos
-        percentual = (
-            round(diferenca * 100 / valor_previsto_centavos, 2) if valor_previsto_centavos else None
-        )
-        previa_valor = historico.texto_diferenca_valor(diferenca, percentual)
+        inicio_utc = instante(inicio[0], inicio[1], tz)
+        fim_utc = instante(fim[0], fim[1], tz)
     except ValueError:
-        pass
-    try:
-        inicio_utc = ler_data_hora(inicio[0], inicio[1], tz)
-        fim_utc = ler_data_hora(fim[0], fim[1], tz)
-        if fim_utc > inicio_utc:
-            minutos = int((fim_utc - inicio_utc).total_seconds() // 60)
-            previa_tempo = historico.texto_diferenca_tempo(minutos - tempo_previsto_minutos)
-    except ValueError:
-        pass
-    return previa_valor, previa_tempo
+        return None
+    if fim_utc <= inicio_utc:
+        return None
+    minutos = int((fim_utc - inicio_utc).total_seconds() // 60)
+    return historico.texto_diferenca_tempo(minutos - tempo_previsto_minutos)
