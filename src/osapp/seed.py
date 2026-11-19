@@ -13,7 +13,7 @@ import sys
 from osapp.config import ConfigError
 from osapp.db import obter_engine, trava_de_inicializacao
 from osapp.logs import configurar_logging
-from osapp.services import administracao
+from osapp.services import administracao, senhas
 from osapp.services.erros import ErroConflito, ErroValidacao
 
 FILIAL = ("1007", "Jardinópolis")
@@ -75,7 +75,8 @@ def main() -> int:
             )
     except ErroValidacao:
         print(
-            "Defina a variável de ambiente OS_SEED_SENHA com pelo menos 8 caracteres.",
+            "Defina a variável de ambiente OS_SEED_SENHA com pelo menos "
+            f"{senhas.SENHA_MIN} caracteres.",
             file=sys.stderr,
         )
         return 1
