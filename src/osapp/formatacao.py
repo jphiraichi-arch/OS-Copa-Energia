@@ -97,6 +97,26 @@ def formatar_duracao(minutos: int) -> str:
     return f"{horas}h{resto:02d}"
 
 
+def formatar_tempo(segundos: int) -> str:
+    """Duração de atendimento: '45 min', '3 h 20 min', '2 d 4 h'.
+
+    Arredonda para o minuto mais próximo (meio para cima). A partir de 1 dia mostra só
+    dias e horas (horas inteiras, sem os minutos que sobram).
+    """
+    _exigir_int(segundos, "segundos")
+    if segundos < 0:
+        raise ValueError("Duração não pode ser negativa.")
+    minutos = (segundos + 30) // 60
+    if minutos < 60:
+        return f"{minutos} min"
+    if minutos < 24 * 60:
+        horas, resto = divmod(minutos, 60)
+        return f"{horas} h {resto} min" if resto else f"{horas} h"
+    dias, resto = divmod(minutos, 24 * 60)
+    horas = resto // 60
+    return f"{dias} d {horas} h" if horas else f"{dias} d"
+
+
 def ler_duracao(texto: str) -> int:
     """Lê '1:30' ou '01:30' (horas:minutos) e devolve minutos."""
     if not isinstance(texto, str):

@@ -26,6 +26,7 @@ from osapp.ui.views.detalhe import Detalhe
 from osapp.ui.views.home import Home
 from osapp.ui.views.login import Login
 from osapp.ui.views.os_formulario import AssumirOs, CriarOs, EditarOs
+from osapp.ui.views.relatorio_tempos import RelatorioTempos
 from osapp.ui.views.relatorios import Relatorios
 from osapp.ui.views.solicitacao import EditarSolicitacao, NovaSolicitacao
 
@@ -47,7 +48,8 @@ TELAS = {
     "login": Login,
     "home": Home,
     "configuracoes": Configuracoes,
-    "relatorios": Relatorios,
+    "relatorios": RelatorioTempos,
+    "relatorios_mensal": Relatorios,
     "os_nova": CriarOs,
     "os_detalhe": Detalhe,
     "os_editar": EditarOs,

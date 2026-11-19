@@ -11,18 +11,21 @@ Níveis de acesso (decididos aqui, nunca na interface):
 from __future__ import annotations
 
 import logging
+import statistics
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time, timedelta
+from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
 
 from osapp.config import carregar_config
 from osapp.db import sessao
 from osapp.repositories import FilialRepo, OrdemServicoRepo
-from osapp.services import custos
+from osapp.services import custos, relogio
 from osapp.services import status as _status
 from osapp.services.auth import Ator, carregar_ator
 from osapp.services.erros import ErroPermissao, ErroValidacao
+from osapp.services.ordens import NIVEIS
 from osapp.services.permissoes import pode_ver_relatorio_completo
 
 logger = logging.getLogger(__name__)
@@ -250,4 +253,154 @@ def _completo(concluidas, consolidado: bool) -> RelatorioCompleto:
         )
         if consolidado
         else (),
+    )
+
+
+# --- Relatório de tempos de atendimento (prompt 18) -----------------------------------
+#
+# Tempo de resposta = inicio_execucao_em - aberta_em (só OS com início).
+# Tempo até solução = concluida_em - aberta_em (só concluídas).
+# População: origem 'solicitacao', nunca CANCELADA, filial do ator (admin: uma ou todas),
+# aberta no período (dias corridos em OS_TZ, inclusive). Horas corridas, sem expediente.
+
+DIAS_PADRAO = 30
+STATUS_DO_RELATORIO = (_status.ABERTA, _status.EM_EXECUCAO, _status.CONCLUIDA)
+
+
+@dataclass(frozen=True)
+class Medida:
+    """n, média e mediana em segundos inteiros (None quando n = 0)."""
+
+    n: int
+    media_segundos: int | None
+    mediana_segundos: int | None
+
+
+@dataclass(frozen=True)
+class TemposPorUrgencia:
+    urgencia: str
+    resposta: Medida
+    solucao: Medida
+
+
+@dataclass(frozen=True)
+class Backlog:
+    """Solicitações ainda ABERTA agora (ignora período e status)."""
+
+    quantidade: int
+    mais_antiga_segundos: int | None  # agora - aberta_em da mais antiga
+
+
+@dataclass(frozen=True)
+class RelatorioTempos:
+    data_inicio: date
+    data_fim: date
+    status: tuple[str, ...]
+    filial_id: int | None  # None = todas as filiais (só administrador)
+    filial_rotulo: str
+    resposta: Medida
+    solucao: Medida
+    por_urgencia: tuple[TemposPorUrgencia, ...]  # baixa, media, alta, emergencial
+    backlog: Backlog
+    total_no_periodo: int  # OS consideradas (com ou sem início)
+
+
+def _arredondar(valor: Decimal) -> int:
+    return int(valor.quantize(Decimal(1), rounding=ROUND_HALF_UP))
+
+
+def medir(segundos: list[int]) -> Medida:
+    """Média (meio para cima) e mediana em segundos inteiros. Lista vazia: n = 0, None."""
+    if not segundos:
+        return Medida(0, None, None)
+    media = _arredondar(Decimal(sum(segundos)) / Decimal(len(segundos)))
+    mediana = _arredondar(Decimal(str(statistics.median(segundos))))
+    return Medida(len(segundos), media, mediana)
+
+
+def limites_do_periodo(data_inicio: date, data_fim: date, tz: str) -> tuple[datetime, datetime]:
+    """[início do 1º dia, início do dia seguinte ao último) em OS_TZ, convertidos para UTC."""
+    zona = ZoneInfo(tz)
+    inicio = datetime.combine(data_inicio, time.min, tzinfo=zona).astimezone(UTC)
+    fim = datetime.combine(data_fim + timedelta(days=1), time.min, tzinfo=zona).astimezone(UTC)
+    return inicio, fim
+
+
+def _segundos(inicio: datetime, fim: datetime) -> int:
+    return int((fim - inicio).total_seconds())
+
+
+def _validar_periodo(data_inicio: object, data_fim: object, tz: str) -> tuple[date, date]:
+    if data_inicio is None and data_fim is None:
+        hoje = relogio.agora().astimezone(ZoneInfo(tz)).date()
+        return hoje - timedelta(days=DIAS_PADRAO - 1), hoje
+    for campo, valor in (("data_inicio", data_inicio), ("data_fim", data_fim)):
+        if not isinstance(valor, date) or isinstance(valor, datetime):
+            raise ErroValidacao(campo, "Informe a data no formato dd/mm/aaaa.")
+    if data_fim < data_inicio:
+        raise ErroValidacao("data_fim", "A data final deve ser igual ou depois da inicial.")
+    return data_inicio, data_fim
+
+
+def _validar_status(status: object) -> tuple[str, ...]:
+    if status is None:
+        return STATUS_DO_RELATORIO
+    if not isinstance(status, list | tuple | set | frozenset) or not status:
+        raise ErroValidacao("status", "Escolha pelo menos um status.")
+    if not set(status) <= set(STATUS_DO_RELATORIO):
+        raise ErroValidacao("status", "Status inválido.")
+    return tuple(s for s in STATUS_DO_RELATORIO if s in status)
+
+
+def relatorio_tempos(
+    ator_id: int,
+    data_inicio: date | None = None,
+    data_fim: date | None = None,
+    status: object = None,
+    filial_id: int | None = None,
+) -> RelatorioTempos:
+    """Tempos de resposta e até a solução das solicitações. Manutenção (própria filial) e
+    administrador (uma filial ou todas); o papel usuario recebe ErroPermissao."""
+    ator = carregar_ator(ator_id)
+    if ator.is_usuario:
+        logger.warning("Permissão negada: usuario_id=%s ação=relatório de tempos.", ator.usuario_id)
+        raise ErroPermissao()
+    tz = carregar_config().tz
+    data_inicio, data_fim = _validar_periodo(data_inicio, data_fim, tz)
+    status_escolhidos = _validar_status(status)
+    inicio, fim = limites_do_periodo(data_inicio, data_fim, tz)
+    agora = relogio.agora()
+    with sessao() as s:
+        filial, rotulo = _filial_permitida(s, ator, filial_id)
+        repo = OrdemServicoRepo(s)
+        linhas = repo.tempos_de_solicitacoes(filial, inicio, fim, status_escolhidos)
+        abertas = repo.abertas_de_solicitacoes(filial)
+    respostas = {n: [] for n in NIVEIS}
+    solucoes = {n: [] for n in NIVEIS}
+    todas_resp, todas_sol = [], []
+    for _id, urgencia, aberta, inicio_exec, concluida in linhas:
+        if inicio_exec is not None:
+            valor = _segundos(aberta, inicio_exec)
+            todas_resp.append(valor)
+            respostas.setdefault(urgencia, []).append(valor)
+        if concluida is not None:
+            valor = _segundos(aberta, concluida)
+            todas_sol.append(valor)
+            solucoes.setdefault(urgencia, []).append(valor)
+    mais_antiga = min(abertas) if abertas else None
+    return RelatorioTempos(
+        data_inicio=data_inicio,
+        data_fim=data_fim,
+        status=status_escolhidos,
+        filial_id=filial,
+        filial_rotulo=rotulo,
+        resposta=medir(todas_resp),
+        solucao=medir(todas_sol),
+        por_urgencia=tuple(
+            TemposPorUrgencia(n, medir(respostas[n]), medir(solucoes[n])) for n in NIVEIS
+        ),
+        backlog=Backlog(
+            len(abertas), _segundos(mais_antiga, agora) if mais_antiga is not None else None
+        ),
+        total_no_periodo=len(linhas),
     )

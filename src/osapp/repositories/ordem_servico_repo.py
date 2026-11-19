@@ -56,6 +56,39 @@ class OrdemServicoRepo:
         )
         return list(self._s.scalars(consulta))
 
+    # --- Relatório de tempos: só as colunas necessárias, filtros na consulta ----------
+
+    def tempos_de_solicitacoes(
+        self, filial_id: int | None, inicio: datetime, fim: datetime, status: tuple[str, ...]
+    ) -> list[tuple]:
+        """(id, urgencia, aberta_em, inicio_execucao_em, concluida_em) das solicitações
+        (nunca canceladas) abertas em [inicio, fim) com um dos ``status``."""
+        consulta = select(
+            OrdemServico.id,
+            OrdemServico.urgencia,
+            OrdemServico.aberta_em,
+            OrdemServico.inicio_execucao_em,
+            OrdemServico.concluida_em,
+        ).where(
+            OrdemServico.origem == "solicitacao",
+            OrdemServico.status != "CANCELADA",
+            OrdemServico.status.in_(status),
+            OrdemServico.aberta_em >= inicio,
+            OrdemServico.aberta_em < fim,
+        )
+        if filial_id is not None:
+            consulta = consulta.where(OrdemServico.filial_id == filial_id)
+        return [tuple(linha) for linha in self._s.execute(consulta.order_by(OrdemServico.id))]
+
+    def abertas_de_solicitacoes(self, filial_id: int | None) -> list[datetime]:
+        """aberta_em de cada solicitação ainda ABERTA (situação de agora)."""
+        consulta = select(OrdemServico.aberta_em).where(
+            OrdemServico.origem == "solicitacao", OrdemServico.status == "ABERTA"
+        )
+        if filial_id is not None:
+            consulta = consulta.where(OrdemServico.filial_id == filial_id)
+        return list(self._s.scalars(consulta))
+
     # --- Visão do solicitante: só as colunas permitidas, nunca a entidade inteira -----
 
     def _consulta_solicitante(self):

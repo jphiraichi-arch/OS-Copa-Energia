@@ -103,3 +103,29 @@ MESES = (
 def nome_do_mes(ano: int, mes: int) -> str:
     """Ex.: 'novembro de 2026'."""
     return f"{MESES[mes - 1]} de {ano}"
+
+
+# --- Relatório de tempos de atendimento (prompt 18) ------------------------------------
+TEMPOS_TITULO = "Relatório de tempos de atendimento"
+TEMPOS_PERIODO = "Período (data em que a solicitação foi aberta)"
+TEMPOS_DE = "De (dd/mm/aaaa)"
+TEMPOS_ATE = "Até (dd/mm/aaaa)"
+TEMPOS_APLICAR = "Aplicar"
+TEMPOS_RESPOSTA = "Tempo de resposta"
+TEMPOS_RESPOSTA_AJUDA = "Da abertura até o início da execução."
+TEMPOS_SOLUCAO = "Tempo até solução"
+TEMPOS_SOLUCAO_AJUDA = "Da abertura até a conclusão."
+TEMPOS_MEDIA = "Média"
+TEMPOS_MEDIANA = "Mediana"
+TEMPOS_POR_URGENCIA = "Por urgência"
+TEMPOS_ABERTAS = "Solicitações em aberto"
+TEMPOS_QUANTIDADE = "Quantidade"
+TEMPOS_MAIS_ANTIGA = "mais antiga há"
+TEMPOS_NOTA = (
+    "Média sente casos extremos; mediana mostra o caso típico. Horas corridas, sem "
+    "calendário de expediente."
+)
+TEMPOS_VAZIO = "Sem dados no período."
+TEMPOS_MENSAL = "Relatório mensal (custos e desempenho)"
+HOME_ATALHO_RELATORIO = "Relatório de tempos de atendimento"
+HOME_ATALHO_RELATORIO_AJUDA = "Tempo de resposta e até a solução das solicitações."

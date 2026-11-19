@@ -10,7 +10,7 @@ import flet as ft
 
 from osapp import formatacao
 from osapp.services import ordens, status
-from osapp.ui import rotas, rotulos, textos, theme
+from osapp.ui import navegacao, rotas, rotulos, textos, theme
 from osapp.ui.components import basicos
 from osapp.ui.views.base import Tela
 
@@ -65,9 +65,37 @@ class Home(Tela):
         )
         self.lista = basicos.coluna([], espaco=theme.ESPACO_M)
         self.rodape = basicos.coluna([])
+        atalhos: list[ft.Control] = []
+        if navegacao.ve_relatorios(app.sessao.papel):  # cartão de opção (prompt 18)
+            atalhos.append(
+                basicos.cartao(
+                    ft.Row(
+                        [
+                            ft.Icon(ft.Icons.INSERT_CHART_OUTLINED, color=theme.COR_BOTAO_PRIMARIO),
+                            ft.Column(
+                                [
+                                    ft.Text(
+                                        textos.HOME_ATALHO_RELATORIO,
+                                        color=theme.COR_TITULO,
+                                        size=theme.FONTE_CORPO,
+                                        weight=ft.FontWeight.BOLD,
+                                    ),
+                                    basicos.subtitulo(textos.HOME_ATALHO_RELATORIO_AJUDA),
+                                ],
+                                spacing=2,
+                                expand=True,
+                            ),
+                            ft.Icon(ft.Icons.CHEVRON_RIGHT, color=theme.COR_SUBTITULO),
+                        ],
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    on_click=lambda _e: app.page.run_task(app.ir, rotas.RELATORIOS),
+                )
+            )
         self.conteudo = basicos.coluna(
             [
                 basicos.titulo(textos.HOME_TITULO, theme.FONTE_SAUDACAO),
+                *atalhos,
                 self.busca,
                 self.chips,
                 ft.Row(

@@ -18,8 +18,14 @@ def rotas_de(papel):
 
 def test_navegacao_por_papel():
     assert rotas_de("usuario") == [rotas.HOME, rotas.SOLICITACAO_NOVA]
-    assert rotas_de("manutencao") == [rotas.HOME, rotas.OS_NOVA]
-    assert rotas_de("admin") == [rotas.HOME, rotas.OS_NOVA, rotas.SOLICITACAO_NOVA]
+    # Relatórios (prompt 18): primeiro nível para manutenção e administrador.
+    assert rotas_de("manutencao") == [rotas.HOME, rotas.OS_NOVA, rotas.RELATORIOS]
+    assert rotas_de("admin") == [
+        rotas.HOME,
+        rotas.OS_NOVA,
+        rotas.SOLICITACAO_NOVA,
+        rotas.RELATORIOS,
+    ]
     assert rotas_de("desconhecido") == [rotas.HOME]
     assert [d.rotulo for d in navegacao.destinos("usuario")] == ["Ordens", "Nova Solicitação"]
     # Relatórios: nunca para o usuario.
@@ -82,3 +88,5 @@ def test_rotas_novas():
     assert rotas.resolver("/os/7/solicitacao") == ("os_solicitacao", {"os_id": 7})
     assert rotas.rota_anterior("/os/7/assumir") == "/os/7"
     assert rotas.rota_anterior("/solicitacao/nova") == "/"
+    assert rotas.resolver("/relatorios/mensal") == ("relatorios_mensal", {})
+    assert rotas.rota_anterior("/relatorios/mensal") == "/relatorios"

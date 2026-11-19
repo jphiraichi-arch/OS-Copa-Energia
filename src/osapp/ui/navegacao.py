@@ -22,6 +22,9 @@ ORDENS = Destino("ordens", textos.NAVEGACAO_ORDENS, textos.TRILHO_ORDENS, rotas.
 NOVA_ORDEM = Destino(
     "nova_ordem", textos.NAVEGACAO_NOVA_ORDEM, textos.TRILHO_NOVA_ORDEM, rotas.OS_NOVA
 )
+RELATORIOS = Destino(
+    "relatorios", textos.NAVEGACAO_RELATORIOS, textos.TRILHO_RELATORIOS, rotas.RELATORIOS
+)
 NOVA_SOLICITACAO = Destino(
     "nova_solicitacao",
     textos.NAVEGACAO_NOVA_SOLICITACAO,
@@ -31,14 +34,14 @@ NOVA_SOLICITACAO = Destino(
 
 
 def destinos(papel: str) -> tuple[Destino, ...]:
-    """usuario: Ordens e Nova Solicitação. manutencao: Ordens e Nova Ordem de Serviço.
-    admin: os da manutenção e Nova Solicitação. Papel desconhecido: só Ordens."""
+    """usuario: Ordens e Nova Solicitação. manutencao: Ordens, Nova Ordem de Serviço e
+    Relatórios. admin: os da manutenção e Nova Solicitação. Papel desconhecido: só Ordens."""
     if papel == "usuario":
         return (ORDENS, NOVA_SOLICITACAO)
     if papel == "manutencao":
-        return (ORDENS, NOVA_ORDEM)
+        return (ORDENS, NOVA_ORDEM, RELATORIOS)
     if papel == "admin":
-        return (ORDENS, NOVA_ORDEM, NOVA_SOLICITACAO)
+        return (ORDENS, NOVA_ORDEM, NOVA_SOLICITACAO, RELATORIOS)
     return (ORDENS,)
 
 

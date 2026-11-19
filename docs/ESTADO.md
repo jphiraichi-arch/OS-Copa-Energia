@@ -908,3 +908,22 @@ relógio substituído; migração 0008 com dados.
   `listar_tipos` recusa e a tela mostra a mensagem genérica.
 - Seed com exemplos: `usuario.teste` (papel usuario, 1007).
 - Conferido no navegador (Playwright, 390 px e 1280 px) os 7 passos do VERIFY.
+
+## Prompt 18 — relatório v1: tempo de resposta e até a solução (19/11/2026)
+
+- `services/relatorios.py`: `relatorio_tempos(ator_id, data_inicio=None, data_fim=None,
+  status=None, filial_id=None)` -> `RelatorioTempos` (resposta, solução, por urgência,
+  backlog). Só solicitações, nunca canceladas; período por `aberta_em` em dias de OS_TZ
+  (padrão: últimos 30 dias); status entre Aberta, Em execução, Concluída. Manutenção só a
+  própria filial; administrador uma ou todas; usuario: ErroPermissao. A consulta lê só id,
+  urgência e os três instantes; média e mediana em segundos inteiros no Python
+  (`medir`), meio para cima. Backlog (ABERTA agora) ignora período e status.
+- `formatacao.formatar_tempo(segundos)`: '45 min', '3 h 20 min', '2 d 4 h'.
+- Tela `/relatorios` "Relatório de tempos de atendimento" (filtros de período, status e,
+  para admin, filial; cartões de resposta e solução com média, mediana e n; por urgência
+  em tabela ou cartões no celular; "Solicitações em aberto"; nota sobre média e mediana;
+  "Sem dados no período."). Destino de primeiro nível "Relatórios" para manutenção e
+  administrador, entrada no menu e cartão na Home. O relatório mensal anterior foi para
+  `/relatorios/mensal`, com botão a partir do novo.
+- Conferido no navegador: com 5 solicitações (uma cancelada) os números batem com a
+  conta à mão; usuario.teste não tem Relatórios e `/relatorios` mostra a recusa genérica.
