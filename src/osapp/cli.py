@@ -99,6 +99,24 @@ def _limpar_tentativas(_args) -> str:
     return f"{apagadas} contador(es) de falha de login apagado(s)."
 
 
+def _previa_papeis(_args) -> str:
+    linhas = administracao.previa_papeis()
+    largura = max([len("login"), *(len(p.login) for p in linhas)])
+    saida = [f"{'login':<{largura}}  filial  is_admin  papel proposto"]
+    for p in linhas:
+        saida.append(
+            f"{p.login:<{largura}}  {p.filial_codigo:<6}  {'sim' if p.is_admin else 'não':<8}  "
+            f"{p.papel_proposto}"
+        )
+    saida.append(f"{len(linhas)} usuário(s). Nada foi alterado.")
+    return "\n".join(saida)
+
+
+def _definir_papel(args) -> str:
+    administracao.definir_papel(args.login, args.papel)
+    return "Papel alterado."
+
+
 def _desativar_usuario(args) -> str:
     administracao.desativar_usuario(_perguntar(args.login, "Login"))
     return "Usuário desativado."
@@ -146,6 +164,17 @@ def criar_parser() -> argparse.ArgumentParser:
     p.add_argument("--responsavel", required=True, help="Login do administrador")
     p.add_argument("--id", required=True, type=int)
     p.set_defaults(func=_desativar_equipamento)
+
+    p = sub.add_parser(
+        "previa-papeis",
+        help="Lista login, filial, is_admin e o papel que a migração 0007 dará (não altera nada)",
+    )
+    p.set_defaults(func=_previa_papeis)
+
+    p = sub.add_parser("definir-papel", help="Corrige o papel: usuario, manutencao ou admin")
+    p.add_argument("login")
+    p.add_argument("papel", choices=administracao.PAPEIS)
+    p.set_defaults(func=_definir_papel)
 
     p = sub.add_parser(
         "limpar-tentativas",

@@ -50,6 +50,20 @@ class UsuarioCriado:
 
 
 PERFIS = ("usuario", "gerente", "administrador")
+PAPEIS = ("usuario", "manutencao", "admin")
+
+
+def papel_de(is_admin: bool) -> str:
+    """Papel proposto a partir do perfil antigo (regra da migração 0007)."""
+    return "admin" if is_admin else "manutencao"
+
+
+@dataclass(frozen=True)
+class PreviaPapel:
+    login: str
+    filial_codigo: str
+    is_admin: bool
+    papel_proposto: str
 
 
 def _texto(campo: str, valor: object, minimo: int, maximo: int) -> str:
@@ -125,6 +139,7 @@ def criar_usuario(
                 filial_id=filial.id,
                 is_admin=is_admin,
                 is_gerente=is_gerente,
+                papel=papel_de(is_admin),
             )
         )
         logger.info("Usuário criado: usuario_id=%s.", usuario.id)
@@ -172,7 +187,44 @@ def definir_perfil(login: str, perfil: str) -> None:
         usuario = _usuario_por_login(s, login)
         usuario.is_admin = perfil == "administrador"
         usuario.is_gerente = perfil == "gerente"
+        if usuario.is_admin:
+            usuario.papel = "admin"
+        elif usuario.papel == "admin":
+            usuario.papel = "manutencao"  # papel = 'admin' exatamente quando is_admin
         logger.info("Perfil alterado: usuario_id=%s perfil=%s.", usuario.id, perfil)
+
+
+def previa_papeis() -> list[PreviaPapel]:
+    """Login, filial, is_admin e o papel que a migração 0007 vai dar. Não altera nada.
+
+    Lê só colunas que existem antes e depois da migração (login, is_admin e o código da
+    filial), para poder ser executado antes de migrar.
+    """
+    with sessao() as s:
+        linhas = s.execute(
+            select(Usuario.login, Filial.codigo, Usuario.is_admin)
+            .join(Filial, Usuario.filial_id == Filial.id)
+            .order_by(Filial.codigo, Usuario.login)
+        ).all()
+    return [
+        PreviaPapel(login, codigo, bool(adm), papel_de(bool(adm))) for login, codigo, adm in linhas
+    ]
+
+
+def definir_papel(login: str, papel: str) -> None:
+    """Corrige o papel de um usuário: 'usuario', 'manutencao' ou 'admin'.
+
+    Mantém is_admin coerente (verdadeiro exatamente quando o papel é 'admin').
+    """
+    if papel not in PAPEIS:
+        raise ErroValidacao("papel", "Papel inválido. Use usuario, manutencao ou admin.")
+    with sessao() as s:
+        usuario = _usuario_por_login(s, login)
+        usuario.papel = papel
+        usuario.is_admin = papel == "admin"
+        if usuario.is_admin:
+            usuario.is_gerente = False
+        logger.info("Papel alterado: usuario_id=%s papel=%s.", usuario.id, papel)
 
 
 # --- Cadastros básicos (seed) ----------------------------------------------------------

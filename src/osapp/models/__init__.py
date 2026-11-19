@@ -7,6 +7,7 @@ from osapp.models.ordem_servico import OrdemServico
 from osapp.models.os_evento import OsEvento
 from osapp.models.os_sequencia import OsSequencia
 from osapp.models.tentativa_login import TentativaLogin
+from osapp.models.tipo_manutencao import TipoManutencao
 from osapp.models.usuario import Usuario
 
 __all__ = [
@@ -18,5 +19,6 @@ __all__ = [
     "OsItemCusto",
     "OsSequencia",
     "TentativaLogin",
+    "TipoManutencao",
     "Usuario",
 ]

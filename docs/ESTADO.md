@@ -804,3 +804,29 @@ uvicorn.
   `test_relatorios.py`, `test_ui_formularios.py::test_resumo_previa_usa_o_calculo_do_servico`.
 - Numeração concorrente: `test_numeracao.py::test_vinte_criacoes_simultaneas` (20
   threads; roda no PostgreSQL, pulado no SQLite).
+
+## Prompt 16 — modelo de dados: papéis, solicitações, instantes de status (19/11/2026)
+
+**Só modelo de dados: as regras vêm no prompt 17. Pode ser implantado sozinho.**
+
+- `usuarios.papel` ('usuario' | 'manutencao' | 'admin', padrão no banco 'manutencao',
+  CHECK). Dados: is_admin -> 'admin', demais -> 'manutencao'. `is_admin` continua e fica
+  coerente: `criar_usuario`, `definir_perfil` e `definir_papel` gravam os dois juntos.
+- `tipos_manutencao` (CORRETIVA, PREVENTIVA, PREDITIVA, MELHORIA, OUTRO), tabela.
+- `ordens_servico`: `origem` (padrão 'manutencao'), `urgencia`, `prioridade`, `tipo_id`,
+  `nota_conclusao`, `aberta_em` (padrão no banco: agora), `inicio_execucao_em`,
+  `concluida_em`, `cancelada_em`, `cancelada_por_id`. Dados: aberta_em = criado_em,
+  inicio_execucao_em = iniciado_em, concluida_em = concluido_em. `iniciado_em` e
+  `concluido_em` continuam (o código atual ainda os grava). `tempo_previsto_minutos` aceita
+  NULL. CHECKs de valores e de linha do tempo; índices (filial_id, origem, aberta_em) e
+  (status).
+- Migração `0007`: antes dos CHECKs procura OS que os violariam e para com a lista dos
+  números. Downgrade: OS sem tempo previsto recebem 1 minuto (aviso no log).
+- CLI: `previa-papeis` (lê só login, is_admin e filial; roda antes ou depois da migração;
+  não altera nada) e `definir-papel LOGIN PAPEL`.
+
+### Lacunas
+
+- `valor_previsto_centavos` não existe desde o prompt 13 (itens de custo): só
+  `tempo_previsto_minutos` passou a aceitar NULL.
+- O perfil gerente (`is_gerente`) continua separado do papel.

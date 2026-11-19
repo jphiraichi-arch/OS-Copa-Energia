@@ -37,7 +37,17 @@ def test_indices_e_constraints_existem(banco):
     indices_ev = {i["name"]: i["column_names"] for i in insp.get_indexes("os_eventos")}
     assert indices_ev["ix_os_eventos_os_id"] == ["os_id"]
     checks = {c["name"] for c in insp.get_check_constraints("ordens_servico")}
-    assert checks == {"ck_ordens_servico_tempo_previsto_positivo"}  # o preço saiu no 0005
+    assert checks == {
+        "ck_ordens_servico_tempo_previsto_positivo",  # o preço saiu no 0005
+        # 0007: valores permitidos e linha do tempo
+        "ck_ordens_servico_origem_valida",
+        "ck_ordens_servico_urgencia_valida",
+        "ck_ordens_servico_prioridade_valida",
+        "ck_ordens_servico_inicio_apos_abertura",
+        "ck_ordens_servico_conclusao_apos_inicio",
+        "ck_ordens_servico_cancelamento_apos_abertura",
+        "ck_ordens_servico_concluida_ou_cancelada",
+    }
 
 
 def test_alembic_ini_nao_contem_url():

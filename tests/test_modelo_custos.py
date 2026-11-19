@@ -335,7 +335,9 @@ def test_migracao_0005_mantem_os_totais_e_o_downgrade_os_restaura(banco_vazio):
                 [dict(r) for r in c.execute(select(m.tables["os_itens_custo"])).mappings()],
             )
 
-    command.upgrade(cfg, "0005")
+    # Lido pelo ORM, que reflete o esquema mais novo: sobe até o head (0006 e 0007 não
+    # mexem em itens de custo) e, no downgrade, desce por eles também.
+    command.upgrade(cfg, "head")
     linhas, itens_ = estado()
     assert all("valor_previsto_centavos" not in linha for linha in linhas)
     with sessao() as s:
