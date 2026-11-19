@@ -67,16 +67,16 @@ def test_timestamp_volta_com_fuso_utc_e_igual(banco):
     with sessao() as s:
         f = nova_filial(s)
         u = novo_usuario(s, f)
-        o = nova_os(s, f, u, criado_em=instante, iniciado_em=em_sao_paulo)
+        o = nova_os(s, f, u, criado_em=instante, inicio_realizado=em_sao_paulo)
         oid = o.id
     with sessao() as s:
         lido = s.get(OrdemServico, oid).criado_em
         assert lido == instante
         assert lido.tzinfo is not None and lido.utcoffset() == timedelta(0)
-        iniciado = s.get(OrdemServico, oid).iniciado_em
+        iniciado = s.get(OrdemServico, oid).inicio_realizado
         assert iniciado == em_sao_paulo
         assert iniciado.utcoffset() == timedelta(0) and iniciado.hour == 12
-        assert s.get(OrdemServico, oid).inicio_realizado is None
+        assert s.get(OrdemServico, oid).fim_realizado is None
 
 
 def test_timestamp_sem_fuso_e_recusado(banco):

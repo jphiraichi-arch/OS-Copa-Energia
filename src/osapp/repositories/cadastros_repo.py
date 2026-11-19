@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from osapp.models import CategoriaCusto, Equipamento
+from osapp.models import CategoriaCusto, Equipamento, TipoManutencao
 
 
 class CategoriaCustoRepo:
@@ -56,3 +56,17 @@ class EquipamentoRepo:
         self._s.add(equipamento)
         self._s.flush()
         return equipamento
+
+
+class TipoManutencaoRepo:
+    def __init__(self, sessao: Session) -> None:
+        self._s = sessao
+
+    def obter(self, tipo_id: int) -> TipoManutencao | None:
+        return self._s.get(TipoManutencao, tipo_id)
+
+    def listar(self, so_ativos: bool = True) -> list[TipoManutencao]:
+        consulta = select(TipoManutencao).order_by(TipoManutencao.ordem, TipoManutencao.id)
+        if so_ativos:
+            consulta = consulta.where(TipoManutencao.ativo.is_(True))
+        return list(self._s.scalars(consulta))

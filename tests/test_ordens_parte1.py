@@ -182,7 +182,7 @@ def test_colega_da_mesma_filial_le_a_os(cenario):
     visto = ordens.obter_os(cenario["joao"], d.id)
     # Tudo igual, exceto as ações, que dependem de quem olha (prompt 5).
     assert replace(visto, acoes=d.acoes) == d
-    assert d.acoes.pode_editar and not visto.acoes.pode_editar
+    assert d.acoes.pode_editar and visto.acoes.pode_editar  # manutenção da filial (prompt 17)
     assert len(ordens.listar_eventos(cenario["joao"], d.id)) == 2  # criação + item
 
 
@@ -249,7 +249,7 @@ def test_resumo_filtros_e_ordem(cenario, monkeypatch):
 @pytest.mark.parametrize(
     ("kwargs", "campo"),
     [
-        ({"status": "CANCELADA"}, "status"),
+        ({"status": "SUSPENSA"}, "status"),
         ({"status": 1}, "status"),
         ({"pagina": 0}, "pagina"),
         ({"pagina": "1"}, "pagina"),
@@ -320,7 +320,8 @@ def test_status_definidos_uma_vez():
     assert status.ROTULOS == {
         "ABERTA": "Aberta",
         "EM_EXECUCAO": "Em execução",
+        "CANCELADA": "Cancelada",
         "CONCLUIDA": "Concluída",
     }
     assert status.rotulo("ABERTA") == "Aberta" and status.rotulo("OUTRO") == "OUTRO"
-    assert status.status_conhecido("CONCLUIDA") and not status.status_conhecido("CANCELADA")
+    assert status.status_conhecido("CANCELADA") and not status.status_conhecido("SUSPENSA")

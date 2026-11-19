@@ -44,17 +44,29 @@ Se não for possível verificar uma API, pare e avise. Não adivinhe.
 - O usuário vê mensagens de erro genéricas; os detalhes vão para os logs do servidor.
 - Dados de seed usam apenas nomes fictícios.
 
-## Perfis de acesso
+## Papéis e permissões (prompt 17; substituem as regras de perfil dos prompts 3 a 5)
 
-- **Usuário (operário):** trabalha só na própria filial; vê o relatório básico (contagens e
-  tempos) da própria filial.
-- **Gerente:** mesmas permissões do usuário nas Ordens de Serviço; além disso vê o relatório
-  completo (valores em dinheiro, gasto do mês, desvios e desempenho por pessoa) da própria
-  filial.
-- **Administrador:** age em todas as filiais e vê todos os relatórios, por filial ou
-  consolidados.
+Toda função de serviço começa por `carregar_ator`; usuário inativo é recusado em tudo.
+
+- **usuario** (outras áreas): abre solicitações (título, descrição, urgência) e acompanha
+  as OS da própria filial pelo modelo reduzido (`OsVisaoSolicitante`, `ResumoSolicitante`).
+  Nunca recebe previsto, realizado, custos, equipamento, tipo, prioridade, executor nem o
+  histórico: a consulta nem lê essas colunas. Edita e cancela só a própria solicitação,
+  enquanto ABERTA.
+- **manutencao**: assume e executa as OS da própria filial; cria OS completas; edita os
+  campos da manutenção até a conclusão; nunca muda a urgência do solicitante.
+- **admin**: tudo, em todas as filiais. Só ele muda a filial de uma OS e edita OS concluída.
+- **Gerente** (`is_gerente`, por cima do papel): vê o relatório mensal completo da própria
+  filial (valores e desempenho por pessoa).
+- Status e transições ficam em `services/status.py` (dados). CONCLUIDA e CANCELADA são
+  finais: só o administrador edita uma concluída; ninguém edita uma cancelada.
+- Os instantes `aberta_em`, `inicio_execucao_em`, `concluida_em` e `cancelada_em` só são
+  gravados pelas transições, com `relogio.agora()`, na mesma transação do evento STATUS;
+  nunca vêm da entrada.
+- As flags de `acoes` são calculadas pelas mesmas funções que permitem ou recusam.
 - Dados sensíveis (valores em dinheiro, desempenho por pessoa) só saem do serviço para
-  gerente (própria filial) e administrador. A interface apenas mostra o que recebe.
+  gerente (própria filial), manutenção (nas OS da filial) e administrador. A interface
+  apenas mostra o que recebe.
 
 ## Idioma
 

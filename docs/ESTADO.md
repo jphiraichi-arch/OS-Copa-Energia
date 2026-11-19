@@ -830,3 +830,51 @@ uvicorn.
 - `valor_previsto_centavos` não existe desde o prompt 13 (itens de custo): só
   `tempo_previsto_minutos` passou a aceitar NULL.
 - O perfil gerente (`is_gerente`) continua separado do papel.
+
+## Prompt 17 — papéis e fluxo de solicitação nos serviços (19/11/2026)
+
+**As telas atuais não funcionam com estes serviços: implantar só junto com o prompt 19.**
+
+### Funções
+
+- `Ator.papel` ('usuario' | 'manutencao' | 'admin'); `is_admin`, `is_manutencao` e
+  `is_usuario` são propriedades derivadas. A coluna `usuarios.is_admin` saiu (migração
+  `0008`); `Usuario.is_admin` ficou como propriedade só de leitura.
+- `criar_solicitacao(ator_id, titulo, descricao, urgencia, filial_id=None)`.
+- `criar_os(ator_id, titulo, descricao, itens_previstos=None, tempo_previsto_minutos=None,
+  filial_id=None, *, equipamento_id, equipamento_outro, tipo_id, prioridade)`: só
+  manutenção e admin; previsto opcional.
+- `obter_os` e `listar_os` devolvem `OsVisaoSolicitante` / `ResumoSolicitante` para usuario
+  (consulta só com as colunas permitidas) e `OsDetalhe` / `OsResumo` para os demais.
+  `listar_os` aceita `origem`. `listar_eventos` e `listar_tipos`: ErroPermissao para usuario.
+- `editar_solicitacao` (título, descrição, urgência), `editar_os` (tempo previsto, tipo,
+  prioridade, equipamento; título e descrição só em OS de origem manutenção; filial só
+  admin; realizado só admin em concluída).
+- `iniciar_execucao` (exige `previsto_completo`), `desfazer_inicio` (apaga executor e
+  `inicio_execucao_em`), `concluir_os(..., nota_conclusao)` (5 a 500 caracteres),
+  `cancelar(ator_id, os_id, versao)`.
+- `previsto_completo(ordem)` / `pendencias_para_iniciar(ordem)`: tempo previsto, pelo menos
+  um item de custo previsto, tipo, prioridade e equipamento. `OsDetalhe` traz as pendências.
+- Itens previstos: quem pode `editar_os`; numa OS ABERTA o último item previsto pode sair.
+- CLI: `criar-usuario --papel`, `definir-papel`, `reclassificar-origem NUMERO
+  solicitacao|manutencao --responsavel LOGIN [--aplicar]`.
+
+### Migração `0008`
+
+Copia de novo `criado_em`, `iniciado_em` e `concluido_em` para `aberta_em`,
+`inicio_execucao_em` e `concluida_em` (OS gravadas pelo código antigo depois da 0007) e
+`is_admin` para `papel`; depois remove `usuarios.is_admin`, `ordens_servico.iniciado_em` e
+`ordens_servico.concluido_em`. O downgrade os recria a partir de `papel` e dos instantes.
+
+### Testes
+
+`tests/test_papeis_fluxo.py`: matriz papel x ação x status com 168 células (7 atores x 6
+ações x 4 status), cada uma conferindo também a flag de `acoes`; campos devolvidos ao
+usuario (nomes de todos os objetos); SQL executado para o usuario sem colunas restritas;
+visibilidade por filial; previsto incompleto; nota; cancelamento; desfazer; instantes com
+relógio substituído; migração 0008 com dados.
+
+### Lacunas
+
+- `previa-papeis` depois da 0008 lista o papel atual; a prévia antes da 0007 se faz com o
+  código do prompt 16 (commit 3c66de8).

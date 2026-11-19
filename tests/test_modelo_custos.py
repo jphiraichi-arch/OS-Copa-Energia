@@ -208,7 +208,7 @@ def producao_simulada(banco):
     with sessao() as s:
         f1 = nova_filial(s, "F001", "Filial Modelo Norte")
         f2 = nova_filial(s, "F002", "Filial Modelo Sul")
-        admin = novo_usuario(s, f1, "admin", "Administrador", is_admin=True)
+        admin = novo_usuario(s, f1, "admin", "Administrador", papel="admin")
         novo_usuario(s, f1, "marina.teste", "Marina Teste")
         novo_usuario(s, f2, "carlos.exemplo", "Carlos Exemplo")
         novo_usuario(s, f1, "ana.real", "Ana Real")
@@ -379,7 +379,7 @@ def test_migracao_0005_soma_itens_reais_no_downgrade(banco):
 
     with sessao() as s:
         f = nova_filial(s, "1007", "Jardinópolis")
-        u = novo_usuario(s, f, is_admin=True)
+        u = novo_usuario(s, f, papel="admin")
         uid = u.id
     from osapp.services.custos import ItemEntrada
 

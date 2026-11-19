@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import IntegrityError
@@ -27,6 +28,8 @@ from osapp.repositories import (
     OrdemServicoRepo,
     OsEventoRepo,
     OsSequenciaRepo,
+    TipoManutencaoRepo,
+    UsuarioRepo,
 )
 from osapp.services import custos, relogio
 from osapp.services import status as _status
@@ -55,7 +58,24 @@ TIPO_REALIZADO = "REALIZADO"  # campos preenchidos na conclusão (valor_antigo �
 
 TOLERANCIA_FUTURO_MINUTOS = 5
 
-CAMPOS_PREVISTO = ("titulo", "descricao", "tempo_previsto_minutos")
+ORIGEM_SOLICITACAO = "solicitacao"
+ORIGEM_MANUTENCAO = "manutencao"
+ORIGENS = (ORIGEM_SOLICITACAO, ORIGEM_MANUTENCAO)
+# Urgência (do solicitante) e prioridade (da manutenção) usam a mesma escala.
+NIVEIS = ("baixa", "media", "alta", "emergencial")
+NOTA_MIN = 5
+NOTA_MAX = 500
+
+PENDENCIA_TEMPO = "tempo previsto"
+PENDENCIA_VALOR = "custos previstos (pelo menos um item)"
+PENDENCIA_TIPO = "tipo de manutenção"
+PENDENCIA_PRIORIDADE = "prioridade"
+PENDENCIA_EQUIPAMENTO = "equipamento"
+
+CAMPOS_TEXTO = ("titulo", "descricao")
+CAMPOS_PREVISTO = ("titulo", "descricao", "tempo_previsto_minutos")  # compatibilidade
+CAMPOS_MANUTENCAO = ("tempo_previsto_minutos", "tipo_id", "prioridade")
+CAMPOS_SOLICITACAO = ("titulo", "descricao", "urgencia")
 CAMPOS_REALIZADO = ("inicio_realizado", "fim_realizado", "descricao_realizado")
 CAMPOS_EQUIPAMENTO = ("equipamento_id", "equipamento_outro")
 CAMPO_FILIAL = "filial_id"
@@ -74,7 +94,16 @@ class FilialDTO:
 
 
 @dataclass(frozen=True)
+class TipoDTO:
+    id: int
+    codigo: str
+    nome: str
+
+
+@dataclass(frozen=True)
 class OsResumo:
+    """Linha da lista para manutenção e administrador."""
+
     id: int
     numero: str
     titulo: str
@@ -82,11 +111,33 @@ class OsResumo:
     filial_codigo: str
     total_previsto_centavos: int  # calculado dos itens previstos
     criado_em: datetime
+    origem: str = ORIGEM_MANUTENCAO
+    urgencia: str | None = None
+    prioridade: str | None = None
+    aberta_em: datetime | None = None
+    solicitante: str = ""
+
+
+@dataclass(frozen=True)
+class ResumoSolicitante:
+    """Linha da lista para o papel usuario: só campos permitidos."""
+
+    id: int
+    numero: str
+    titulo: str
+    urgencia: str | None
+    status: str
+    solicitante: str
+    filial_codigo: str
+    aberta_em: datetime
+    inicio_execucao_em: datetime | None
+    concluida_em: datetime | None
+    cancelada_em: datetime | None
 
 
 @dataclass(frozen=True)
 class PaginaOs:
-    itens: tuple[OsResumo, ...]
+    itens: tuple  # OsResumo (manutenção, admin) ou ResumoSolicitante (usuario)
     tem_mais: bool
 
 
@@ -102,15 +153,51 @@ class EventoDTO:
 
 @dataclass(frozen=True)
 class AcoesOs:
-    """O que o ator pode fazer nesta OS. Conveniência para a interface, nunca o controle."""
+    """O que o ator pode fazer nesta OS. Conveniência para a interface, nunca o controle.
 
-    pode_editar: bool
-    pode_iniciar: bool
+    Calculado pelas mesmas funções que as operações usam para permitir ou recusar.
+    """
+
+    pode_editar: bool  # editar_os (campos da manutenção)
+    pode_iniciar: bool  # permissão e previsto completo
     pode_desfazer_inicio: bool
     pode_concluir: bool
     pode_editar_realizado: bool
     pode_editar_itens_previstos: bool
     pode_editar_itens_realizados: bool
+    pode_cancelar: bool = False
+    pode_editar_solicitacao: bool = False  # editar_solicitacao (título, descrição, urgência)
+
+
+@dataclass(frozen=True)
+class AcoesSolicitante:
+    pode_editar: bool  # editar_solicitacao
+    pode_cancelar: bool
+    pode_iniciar: bool
+    pode_desfazer_inicio: bool
+    pode_concluir: bool
+
+
+@dataclass(frozen=True)
+class OsVisaoSolicitante:
+    """Detalhe para o papel usuario. A consulta só lê estas colunas: previsto, realizado,
+    custos, equipamento, tipo, prioridade, executor e histórico nem são carregados."""
+
+    id: int
+    numero: str
+    versao: int
+    titulo: str
+    descricao: str
+    urgencia: str | None
+    status: str
+    solicitante: str
+    filial_codigo: str
+    aberta_em: datetime
+    inicio_execucao_em: datetime | None
+    concluida_em: datetime | None
+    cancelada_em: datetime | None
+    nota_conclusao: str | None
+    acoes: AcoesSolicitante
 
 
 @dataclass(frozen=True)
@@ -128,26 +215,37 @@ class OsDetalhe:
     criado_por_nome: str
     criado_em: datetime
     atualizado_em: datetime
-    tempo_previsto_minutos: int
+    tempo_previsto_minutos: int | None
     equipamento_id: int | None
     equipamento_outro: str | None
     equipamento: str | None  # nome do equipamento ou o texto de 'Outro'
     numero_sap: str | None
     executor_id: int | None
     executor_nome: str | None
-    iniciado_em: datetime | None
     inicio_realizado: datetime | None
     fim_realizado: datetime | None
     descricao_realizado: str | None
     concluido_por_id: int | None
     concluido_por_nome: str | None
-    concluido_em: datetime | None
     # Os dois abaixo são None até a OS ser concluída.
     tempo_realizado_minutos: int | None
     diferenca_tempo_minutos: int | None  # realizado - previsto
     itens: tuple[custos.ItemDTO, ...]  # previstos e realizados, cada um com o total da linha
     resumo_custos: custos.ResumoCustos  # por categoria e geral; sempre calculado
     acoes: AcoesOs
+    # Prompt 17: solicitação, classificação e os quatro instantes de status.
+    origem: str = ORIGEM_MANUTENCAO
+    urgencia: str | None = None  # do solicitante
+    prioridade: str | None = None  # da manutenção
+    tipo_id: int | None = None
+    tipo_nome: str | None = None
+    nota_conclusao: str | None = None
+    aberta_em: datetime | None = None
+    inicio_execucao_em: datetime | None = None
+    concluida_em: datetime | None = None
+    cancelada_em: datetime | None = None
+    cancelada_por_nome: str | None = None
+    pendencias_para_iniciar: tuple[str, ...] = ()  # vazio = previsto completo
 
 
 # --- Validação ------------------------------------------------------------------------
@@ -206,47 +304,144 @@ def _validar_periodo(inicio: datetime, fim: datetime, agora: datetime) -> None:
         raise ErroValidacao("fim_realizado", "A duração é maior que o máximo permitido.")
 
 
-# --- Regras de permissão (as mesmas funções alimentam AcoesOs e as verificações) -----
+def _validar_nivel(campo: str, valor: object, obrigatorio: bool) -> str | None:
+    """Urgência ou prioridade: baixa, media, alta ou emergencial."""
+    if valor is None and not obrigatorio:
+        return None
+    if valor not in NIVEIS:
+        nome = "a urgência" if campo == "urgencia" else "a prioridade"
+        raise ErroValidacao(campo, f"Escolha {nome}: baixa, média, alta ou emergencial.")
+    return valor
 
 
-def _pode_editar(ator: Ator, ordem: OrdemServico) -> bool:
-    if _status.encerrado(ordem.status):
-        return ator.is_admin
-    return ator.is_admin or ordem.criado_por_id == ator.usuario_id
+def _validar_nota(valor: object) -> str:
+    """Nota de conclusão para o solicitante: texto simples de 5 a 500 caracteres."""
+    if not isinstance(valor, str):
+        raise ErroValidacao("nota_conclusao", "Escreva a nota para o solicitante.")
+    valor = valor.strip()
+    if any(ord(c) < 32 and c not in "\n\t" for c in valor):
+        raise ErroValidacao("nota_conclusao", "A nota tem caracteres inválidos.")
+    if not NOTA_MIN <= len(valor) <= NOTA_MAX:
+        raise ErroValidacao(
+            "nota_conclusao", f"A nota deve ter de {NOTA_MIN} a {NOTA_MAX} caracteres."
+        )
+    return valor
 
 
-def _pode_editar_realizado(ator: Ator, ordem: OrdemServico) -> bool:
+def _validar_tipo(s: Session, valor: object) -> int | None:
+    if valor is None:
+        return None
+    tipo = TipoManutencaoRepo(s).obter(valor) if _e_int(valor) else None
+    if tipo is None or not tipo.ativo:
+        raise ErroValidacao("tipo_id", "Escolha um tipo de manutenção válido.")
+    return tipo.id
+
+
+# --- Regras de permissão (as mesmas funções alimentam as ações e as verificações) ----
+# ``ordem`` pode ser a entidade ou uma visão leve com status, filial_id, origem,
+# criado_por_id e executor_id.
+
+
+def _manutencao_da_filial(ator: Ator, ordem) -> bool:
+    return ator.is_manutencao and ator.filial_id == ordem.filial_id
+
+
+def _solicitante(ator: Ator, ordem) -> bool:
+    """Quem abriu a solicitação (só OS de origem 'solicitacao')."""
+    return ordem.origem == ORIGEM_SOLICITACAO and ordem.criado_por_id == ator.usuario_id
+
+
+def _pode_editar(ator: Ator, ordem) -> bool:
+    """editar_os: manutenção da filial até a conclusão; administrador sempre.
+    OS cancelada: ninguém."""
+    if ordem.status == _status.CANCELADA:
+        return False
+    if ator.is_admin:
+        return True
+    return _manutencao_da_filial(ator, ordem) and ordem.status != _status.CONCLUIDA
+
+
+def _pode_editar_solicitacao(ator: Ator, ordem) -> bool:
+    """editar_solicitacao: o solicitante enquanto ABERTA; administrador (exceto cancelada)."""
+    if ordem.origem != ORIGEM_SOLICITACAO or ordem.status == _status.CANCELADA:
+        return False
+    if ator.is_admin:
+        return True
+    return _solicitante(ator, ordem) and ordem.status == _status.ABERTA
+
+
+def _pode_editar_realizado(ator: Ator, ordem) -> bool:
     return ator.is_admin and _status.encerrado(ordem.status)
 
 
-def _pode_editar_itens(ator: Ator, ordem: OrdemServico, fase: str) -> bool:
-    """PREVISTO: quem pode editar a OS. REALIZADO: só administrador, depois da conclusão
+def _pode_editar_itens(ator: Ator, ordem, fase: str) -> bool:
+    """PREVISTO: quem pode editar_os. REALIZADO: só administrador, depois da conclusão
     (antes disso os itens realizados chegam apenas junto com a conclusão)."""
     if fase == custos.FASE_PREVISTO:
         return _pode_editar(ator, ordem)
     return _pode_editar_realizado(ator, ordem)
 
 
-def _pode_transicionar(ator: Ator, ordem: OrdemServico, destino: str) -> bool:
-    quem = _status.quem_pode_transicionar(ordem.status, destino)
-    if quem is None or not pode_acessar_filial(ator, ordem.filial_id):
+def _pode(acao: str, ator: Ator, ordem) -> bool:
+    """Permissão para uma transição da tabela de status (sem o previsto completo)."""
+    origem, _destino, quem = _status.transicao(acao)
+    if ordem.status != origem:
         return False
-    if ator.is_admin or quem == _status.QUALQUER_USUARIO_DA_FILIAL:
+    if ator.is_admin:
         return True
+    if quem == _status.MANUTENCAO_DA_FILIAL:
+        return _manutencao_da_filial(ator, ordem)
     if quem == _status.SOMENTE_EXECUTOR:
-        return ordem.executor_id == ator.usuario_id
+        return not ator.is_usuario and ordem.executor_id == ator.usuario_id
+    if quem == _status.SOMENTE_SOLICITANTE:
+        return _solicitante(ator, ordem)
     return False
+
+
+def pendencias_para_iniciar(ordem: OrdemServico) -> tuple[str, ...]:
+    """O que falta no previsto para iniciar a execução (vazio = completo)."""
+    faltam = []
+    if ordem.tempo_previsto_minutos is None:
+        faltam.append(PENDENCIA_TEMPO)
+    if not any(i.fase == custos.FASE_PREVISTO for i in ordem.itens):
+        faltam.append(PENDENCIA_VALOR)
+    if ordem.tipo_id is None:
+        faltam.append(PENDENCIA_TIPO)
+    if ordem.prioridade is None:
+        faltam.append(PENDENCIA_PRIORIDADE)
+    if ordem.equipamento_id is None and not ordem.equipamento_outro:
+        faltam.append(PENDENCIA_EQUIPAMENTO)
+    return tuple(faltam)
+
+
+def previsto_completo(ordem: OrdemServico) -> bool:
+    """Único ponto que decide se o previsto basta para iniciar a execução."""
+    return not pendencias_para_iniciar(ordem)
 
 
 def _acoes(ator: Ator, ordem: OrdemServico) -> AcoesOs:
     return AcoesOs(
         pode_editar=_pode_editar(ator, ordem),
-        pode_iniciar=_pode_transicionar(ator, ordem, _status.EM_EXECUCAO),
-        pode_desfazer_inicio=_pode_transicionar(ator, ordem, _status.ABERTA),
-        pode_concluir=_pode_transicionar(ator, ordem, _status.CONCLUIDA),
+        pode_iniciar=_pode(_status.INICIAR, ator, ordem) and previsto_completo(ordem),
+        pode_desfazer_inicio=_pode(_status.DESFAZER_INICIO, ator, ordem),
+        pode_concluir=_pode(_status.CONCLUIR, ator, ordem),
         pode_editar_realizado=_pode_editar_realizado(ator, ordem),
         pode_editar_itens_previstos=_pode_editar_itens(ator, ordem, custos.FASE_PREVISTO),
         pode_editar_itens_realizados=_pode_editar_itens(ator, ordem, custos.FASE_REALIZADO),
+        pode_cancelar=_pode(_status.CANCELAR, ator, ordem),
+        pode_editar_solicitacao=_pode_editar_solicitacao(ator, ordem),
+    )
+
+
+def _acoes_solicitante(ator: Ator, visao) -> AcoesSolicitante:
+    # O papel usuario nunca inicia, desfaz ou conclui: _pode já recusa antes de olhar o
+    # previsto (que esta visão nem tem).
+    return AcoesSolicitante(
+        pode_editar=_pode_editar_solicitacao(ator, visao),
+        pode_cancelar=_pode(_status.CANCELAR, ator, visao),
+        pode_iniciar=_pode(_status.INICIAR, ator, visao),
+        pode_desfazer_inicio=_pode(_status.DESFAZER_INICIO, ator, visao),
+        pode_concluir=_pode(_status.CONCLUIR, ator, visao),
     )
 
 
@@ -265,6 +460,17 @@ def _carregar_visivel(s: Session, ator: Ator, os_id: object) -> OrdemServico:
     """
     ordem = OrdemServicoRepo(s).obter(os_id) if _e_int(os_id) else None
     if ordem is None or not pode_acessar_filial(ator, ordem.filial_id):
+        raise ErroNaoEncontrado()
+    return ordem
+
+
+def _carregar_para_escrita(s: Session, ator: Ator, os_id: object) -> OrdemServico:
+    """Como _carregar_visivel; para o papel usuario não carrega relacionamentos (itens,
+    equipamento, executor...): só a linha da OS, para gravar."""
+    if not ator.is_usuario:
+        return _carregar_visivel(s, ator, os_id)
+    ordem = OrdemServicoRepo(s).obter_sem_relacoes(os_id) if _e_int(os_id) else None
+    if ordem is None or ordem.filial_id != ator.filial_id:
         raise ErroNaoEncontrado()
     return ordem
 
@@ -289,7 +495,8 @@ def _detalhe(ordem: OrdemServico, ator: Ator) -> OsDetalhe:
         and ordem.fim_realizado is not None
     ):
         tempo_realizado = _minutos_entre(ordem.inicio_realizado, ordem.fim_realizado)
-        dif_tempo = tempo_realizado - ordem.tempo_previsto_minutos
+        if ordem.tempo_previsto_minutos is not None:
+            dif_tempo = tempo_realizado - ordem.tempo_previsto_minutos
     itens = _itens_ordenados(ordem)
     return OsDetalhe(
         id=ordem.id,
@@ -312,19 +519,76 @@ def _detalhe(ordem: OrdemServico, ator: Ator) -> OsDetalhe:
         numero_sap=ordem.numero_sap,
         executor_id=ordem.executor_id,
         executor_nome=ordem.executor.nome if ordem.executor else None,
-        iniciado_em=ordem.iniciado_em,
         inicio_realizado=ordem.inicio_realizado,
         fim_realizado=ordem.fim_realizado,
         descricao_realizado=ordem.descricao_realizado,
         concluido_por_id=ordem.concluido_por_id,
         concluido_por_nome=ordem.concluido_por.nome if ordem.concluido_por else None,
-        concluido_em=ordem.concluido_em,
         tempo_realizado_minutos=tempo_realizado,
         diferenca_tempo_minutos=dif_tempo,
         itens=itens,
         resumo_custos=custos.calcular_resumo(itens),
         acoes=_acoes(ator, ordem),
+        origem=ordem.origem,
+        urgencia=ordem.urgencia,
+        prioridade=ordem.prioridade,
+        tipo_id=ordem.tipo_id,
+        tipo_nome=ordem.tipo.nome if ordem.tipo else None,
+        nota_conclusao=ordem.nota_conclusao,
+        aberta_em=ordem.aberta_em,
+        inicio_execucao_em=ordem.inicio_execucao_em,
+        concluida_em=ordem.concluida_em,
+        cancelada_em=ordem.cancelada_em,
+        cancelada_por_nome=ordem.cancelada_por.nome if ordem.cancelada_por else None,
+        pendencias_para_iniciar=pendencias_para_iniciar(ordem),
     )
+
+
+def _visao_solicitante(linha, ator: Ator) -> OsVisaoSolicitante:
+    """Linha da consulta de colunas permitidas -> detalhe do papel usuario."""
+    leve = SimpleNamespace(**linha, executor_id=None)
+    return OsVisaoSolicitante(
+        id=linha["id"],
+        numero=linha["numero"],
+        versao=linha["versao"],
+        titulo=linha["titulo"],
+        descricao=linha["descricao"],
+        urgencia=linha["urgencia"],
+        status=linha["status"],
+        solicitante=linha["solicitante"],
+        filial_codigo=linha["filial_codigo"],
+        aberta_em=linha["aberta_em"],
+        inicio_execucao_em=linha["inicio_execucao_em"],
+        concluida_em=linha["concluida_em"],
+        cancelada_em=linha["cancelada_em"],
+        nota_conclusao=linha["nota_conclusao"],
+        acoes=_acoes_solicitante(ator, leve),
+    )
+
+
+def _resumo_solicitante(linha) -> ResumoSolicitante:
+    return ResumoSolicitante(
+        id=linha["id"],
+        numero=linha["numero"],
+        titulo=linha["titulo"],
+        urgencia=linha["urgencia"],
+        status=linha["status"],
+        solicitante=linha["solicitante"],
+        filial_codigo=linha["filial_codigo"],
+        aberta_em=linha["aberta_em"],
+        inicio_execucao_em=linha["inicio_execucao_em"],
+        concluida_em=linha["concluida_em"],
+        cancelada_em=linha["cancelada_em"],
+    )
+
+
+def _ver(s: Session, ator: Ator, ordem: OrdemServico):
+    """O modelo de leitura do papel do ator, com a OS já gravada."""
+    s.flush()
+    if ator.is_usuario:
+        return _visao_solicitante(OrdemServicoRepo(s).visao_solicitante(ordem.id), ator)
+    s.refresh(ordem)  # versão nova e relacionamentos (só para manutenção e administrador)
+    return _detalhe(ordem, ator)
 
 
 def registrar_evento(
@@ -362,13 +626,20 @@ def _ano_local(instante: datetime) -> int:
 
 
 def _validar_equipamento(
-    s: Session, filial_id: int, equipamento_id: object, equipamento_outro: object
+    s: Session,
+    filial_id: int,
+    equipamento_id: object,
+    equipamento_outro: object,
+    opcional: bool = False,
 ) -> tuple[int | None, str | None]:
-    """Exatamente um: equipamento ativo da filial da OS, ou 'Outro' com texto de 3 a 120."""
+    """No máximo um: equipamento ativo da filial da OS, ou 'Outro' com texto de 3 a 120.
+    Com ``opcional``, nenhum dos dois também vale (o previsto completo cobra depois)."""
     tem_id = equipamento_id is not None
     tem_outro = equipamento_outro is not None and (
         not isinstance(equipamento_outro, str) or equipamento_outro.strip() != ""
     )
+    if opcional and not tem_id and not tem_outro:
+        return None, None
     if tem_id == tem_outro:
         raise ErroValidacao(
             "equipamento_id", "Escolha um equipamento da lista ou informe 'Outro', não os dois."
@@ -419,59 +690,123 @@ def _gravar_itens(
         )
 
 
-# --- Funções públicas -----------------------------------------------------------------
+# --- Funções públicas: criação --------------------------------------------------------
+
+
+def _filial_de_destino(ator: Ator, filial_id: object, acao: str) -> int:
+    """Filial travada na do ator; só o administrador escolhe outra."""
+    if filial_id is not None and not _e_int(filial_id):
+        raise ErroValidacao("filial_id", "Filial inválida.")
+    if not ator.is_admin and filial_id is not None and filial_id != ator.filial_id:
+        raise _negar(ator, f"{acao} em outra filial")
+    return ator.filial_id if filial_id is None else filial_id
+
+
+def _nova_ordem(s: Session, ator: Ator, filial_id: int, agora: datetime, **campos) -> OrdemServico:
+    filial = FilialRepo(s).obter(filial_id)
+    if filial is None:
+        raise ErroValidacao("filial_id", "Filial não encontrada.")
+    ano = _ano_local(agora)
+    sequencia = OsSequenciaRepo(s).reservar_proximo(filial.id, ano)
+    ordem = OrdemServicoRepo(s).adicionar(
+        OrdemServico(
+            numero=formatar_numero(filial.codigo, ano, sequencia),
+            filial_id=filial.id,
+            criado_por_id=ator.usuario_id,
+            status=_status.STATUS_INICIAL,
+            criado_em=agora,
+            atualizado_em=agora,
+            aberta_em=agora,
+            **campos,
+        )
+    )
+    registrar_evento(s, ordem.id, ator.usuario_id, TIPO_CRIACAO, agora)
+    return ordem
+
+
+def criar_solicitacao(
+    ator_id: int, titulo: str, descricao: str, urgencia: str, filial_id: int | None = None
+):
+    """Solicitação (origem 'solicitacao'), aberta por qualquer papel. Devolve o modelo de
+    leitura do papel do ator (OsVisaoSolicitante para usuario)."""
+    ator = carregar_ator(ator_id)
+    destino = _filial_de_destino(ator, filial_id, "abrir solicitação")
+    titulo = _validar_titulo(titulo)
+    descricao = _validar_texto_longo("descricao", descricao)
+    urgencia = _validar_nivel("urgencia", urgencia, obrigatorio=True)
+    try:
+        with sessao() as s:
+            agora = relogio.agora()
+            ordem = _nova_ordem(
+                s,
+                ator,
+                destino,
+                agora,
+                origem=ORIGEM_SOLICITACAO,
+                titulo=titulo,
+                descricao=descricao,
+                urgencia=urgencia,
+            )
+            logger.info("Solicitação aberta: os_id=%s usuario_id=%s.", ordem.id, ator.usuario_id)
+            return _ver(s, ator, ordem)
+    except IntegrityError:
+        logger.exception("Número de OS repetido apesar do contador.")
+        raise ErroConflito() from None
 
 
 def criar_os(
     ator_id: int,
     titulo: str,
     descricao: str,
-    itens_previstos: list[custos.ItemEntrada],
-    tempo_previsto_minutos: int,
+    itens_previstos: list[custos.ItemEntrada] | None = None,
+    tempo_previsto_minutos: int | None = None,
     filial_id: int | None = None,
     *,
     equipamento_id: int | None = None,
     equipamento_outro: str | None = None,
+    tipo_id: int | None = None,
+    prioridade: str | None = None,
 ) -> OsDetalhe:
-    """Cria a OS e seus itens previstos numa só transação (um evento CRIACAO e um
-    ITEM_ADICIONADO por item). Equipamento: ``equipamento_id`` ou ``equipamento_outro``."""
+    """OS completa (origem 'manutencao'): só manutenção e administrador. Previsto, tipo,
+    prioridade e equipamento são opcionais aqui; iniciar exige o previsto completo.
+    Um evento CRIACAO e um ITEM_ADICIONADO por item, numa só transação."""
     ator = carregar_ator(ator_id)
-    if filial_id is not None and not _e_int(filial_id):
-        raise ErroValidacao("filial_id", "Filial inválida.")
-    if not ator.is_admin and filial_id is not None and filial_id != ator.filial_id:
-        raise _negar(ator, "criar OS em outra filial")
-    filial_destino = ator.filial_id if filial_id is None else filial_id
-
+    if ator.is_usuario:
+        raise _negar(ator, "criar OS completa")
+    destino = _filial_de_destino(ator, filial_id, "criar OS")
     titulo = _validar_titulo(titulo)
     descricao = _validar_texto_longo("descricao", descricao)
-    tempo = _validar_tempo("tempo_previsto_minutos", tempo_previsto_minutos)
-
+    tempo = (
+        None
+        if tempo_previsto_minutos is None
+        else _validar_tempo("tempo_previsto_minutos", tempo_previsto_minutos)
+    )
+    prioridade = _validar_nivel("prioridade", prioridade, obrigatorio=False)
     try:
         with sessao() as s:
-            filial = FilialRepo(s).obter(filial_destino)
-            if filial is None:
-                raise ErroValidacao("filial_id", "Filial não encontrada.")
-            eq_id, eq_outro = _validar_equipamento(s, filial.id, equipamento_id, equipamento_outro)
-            itens = custos.validar_itens_de_entrada(s, itens_previstos, "itens_previstos")
-            agora = relogio.agora()
-            ano = _ano_local(agora)
-            sequencia = OsSequenciaRepo(s).reservar_proximo(filial.id, ano)
-            ordem = OrdemServicoRepo(s).adicionar(
-                OrdemServico(
-                    numero=formatar_numero(filial.codigo, ano, sequencia),
-                    filial_id=filial.id,
-                    criado_por_id=ator.usuario_id,
-                    titulo=titulo,
-                    descricao=descricao,
-                    status=_status.STATUS_INICIAL,
-                    tempo_previsto_minutos=tempo,
-                    equipamento_id=eq_id,
-                    equipamento_outro=eq_outro,
-                    criado_em=agora,
-                    atualizado_em=agora,
-                )
+            itens = (
+                custos.validar_itens_de_entrada(s, itens_previstos, "itens_previstos")
+                if itens_previstos
+                else []
             )
-            registrar_evento(s, ordem.id, ator.usuario_id, TIPO_CRIACAO, agora)
+            eq_id, eq_outro = _validar_equipamento(
+                s, destino, equipamento_id, equipamento_outro, opcional=True
+            )
+            agora = relogio.agora()
+            ordem = _nova_ordem(
+                s,
+                ator,
+                destino,
+                agora,
+                origem=ORIGEM_MANUTENCAO,
+                titulo=titulo,
+                descricao=descricao,
+                tempo_previsto_minutos=tempo,
+                equipamento_id=eq_id,
+                equipamento_outro=eq_outro,
+                tipo_id=_validar_tipo(s, tipo_id),
+                prioridade=prioridade,
+            )
             _gravar_itens(s, ordem, ator, custos.FASE_PREVISTO, itens, agora)
             s.flush()
             s.refresh(ordem)
@@ -484,9 +819,18 @@ def criar_os(
         raise ErroConflito() from None
 
 
-def obter_os(ator_id: int, os_id: int) -> OsDetalhe:
+# --- Funções públicas: leitura --------------------------------------------------------
+
+
+def obter_os(ator_id: int, os_id: int):
+    """OsDetalhe (manutenção, administrador) ou OsVisaoSolicitante (usuario)."""
     ator = carregar_ator(ator_id)
     with sessao() as s:
+        if ator.is_usuario:
+            linha = OrdemServicoRepo(s).visao_solicitante(os_id) if _e_int(os_id) else None
+            if linha is None or linha["filial_id"] != ator.filial_id:
+                raise ErroNaoEncontrado()
+            return _visao_solicitante(linha, ator)
         return _detalhe(_carregar_visivel(s, ator, os_id), ator)
 
 
@@ -496,7 +840,9 @@ def listar_os(
     status: str | None = None,
     filial_id: int | None = None,
     pagina: int = 1,
+    origem: str | None = None,
 ) -> PaginaOs:
+    """Lista paginada. O papel usuario recebe ResumoSolicitante, só da própria filial."""
     ator = carregar_ator(ator_id)
     if filial_id is not None and not _e_int(filial_id):
         raise ErroValidacao("filial_id", "Filial inválida.")
@@ -512,16 +858,27 @@ def listar_os(
     busca = (busca or "").strip()[:BUSCA_MAX] or None
     if status is not None and not _status.status_conhecido(status):
         raise ErroValidacao("status", "Status inválido.")
+    if origem is not None and origem not in ORIGENS:
+        raise ErroValidacao("origem", "Origem inválida.")
     if not _e_int(pagina) or pagina < 1:
         raise ErroValidacao("pagina", "Página inválida.")
+    limite, deslocamento = ITENS_POR_PAGINA + 1, (pagina - 1) * ITENS_POR_PAGINA
 
     with sessao() as s:
-        ordens = OrdemServicoRepo(s).listar(
+        repo = OrdemServicoRepo(s)
+        if ator.is_usuario:
+            linhas = repo.listar_visao_solicitante(
+                filtro_filial, status, busca, limite, deslocamento
+            )
+            itens = tuple(_resumo_solicitante(linha) for linha in linhas[:ITENS_POR_PAGINA])
+            return PaginaOs(itens=itens, tem_mais=len(linhas) > ITENS_POR_PAGINA)
+        ordens = repo.listar(
             filial_id=filtro_filial,
             status=status,
             busca=busca,
-            limite=ITENS_POR_PAGINA + 1,
-            deslocamento=(pagina - 1) * ITENS_POR_PAGINA,
+            limite=limite,
+            deslocamento=deslocamento,
+            origem=origem,
         )
         itens = tuple(
             OsResumo(
@@ -536,6 +893,11 @@ def listar_os(
                     if i.fase == custos.FASE_PREVISTO
                 ),
                 criado_em=o.criado_em,
+                origem=o.origem,
+                urgencia=o.urgencia,
+                prioridade=o.prioridade,
+                aberta_em=o.aberta_em,
+                solicitante=o.criado_por.nome,
             )
             for o in ordens[:ITENS_POR_PAGINA]
         )
@@ -543,8 +905,10 @@ def listar_os(
 
 
 def listar_eventos(ator_id: int, os_id: int) -> list[EventoDTO]:
-    """Eventos da OS, do mais antigo para o mais novo. Mesma visibilidade de obter_os."""
+    """Eventos da OS, do mais antigo para o mais novo. O papel usuario não vê o histórico."""
     ator = carregar_ator(ator_id)
+    if ator.is_usuario:
+        raise _negar(ator, "ver histórico")
     with sessao() as s:
         ordem = _carregar_visivel(s, ator, os_id)
         return [
@@ -569,6 +933,15 @@ def listar_filiais(ator_id: int) -> list[FilialDTO]:
         return [FilialDTO(f.id, f.codigo, f.nome) for f in filiais if f is not None]
 
 
+def listar_tipos(ator_id: int) -> list[TipoDTO]:
+    """Tipos de manutenção ativos (manutenção e administrador)."""
+    ator = carregar_ator(ator_id)
+    if ator.is_usuario:
+        raise _negar(ator, "listar tipos de manutenção")
+    with sessao() as s:
+        return [TipoDTO(t.id, t.codigo, t.nome) for t in TipoManutencaoRepo(s).listar()]
+
+
 # --- Escrita: edição, status e conclusão ----------------------------------------------
 
 
@@ -590,19 +963,16 @@ def _mudar_status(
     s: Session,
     ator: Ator,
     ordem: OrdemServico,
-    versao: object,
-    destino: str,
+    acao: str,
     agora: datetime,
     outros_campos: dict[str, object],
 ) -> None:
-    """Aplica uma transição da tabela: permissão, versão, campos e evento STATUS.
+    """Aplica uma transição da tabela: campos e evento STATUS, na mesma transação.
 
-    Todos os campos da OS são alterados antes do primeiro evento, para que a OS seja
-    gravada uma única vez na transação (um só incremento de ``versao``).
+    Os instantes de status (aberta_em, inicio_execucao_em, concluida_em, cancelada_em)
+    só são gravados aqui e por _nova_ordem, sempre com relogio.agora().
     """
-    if not _pode_transicionar(ator, ordem, destino):
-        raise _negar(ator, f"mudar status de {ordem.status} para {destino}")
-    _conferir_versao(ordem, versao)
+    _origem, destino, _quem = _status.transicao(acao)
     anterior = ordem.status
     ordem.status = destino
     ordem.atualizado_em = agora
@@ -611,9 +981,20 @@ def _mudar_status(
     registrar_evento(s, ordem.id, ator.usuario_id, TIPO_STATUS, agora, "status", anterior, destino)
 
 
+def _registrar_mudancas(s, ator, ordem, mudancas, agora) -> None:
+    for campo, texto_antigo, texto_novo in mudancas:
+        registrar_evento(
+            s, ordem.id, ator.usuario_id, TIPO_EDICAO, agora, campo, texto_antigo, texto_novo
+        )
+
+
 def editar_os(ator_id: int, os_id: int, versao: int, alteracoes: dict) -> OsDetalhe:
-    """Altera campos da OS. Grava um evento EDICAO por campo que realmente mudou."""
+    """Campos da manutenção (tempo previsto, tipo, prioridade, equipamento; filial só o
+    administrador; título e descrição só em OS de origem 'manutencao'; realizado só o
+    administrador em OS concluída). Um evento EDICAO por campo que mudou."""
     ator = carregar_ator(ator_id)
+    if ator.is_usuario:
+        raise _negar(ator, "editar campos da manutenção")
     try:
         with sessao() as s:
             ordem = _carregar_visivel(s, ator, os_id)
@@ -621,7 +1002,9 @@ def editar_os(ator_id: int, os_id: int, versao: int, alteracoes: dict) -> OsDeta
                 raise ErroValidacao("alteracoes", "Dados inválidos.")
             if not _pode_editar(ator, ordem):
                 raise _negar(ator, "editar OS")
-            permitidos = set(CAMPOS_PREVISTO) | set(CAMPOS_EQUIPAMENTO)
+            permitidos = set(CAMPOS_MANUTENCAO) | set(CAMPOS_EQUIPAMENTO)
+            if ordem.origem == ORIGEM_MANUTENCAO:
+                permitidos.update(CAMPOS_TEXTO)
             if ator.is_admin:
                 permitidos.add(CAMPO_FILIAL)
             if _pode_editar_realizado(ator, ordem):
@@ -639,6 +1022,10 @@ def editar_os(ator_id: int, os_id: int, versao: int, alteracoes: dict) -> OsDeta
                     novos[campo] = _validar_texto_longo(campo, valor)
                 elif campo == "tempo_previsto_minutos":
                     novos[campo] = _validar_tempo(campo, valor)
+                elif campo == "tipo_id":
+                    novos[campo] = _validar_tipo(s, valor)
+                elif campo == "prioridade":
+                    novos[campo] = _validar_nivel(campo, valor, obrigatorio=False)
                 elif campo in ("inicio_realizado", "fim_realizado"):
                     novos[campo] = _validar_instante(campo, valor)
                 elif campo == CAMPO_FILIAL:
@@ -654,7 +1041,9 @@ def editar_os(ator_id: int, os_id: int, versao: int, alteracoes: dict) -> OsDeta
                 else:
                     eq_id, eq_outro = ordem.equipamento_id, ordem.equipamento_outro
                 filial_final = novos.get(CAMPO_FILIAL, ordem.filial_id)
-                eq_id, eq_outro = _validar_equipamento(s, filial_final, eq_id, eq_outro)
+                eq_id, eq_outro = _validar_equipamento(
+                    s, filial_final, eq_id, eq_outro, opcional=True
+                )
                 novos["equipamento_id"], novos["equipamento_outro"] = eq_id, eq_outro
             if "inicio_realizado" in novos or "fim_realizado" in novos:
                 _validar_periodo(
@@ -679,25 +1068,23 @@ def editar_os(ator_id: int, os_id: int, versao: int, alteracoes: dict) -> OsDeta
                             repo.obter(novo).nome if novo else None,
                         )
                     )
+                elif campo == "tipo_id":  # e o nome do tipo
+                    repo_tipo = TipoManutencaoRepo(s)
+                    mudancas.append(
+                        (
+                            campo,
+                            repo_tipo.obter(antigo).nome if antigo else None,
+                            repo_tipo.obter(novo).nome if novo else None,
+                        )
+                    )
                 else:
                     mudancas.append((campo, _como_texto(antigo), _como_texto(novo)))
                 setattr(ordem, campo, novo)
-            houve_mudanca = bool(mudancas)
-            if houve_mudanca:
+            if mudancas:
                 ordem.atualizado_em = agora
             # A OS já está toda alterada: é gravada uma vez só, junto com o primeiro evento.
-            for campo, texto_antigo, texto_novo in mudancas:
-                registrar_evento(
-                    s,
-                    ordem.id,
-                    ator.usuario_id,
-                    TIPO_EDICAO,
-                    agora,
-                    campo,
-                    texto_antigo,
-                    texto_novo,
-                )
-            if houve_mudanca:
+            _registrar_mudancas(s, ator, ordem, mudancas, agora)
+            if mudancas:
                 s.flush()
                 s.refresh(ordem)
                 logger.info("OS editada: os_id=%s usuario_id=%s.", ordem.id, ator.usuario_id)
@@ -706,20 +1093,72 @@ def editar_os(ator_id: int, os_id: int, versao: int, alteracoes: dict) -> OsDeta
         raise ErroConflito() from None
 
 
+def editar_solicitacao(ator_id: int, os_id: int, versao: int, alteracoes: dict):
+    """Título, descrição e urgência de uma solicitação: o solicitante enquanto ABERTA, o
+    administrador a qualquer momento (nunca numa cancelada). A manutenção não muda a
+    urgência."""
+    ator = carregar_ator(ator_id)
+    try:
+        with sessao() as s:
+            ordem = _carregar_para_escrita(s, ator, os_id)
+            if not isinstance(alteracoes, dict) or not alteracoes:
+                raise ErroValidacao("alteracoes", "Dados inválidos.")
+            if not _pode_editar_solicitacao(ator, ordem):
+                raise _negar(ator, "editar solicitação")
+            if not set(alteracoes) <= set(CAMPOS_SOLICITACAO):
+                raise _negar(ator, "editar campo não permitido na solicitação")
+            _conferir_versao(ordem, versao)
+            novos = {}
+            for campo, valor in alteracoes.items():
+                if campo == "titulo":
+                    novos[campo] = _validar_titulo(valor)
+                elif campo == "descricao":
+                    novos[campo] = _validar_texto_longo(campo, valor)
+                else:
+                    novos[campo] = _validar_nivel("urgencia", valor, obrigatorio=True)
+            agora = relogio.agora()
+            mudancas = []
+            for campo, novo in novos.items():
+                antigo = getattr(ordem, campo)
+                if antigo != novo:
+                    mudancas.append((campo, _como_texto(antigo), _como_texto(novo)))
+                    setattr(ordem, campo, novo)
+            if mudancas:
+                ordem.atualizado_em = agora
+            _registrar_mudancas(s, ator, ordem, mudancas, agora)
+            s.flush()
+            if mudancas:
+                logger.info(
+                    "Solicitação editada: os_id=%s usuario_id=%s.", ordem.id, ator.usuario_id
+                )
+            return _ver(s, ator, ordem)
+    except StaleDataError:
+        raise ErroConflito() from None
+
+
 def iniciar_execucao(ator_id: int, os_id: int, versao: int) -> OsDetalhe:
+    """ABERTA -> EM_EXECUCAO: manutenção da filial ou administrador, com o previsto completo.
+    Grava executor e inicio_execucao_em."""
     ator = carregar_ator(ator_id)
     try:
         with sessao() as s:
             ordem = _carregar_visivel(s, ator, os_id)
+            if not _pode(_status.INICIAR, ator, ordem):
+                raise _negar(ator, f"iniciar OS em status {ordem.status}")
+            _conferir_versao(ordem, versao)
+            faltam = pendencias_para_iniciar(ordem)
+            if faltam:
+                raise ErroValidacao(
+                    "previsto", "Para iniciar a execução, preencha: " + ", ".join(faltam) + "."
+                )
             agora = relogio.agora()
             _mudar_status(
                 s,
                 ator,
                 ordem,
-                versao,
-                _status.EM_EXECUCAO,
+                _status.INICIAR,
                 agora,
-                {"executor_id": ator.usuario_id, "iniciado_em": agora},
+                {"executor_id": ator.usuario_id, "inicio_execucao_em": agora},
             )
             s.flush()
             s.refresh(ordem)
@@ -730,18 +1169,22 @@ def iniciar_execucao(ator_id: int, os_id: int, versao: int) -> OsDetalhe:
 
 
 def desfazer_inicio(ator_id: int, os_id: int, versao: int) -> OsDetalhe:
+    """EM_EXECUCAO -> ABERTA: o executor ou o administrador. Apaga executor e
+    inicio_execucao_em (o tempo de resposta conta do início verdadeiro); o histórico fica."""
     ator = carregar_ator(ator_id)
     try:
         with sessao() as s:
             ordem = _carregar_visivel(s, ator, os_id)
+            if not _pode(_status.DESFAZER_INICIO, ator, ordem):
+                raise _negar(ator, f"desfazer início em status {ordem.status}")
+            _conferir_versao(ordem, versao)
             _mudar_status(
                 s,
                 ator,
                 ordem,
-                versao,
-                _status.ABERTA,
+                _status.DESFAZER_INICIO,
                 relogio.agora(),
-                {"executor_id": None, "iniciado_em": None},
+                {"executor_id": None, "inicio_execucao_em": None},
             )
             s.flush()
             s.refresh(ordem)
@@ -759,13 +1202,15 @@ def concluir_os(
     inicio_realizado: datetime,
     fim_realizado: datetime,
     descricao_realizado: str,
+    nota_conclusao: str,
 ) -> OsDetalhe:
-    """Conclui a OS com os itens realizados (pelo menos 1), numa só transação."""
+    """EM_EXECUCAO -> CONCLUIDA: o executor ou o administrador, com o realizado (itens,
+    início, fim, descrição) e a nota para o solicitante. Grava concluida_em."""
     ator = carregar_ator(ator_id)
     try:
         with sessao() as s:
             ordem = _carregar_visivel(s, ator, os_id)
-            if not _pode_transicionar(ator, ordem, _status.CONCLUIDA):
+            if not _pode(_status.CONCLUIR, ator, ordem):
                 raise _negar(ator, f"concluir OS em status {ordem.status}")
             _conferir_versao(ordem, versao)
             agora = relogio.agora()
@@ -778,17 +1223,22 @@ def concluir_os(
                 ),
             }
             _validar_periodo(realizado["inicio_realizado"], realizado["fim_realizado"], agora)
+            nota = _validar_nota(nota_conclusao)
 
             _mudar_status(
                 s,
                 ator,
                 ordem,
-                versao,
-                _status.CONCLUIDA,
+                _status.CONCLUIR,
                 agora,
-                {"concluido_por_id": ator.usuario_id, "concluido_em": agora, **realizado},
+                {
+                    "concluido_por_id": ator.usuario_id,
+                    "concluida_em": agora,
+                    "nota_conclusao": nota,
+                    **realizado,
+                },
             )
-            for campo, valor in realizado.items():
+            for campo, valor in (*realizado.items(), ("nota_conclusao", nota)):
                 registrar_evento(
                     s,
                     ordem.id,
@@ -804,6 +1254,32 @@ def concluir_os(
             s.refresh(ordem)
             logger.info("OS concluída: os_id=%s usuario_id=%s.", ordem.id, ator.usuario_id)
             return _detalhe(ordem, ator)
+    except StaleDataError:
+        raise ErroConflito() from None
+
+
+def cancelar(ator_id: int, os_id: int, versao: int):
+    """ABERTA -> CANCELADA: o solicitante (na própria solicitação) ou o administrador.
+    Grava cancelada_em e cancelada_por_id. Devolve o modelo de leitura do papel."""
+    ator = carregar_ator(ator_id)
+    try:
+        with sessao() as s:
+            ordem = _carregar_para_escrita(s, ator, os_id)
+            if not _pode(_status.CANCELAR, ator, ordem):
+                raise _negar(ator, f"cancelar OS em status {ordem.status}")
+            _conferir_versao(ordem, versao)
+            agora = relogio.agora()
+            _mudar_status(
+                s,
+                ator,
+                ordem,
+                _status.CANCELAR,
+                agora,
+                {"cancelada_em": agora, "cancelada_por_id": ator.usuario_id},
+            )
+            s.flush()
+            logger.info("OS cancelada: os_id=%s usuario_id=%s.", ordem.id, ator.usuario_id)
+            return _ver(s, ator, ordem)
     except StaleDataError:
         raise ErroConflito() from None
 
@@ -896,7 +1372,10 @@ def _alterar_itens(
                     )
 
             else:  # remover
-                if len(da_fase) <= 1:
+                # Previsto em OS ABERTA pode ficar vazio (iniciar cobra o previsto completo);
+                # depois disso, e no realizado, a fase mantém pelo menos um item.
+                livre = fase == custos.FASE_PREVISTO and ordem.status == _status.ABERTA
+                if not livre and len(da_fase) <= 1:
                     raise ErroValidacao(
                         "itens", "A Ordem de Serviço precisa de pelo menos um item nesta fase."
                     )
@@ -925,5 +1404,54 @@ def _alterar_itens(
                 "Item de custo (%s): os_id=%s usuario_id=%s.", operacao, ordem.id, ator.usuario_id
             )
             return _detalhe(ordem, ator)
+    except StaleDataError:
+        raise ErroConflito() from None
+
+
+# --- Manutenção de dados (CLI) --------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Reclassificacao:
+    numero: str
+    origem_atual: str
+    origem_nova: str
+    aplicada: bool
+
+
+def reclassificar_origem(
+    login_responsavel: str, numero: str, origem: str, aplicar: bool = False
+) -> Reclassificacao:
+    """Muda a origem de uma OS antiga (solicitacao | manutencao). Só administrador ativo.
+
+    Sem ``aplicar`` só mostra o que mudaria. Aplicado: um evento EDICAO no histórico.
+    """
+    if origem not in ORIGENS:
+        raise ErroValidacao("origem", "Origem inválida. Use solicitacao ou manutencao.")
+    if not isinstance(numero, str) or not numero.strip():
+        raise ErroValidacao("numero", "Informe o número da OS.")
+    try:
+        with sessao() as s:
+            responsavel = (
+                UsuarioRepo(s).obter_por_login(login_responsavel.strip())
+                if isinstance(login_responsavel, str)
+                else None
+            )
+            if responsavel is None or not responsavel.ativo or responsavel.papel != "admin":
+                raise ErroPermissao()
+            ordem = OrdemServicoRepo(s).obter_por_numero(numero.strip())
+            if ordem is None:
+                raise ErroNaoEncontrado()
+            atual = ordem.origem
+            if not aplicar or atual == origem:
+                return Reclassificacao(ordem.numero, atual, origem, False)
+            agora = relogio.agora()
+            ordem.origem = origem
+            ordem.atualizado_em = agora
+            registrar_evento(
+                s, ordem.id, responsavel.id, TIPO_EDICAO, agora, "origem", atual, origem
+            )
+            logger.info("Origem reclassificada: os_id=%s usuario_id=%s.", ordem.id, responsavel.id)
+            return Reclassificacao(ordem.numero, atual, origem, True)
     except StaleDataError:
         raise ErroConflito() from None

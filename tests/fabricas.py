@@ -8,7 +8,7 @@ from decimal import Decimal
 from sqlalchemy import select
 
 from osapp.db import sessao
-from osapp.models import CategoriaCusto, Filial, OrdemServico, Usuario
+from osapp.models import CategoriaCusto, Filial, OrdemServico, TipoManutencao, Usuario
 from osapp.repositories import FilialRepo, OrdemServicoRepo, UsuarioRepo
 from osapp.services.custos import ItemEntrada
 
@@ -47,17 +47,30 @@ def itens(valor_centavos: object, descricao: str = "Valor total", codigo: str = 
     return [ItemEntrada(categoria_id(codigo), descricao, Decimal("1"), valor_centavos)]
 
 
+def tipo_id(codigo: str = "CORRETIVA") -> int:
+    with sessao() as s:
+        return s.scalars(select(TipoManutencao.id).where(TipoManutencao.codigo == codigo)).one()
+
+
 def args_de_criacao(dados: dict) -> dict:
-    """Converte os argumentos antigos de criar_os (valor_previsto_centavos) nos novos."""
+    """Converte os argumentos antigos de criar_os (valor_previsto_centavos) nos novos e
+    completa o previsto (tipo, prioridade, equipamento) para a OS poder ser iniciada."""
     dados = dict(dados)
     if "valor_previsto_centavos" in dados:
         dados["itens_previstos"] = itens(dados.pop("valor_previsto_centavos"))
-    dados.setdefault("equipamento_outro", "Equipamento de teste")
+    if "equipamento_id" not in dados:
+        dados.setdefault("equipamento_outro", "Equipamento de teste")
+    dados.setdefault("tipo_id", tipo_id())
+    dados.setdefault("prioridade", "media")
     return dados
+
+
+NOTA = "Serviço feito conforme o previsto."
 
 
 def args_de_conclusao(dados: dict) -> dict:
     dados = dict(dados)
     if "valor_realizado_centavos" in dados:
         dados["itens_realizados"] = itens(dados.pop("valor_realizado_centavos"))
+    dados.setdefault("nota_conclusao", NOTA)
     return dados

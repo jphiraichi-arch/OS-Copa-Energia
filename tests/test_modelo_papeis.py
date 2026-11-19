@@ -235,8 +235,9 @@ def _foto():
     return {nome: _linhas(nome) for nome in ("usuarios", "ordens_servico")}
 
 
-@pytest.mark.parametrize("revisao", ["0006", "head"])
-def test_previa_papeis_nao_altera_nada(banco_vazio, capsys, revisao):
+def test_previa_papeis_nao_altera_nada(banco_vazio, capsys):
+    """Desde a 0008 a prévia lê o papel atual (antes da 0007: código do prompt 16)."""
+    revisao = "head"
     cfg = config_alembic()
     command.upgrade(cfg, "0006")
     _povoar_0006()

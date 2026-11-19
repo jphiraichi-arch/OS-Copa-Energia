@@ -1,6 +1,10 @@
 """Repositórios: acesso a dados pelo ORM, sem regra de negócio nem verificação de permissão."""
 
-from osapp.repositories.cadastros_repo import CategoriaCustoRepo, EquipamentoRepo
+from osapp.repositories.cadastros_repo import (
+    CategoriaCustoRepo,
+    EquipamentoRepo,
+    TipoManutencaoRepo,
+)
 from osapp.repositories.filial_repo import FilialRepo
 from osapp.repositories.ordem_servico_repo import OrdemServicoRepo
 from osapp.repositories.os_evento_repo import OsEventoRepo
@@ -16,5 +20,6 @@ __all__ = [
     "OsEventoRepo",
     "OsSequenciaRepo",
     "TentativaLoginRepo",
+    "TipoManutencaoRepo",
     "UsuarioRepo",
 ]

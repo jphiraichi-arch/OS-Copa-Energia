@@ -67,7 +67,7 @@ def cenario(banco):
         f1 = nova_filial(s, "F001", "Filial Modelo Norte")
         f2 = nova_filial(s, "F002", "Filial Modelo Sul")
         usuarios = {
-            "admin": novo_usuario(s, f1, "admin", "Administrador Fictício", is_admin=True),
+            "admin": novo_usuario(s, f1, "admin", "Administrador Fictício", papel="admin"),
             "marina": novo_usuario(s, f1, "marina.teste", "Marina Teste"),
             "joao": novo_usuario(s, f1, "joao.ficticio", "João Fictício"),
             "pedro": novo_usuario(s, f1, "pedro.modelo", "Pedro Modelo"),

@@ -11,7 +11,7 @@ import sys
 
 from osapp.config import ConfigError
 from osapp.logs import configurar_logging
-from osapp.services import administracao, equipamentos
+from osapp.services import administracao, equipamentos, ordens
 from osapp.services.erros import (
     ErroConflito,
     ErroDominio,
@@ -43,11 +43,15 @@ def _criar_usuario(args) -> str:
     nome = _perguntar(args.nome, "Nome")
     login = _perguntar(args.login, "Login")
     filial = _perguntar(args.filial, "Código da filial")
+    papel = "admin" if args.admin else args.papel
     usuario = administracao.criar_usuario(
-        nome, login, _ler_senha(), filial, args.admin, args.gerente
+        nome, login, _ler_senha(), filial, False, args.gerente, papel=papel
     )
-    papel = "administrador" if usuario.is_admin else "gerente" if usuario.is_gerente else "usuário"
-    return f"Usuário {usuario.login} criado na filial {usuario.filial_codigo} ({papel})."
+    extra = ", gerente" if usuario.is_gerente else ""
+    return (
+        f"Usuário {usuario.login} criado na filial {usuario.filial_codigo} "
+        f"(papel {usuario.papel}{extra})."
+    )
 
 
 def _definir_perfil(args) -> str:
@@ -102,7 +106,7 @@ def _limpar_tentativas(_args) -> str:
 def _previa_papeis(_args) -> str:
     linhas = administracao.previa_papeis()
     largura = max([len("login"), *(len(p.login) for p in linhas)])
-    saida = [f"{'login':<{largura}}  filial  is_admin  papel proposto"]
+    saida = [f"{'login':<{largura}}  filial  is_admin  papel"]
     for p in linhas:
         saida.append(
             f"{p.login:<{largura}}  {p.filial_codigo:<6}  {'sim' if p.is_admin else 'não':<8}  "
@@ -115,6 +119,18 @@ def _previa_papeis(_args) -> str:
 def _definir_papel(args) -> str:
     administracao.definir_papel(args.login, args.papel)
     return "Papel alterado."
+
+
+def _reclassificar_origem(args) -> str:
+    r = ordens.reclassificar_origem(args.responsavel, args.numero, args.origem, args.aplicar)
+    if r.aplicada:
+        return f"OS {r.numero}: origem {r.origem_atual} -> {r.origem_nova}."
+    if r.origem_atual == r.origem_nova:
+        return f"OS {r.numero} já tem origem {r.origem_atual}. Nada a fazer."
+    return (
+        f"OS {r.numero}: origem {r.origem_atual} -> {r.origem_nova} (prévia; nada foi "
+        "alterado; use --aplicar)."
+    )
 
 
 def _desativar_usuario(args) -> str:
@@ -136,8 +152,14 @@ def criar_parser() -> argparse.ArgumentParser:
     p.add_argument("--login")
     p.add_argument("--filial", help="Código da filial")
     perfil = p.add_mutually_exclusive_group()
-    perfil.add_argument("--admin", action="store_true", help="Cria como administrador")
+    perfil.add_argument("--admin", action="store_true", help="O mesmo que --papel admin")
     perfil.add_argument("--gerente", action="store_true", help="Cria como gerente da filial")
+    p.add_argument(
+        "--papel",
+        choices=administracao.PAPEIS,
+        default="manutencao",
+        help="usuario (abre solicitações), manutencao (padrão) ou admin",
+    )
     p.set_defaults(func=_criar_usuario)
 
     p = sub.add_parser("definir-perfil", help="Muda o perfil de um usuário")
@@ -167,7 +189,7 @@ def criar_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser(
         "previa-papeis",
-        help="Lista login, filial, is_admin e o papel que a migração 0007 dará (não altera nada)",
+        help="Lista login, filial e papel de cada usuário (não altera nada)",
     )
     p.set_defaults(func=_previa_papeis)
 
@@ -175,6 +197,16 @@ def criar_parser() -> argparse.ArgumentParser:
     p.add_argument("login")
     p.add_argument("papel", choices=administracao.PAPEIS)
     p.set_defaults(func=_definir_papel)
+
+    p = sub.add_parser(
+        "reclassificar-origem",
+        help="Muda a origem de uma OS antiga (administrador; prévia sem --aplicar)",
+    )
+    p.add_argument("numero")
+    p.add_argument("origem", choices=("solicitacao", "manutencao"))
+    p.add_argument("--responsavel", required=True, help="Login do administrador")
+    p.add_argument("--aplicar", action="store_true", help="Aplica de fato (padrão: só mostra)")
+    p.set_defaults(func=_reclassificar_origem)
 
     p = sub.add_parser(
         "limpar-tentativas",

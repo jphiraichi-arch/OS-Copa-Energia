@@ -17,7 +17,9 @@ from osapp.ui.sessao import (
 )
 
 T0 = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
-ATOR = Ator(usuario_id=7, nome="Marina Teste", filial_id=1, filial_codigo="F001", is_admin=False)
+ATOR = Ator(
+    usuario_id=7, nome="Marina Teste", filial_id=1, filial_codigo="F001", papel="manutencao"
+)
 TODAS = ["/login", "/", "/os/nova", "/os/12", "/os/12/editar", "/os/12/concluir"]
 
 

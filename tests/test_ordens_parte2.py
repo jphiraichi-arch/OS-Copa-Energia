@@ -55,6 +55,8 @@ def preparar(cenario, destino, **extras):
         d = ordens.iniciar_execucao(cenario["pedro"], d.id, d.versao)
     if destino == status.CONCLUIDA:
         d = concluir(cenario["pedro"], d)
+    if destino == status.CANCELADA:
+        d = ordens.cancelar(cenario["admin"], d.id, d.versao)
     assert d.status == destino
     return d
 
@@ -91,8 +93,9 @@ OK, PERM, NAOENC, AUT = "ok", ErroPermissao, ErroNaoEncontrado, ErroAutenticacao
 
 MATRIZ = {
     # (ação, status): resultado esperado para cada ator, na ordem de ATORES
-    ("editar", status.ABERTA): [OK, PERM, PERM, NAOENC, OK, AUT],
-    ("editar", status.EM_EXECUCAO): [OK, PERM, PERM, NAOENC, OK, AUT],
+    # Prompt 17: editar_os é da manutenção da filial (os três são 'manutencao').
+    ("editar", status.ABERTA): [OK, OK, OK, NAOENC, OK, AUT],
+    ("editar", status.EM_EXECUCAO): [OK, OK, OK, NAOENC, OK, AUT],
     ("editar", status.CONCLUIDA): [PERM, PERM, PERM, NAOENC, OK, AUT],
     ("iniciar", status.ABERTA): [OK, OK, OK, NAOENC, OK, AUT],
     ("iniciar", status.EM_EXECUCAO): [PERM, PERM, PERM, NAOENC, PERM, AUT],
@@ -156,15 +159,17 @@ def test_matriz_de_permissoes(cenario, ator, acao, st, esperado):
 # --- Transições -----------------------------------------------------------------------
 
 
+MOVIMENTOS = {(o, d) for o, d, _quem in status.TRANSICOES.values()}
+
+
 def test_tabela_de_transicoes():
-    assert set(status.TRANSICOES) == {
+    assert MOVIMENTOS == {
         (status.ABERTA, status.EM_EXECUCAO),
         (status.EM_EXECUCAO, status.ABERTA),
         (status.EM_EXECUCAO, status.CONCLUIDA),
+        (status.ABERTA, status.CANCELADA),
     }
-    assert status.quem_pode_transicionar(status.ABERTA, status.CONCLUIDA) is None
-    assert status.quem_pode_transicionar(status.CONCLUIDA, status.ABERTA) is None
-    assert status.quem_pode_transicionar(status.CONCLUIDA, status.EM_EXECUCAO) is None
+    assert status.FINAIS == {status.CONCLUIDA, status.CANCELADA}
 
 
 @pytest.mark.parametrize("origem", list(status.ROTULOS))
@@ -174,9 +179,10 @@ def test_transicao_fora_da_tabela_e_recusada_ate_para_admin(cenario, origem, des
         status.EM_EXECUCAO: lambda d: ordens.iniciar_execucao(cenario["admin"], d.id, d.versao),
         status.ABERTA: lambda d: ordens.desfazer_inicio(cenario["admin"], d.id, d.versao),
         status.CONCLUIDA: lambda d: concluir(cenario["admin"], d),
+        status.CANCELADA: lambda d: ordens.cancelar(cenario["admin"], d.id, d.versao),
     }
     d = preparar(cenario, origem)
-    if (origem, destino) in status.TRANSICOES:
+    if (origem, destino) in MOVIMENTOS:
         assert funcoes[destino](d).status == destino
     else:
         with pytest.raises(ErroPermissao):
@@ -192,7 +198,7 @@ def test_iniciar_define_executor_e_evento(cenario):
         cenario["joao"],
         "João Fictício",
     )
-    assert d.iniciado_em == T0 and d.versao == 2 and d.atualizado_em == T0
+    assert d.inicio_execucao_em == T0 and d.versao == 2 and d.atualizado_em == T0
     assert eventos(cenario, d.id) == [
         ("CRIACAO", None, None, None),
         ("ITEM_ADICIONADO", "item 1", None, "Outros | Valor total | 1 x R$ 100,00"),
@@ -224,7 +230,7 @@ def test_apos_desfazer_outro_usuario_inicia_e_vira_executor(cenario):
     d = criar(cenario["marina"])
     d = ordens.iniciar_execucao(cenario["joao"], d.id, d.versao)
     d = ordens.desfazer_inicio(cenario["joao"], d.id, d.versao)
-    assert (d.status, d.executor_id, d.executor_nome, d.iniciado_em) == (
+    assert (d.status, d.executor_id, d.executor_nome, d.inicio_execucao_em) == (
         status.ABERTA,
         None,
         None,
@@ -248,7 +254,7 @@ def test_concluir_preenche_realizado_e_eventos(cenario):
     d = preparar(cenario, status.EM_EXECUCAO)
     c = concluir(cenario["pedro"], d, descricao_realizado="  Rolamento trocado.  ")
     assert c.status == status.CONCLUIDA
-    assert (c.concluido_por_id, c.concluido_por_nome, c.concluido_em) == (
+    assert (c.concluido_por_id, c.concluido_por_nome, c.concluida_em) == (
         cenario["pedro"],
         "Pedro Modelo",
         T0,
@@ -264,6 +270,7 @@ def test_concluir_preenche_realizado_e_eventos(cenario):
         ("REALIZADO", "inicio_realizado", None, INICIO.isoformat()),
         ("REALIZADO", "fim_realizado", None, FIM.isoformat()),
         ("REALIZADO", "descricao_realizado", None, "Rolamento trocado."),
+        ("REALIZADO", "nota_conclusao", None, "Serviço feito conforme o previsto."),
         ("ITEM_ADICIONADO", "item 2", None, "Outros | Valor total | 1 x R$ 120,00"),
     ]
 
@@ -600,10 +607,10 @@ def test_acoes_por_ator_em_cada_status(cenario):
 
     aberta = preparar(cenario, status.ABERTA)
     assert flags("marina", aberta) == (True, True, False, False, False)
-    assert flags("joao", aberta) == (False, True, False, False, False)
+    assert flags("joao", aberta) == (True, True, False, False, False)  # manutenção da filial
     execucao = preparar(cenario, status.EM_EXECUCAO)
     assert flags("marina", execucao) == (True, False, False, False, False)
-    assert flags("pedro", execucao) == (False, False, True, True, False)
+    assert flags("pedro", execucao) == (True, False, True, True, False)  # manutenção edita
     assert flags("admin", execucao) == (True, False, True, True, False)
     concluida = preparar(cenario, status.CONCLUIDA)
     assert flags("marina", concluida) == (False,) * 5

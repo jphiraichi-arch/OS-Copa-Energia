@@ -8,7 +8,7 @@ from osapp.models import Usuario
 from osapp.services import ordens, relatorios, relogio, status
 from osapp.services.erros import ErroAutenticacao, ErroPermissao, ErroValidacao
 from osapp.services.relatorios import RelatorioBasico, gerar_relatorio, limites_do_mes
-from tests.fabricas import itens, novo_usuario
+from tests.fabricas import NOTA, itens, novo_usuario, tipo_id
 
 MAIO = datetime(2026, 5, 20, 15, 0, tzinfo=UTC)
 
@@ -36,6 +36,8 @@ def dados(cenario, monkeypatch):
             60,
             filial_id,
             equipamento_outro="Equipamento de teste",
+            tipo_id=tipo_id(),
+            prioridade="media",
         )
         d = ordens.iniciar_execucao(executor, d.id, d.versao)
         em(quando)
@@ -47,6 +49,7 @@ def dados(cenario, monkeypatch):
             quando - timedelta(minutes=minutos),
             quando,
             "Feito.",
+            NOTA,
         )
 
     c = cenario
@@ -73,6 +76,8 @@ def dados(cenario, monkeypatch):
         itens(100),
         30,
         equipamento_outro="Equipamento de teste",
+        tipo_id=tipo_id(),
+        prioridade="media",
     )
     ordens.iniciar_execucao(c["pedro"], d.id, d.versao)
     # F002, concluída em maio
@@ -136,8 +141,18 @@ def test_colega_comum_e_inativo(dados):
 
 def test_relatorio_basico(dados):
     rel = gerar_relatorio(dados["marina"], 2026, 5)
-    assert contagem(rel) == {status.ABERTA: 1, status.EM_EXECUCAO: 1, status.CONCLUIDA: 4}
-    assert [c.rotulo for c in rel.basico.por_status] == ["Aberta", "Em execução", "Concluída"]
+    assert contagem(rel) == {
+        status.ABERTA: 1,
+        status.EM_EXECUCAO: 1,
+        status.CONCLUIDA: 4,
+        status.CANCELADA: 0,
+    }
+    assert [c.rotulo for c in rel.basico.por_status] == [
+        "Aberta",
+        "Em execução",
+        "Concluída",
+        "Cancelada",
+    ]
     # 6 OS em F001, mas uma foi criada em 30/04 às 18:00 no horário local: 5 em maio.
     assert rel.basico.criadas_no_mes == 5
     assert rel.basico.concluidas_no_mes == 3
@@ -196,6 +211,8 @@ def test_no_maximo_cinco_maiores_desvios(cenario, monkeypatch):
             itens(1000),
             60,
             equipamento_outro="Equipamento de teste",
+            tipo_id=tipo_id(),
+            prioridade="media",
         )
         d = ordens.iniciar_execucao(cenario["admin"], d.id, d.versao)
         ordens.concluir_os(
@@ -206,6 +223,7 @@ def test_no_maximo_cinco_maiores_desvios(cenario, monkeypatch):
             MAIO - timedelta(hours=1),
             MAIO,
             "Feito.",
+            NOTA,
         )
     desvios = gerar_relatorio(cenario["admin"], 2026, 5).completo.maiores_desvios
     assert [d.diferenca_centavos for d in desvios] == [1600, 1500, 1400, 1300, 1200]

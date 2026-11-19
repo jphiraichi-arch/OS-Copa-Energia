@@ -1,10 +1,15 @@
-"""Status da OS, definidos uma única vez. Um novo status é uma nova entrada aqui."""
+"""Status da Ordem de Serviço e as transições, definidos uma única vez (dados).
+
+Quem pode cada transição é decidido em services/ordens.py, pelas mesmas funções que
+calculam os flags de ``acoes``; aqui ficam só os status, os movimentos e quem os faz.
+"""
 
 from __future__ import annotations
 
 ABERTA = "ABERTA"
 EM_EXECUCAO = "EM_EXECUCAO"
 CONCLUIDA = "CONCLUIDA"
+CANCELADA = "CANCELADA"
 
 STATUS_INICIAL = ABERTA
 
@@ -13,6 +18,7 @@ ROTULOS: dict[str, str] = {
     ABERTA: "Aberta",
     EM_EXECUCAO: "Em execução",
     CONCLUIDA: "Concluída",
+    CANCELADA: "Cancelada",
 }
 
 
@@ -26,27 +32,38 @@ def rotulo(status: str) -> str:
 
 
 # --- Transições -----------------------------------------------------------------------
-# Quem pode fazer a transição, além do administrador (que pode todas as da tabela):
-QUALQUER_USUARIO_DA_FILIAL = "QUALQUER_USUARIO_DA_FILIAL"
+# Quem pode, além do administrador (que pode todas as da tabela):
+MANUTENCAO_DA_FILIAL = "MANUTENCAO_DA_FILIAL"
 SOMENTE_EXECUTOR = "SOMENTE_EXECUTOR"
+SOMENTE_SOLICITANTE = "SOMENTE_SOLICITANTE"  # quem abriu a solicitação
 
-# Tabela única de movimentos permitidos: (origem, destino) -> quem pode.
+INICIAR = "iniciar"
+DESFAZER_INICIO = "desfazer_inicio"
+CONCLUIR = "concluir"
+CANCELAR = "cancelar"
+
+# Tabela única de movimentos permitidos: ação -> (origem, destino, quem pode).
 # O que não está aqui é proibido. Um novo status é uma nova entrada.
-TRANSICOES: dict[tuple[str, str], str] = {
-    (ABERTA, EM_EXECUCAO): QUALQUER_USUARIO_DA_FILIAL,  # iniciar
-    (EM_EXECUCAO, ABERTA): SOMENTE_EXECUTOR,  # desfazer início
-    (EM_EXECUCAO, CONCLUIDA): SOMENTE_EXECUTOR,  # concluir
+TRANSICOES: dict[str, tuple[str, str, str]] = {
+    INICIAR: (ABERTA, EM_EXECUCAO, MANUTENCAO_DA_FILIAL),
+    DESFAZER_INICIO: (EM_EXECUCAO, ABERTA, SOMENTE_EXECUTOR),
+    CONCLUIR: (EM_EXECUCAO, CONCLUIDA, SOMENTE_EXECUTOR),
+    CANCELAR: (ABERTA, CANCELADA, SOMENTE_SOLICITANTE),
 }
 
-# Status em que a OS está encerrada: só administrador edita, e os campos de
-# "realizado" existem.
+# Status finais: CONCLUIDA (só administrador edita) e CANCELADA (ninguém edita).
+FINAIS: frozenset[str] = frozenset({CONCLUIDA, CANCELADA})
+# Status em que a OS está concluída: os campos de "realizado" existem.
 ENCERRADOS: frozenset[str] = frozenset({CONCLUIDA})
 
 
-def quem_pode_transicionar(origem: str, destino: str) -> str | None:
-    """Regra da transição, ou None se ela não estiver na tabela."""
-    return TRANSICOES.get((origem, destino))
+def transicao(acao: str) -> tuple[str, str, str]:
+    return TRANSICOES[acao]
 
 
 def encerrado(status: str) -> bool:
     return status in ENCERRADOS
+
+
+def final(status: str) -> bool:
+    return status in FINAIS

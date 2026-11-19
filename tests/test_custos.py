@@ -21,7 +21,7 @@ from osapp.services.erros import (
     ErroPermissao,
     ErroValidacao,
 )
-from tests.fabricas import categoria_id
+from tests.fabricas import NOTA, categoria_id, tipo_id
 
 T0 = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
 INICIO, FIM = T0 - timedelta(hours=3), T0 - timedelta(hours=1)
@@ -48,7 +48,11 @@ def item(valor=1000, quantidade="1", descricao="Item", codigo="OUTROS"):
 
 
 def criar(ator_id, itens=None, **extras):
-    dados = {"equipamento_outro": "Equipamento de teste"}
+    dados = {
+        "equipamento_outro": "Equipamento de teste",
+        "tipo_id": tipo_id(),
+        "prioridade": "media",
+    }
     dados.update(extras)
     return ordens.criar_os(
         ator_id,
@@ -74,6 +78,7 @@ def preparar(cenario, destino):
             INICIO,
             FIM,
             "Feito.",
+            NOTA,
         )
     return d
 
@@ -206,7 +211,8 @@ def test_ler_brl_e_quantidade():
 ATORES = ["marina", "joao", "pedro", "carlos", "admin", "inativa"]
 #          criadora  colega  executor  outra filial  admin  inativa
 OK, PERM, NAOENC, AUT = "ok", ErroPermissao, ErroNaoEncontrado, ErroAutenticacao
-_P_ABERTA = [OK, PERM, PERM, NAOENC, OK, AUT]
+# Prompt 17: previsto é da manutenção da filial (todos os três são 'manutencao').
+_P_ABERTA = [OK, OK, OK, NAOENC, OK, AUT]
 _P_FECHADA = [PERM, PERM, PERM, NAOENC, OK, AUT]
 _R_ABERTA = [PERM, PERM, PERM, NAOENC, PERM, AUT]
 ESPERADO = {
@@ -335,34 +341,47 @@ def test_eventos_de_cada_operacao(cenario):
     assert d.resumo_custos.total_previsto_centavos == 3000
 
 
-def test_ultimo_item_previsto_nao_pode_sair_e_conclusao_exige_item(cenario):
+def test_previsto_pode_ficar_vazio_so_enquanto_aberta(cenario):
+    """Prompt 17: o previsto é opcional na criação; iniciar exige o previsto completo."""
     d = criar(cenario["marina"], [item(1000)])
+    vazia = custos.remover_item(cenario["marina"], d.id, d.itens[0].id, d.versao)
+    assert vazia.itens == () and ordens.PENDENCIA_VALOR in vazia.pendencias_para_iniciar
     with pytest.raises(ErroValidacao):
-        custos.remover_item(cenario["marina"], d.id, d.itens[0].id, d.versao)
+        ordens.iniciar_execucao(cenario["pedro"], vazia.id, vazia.versao)
+    d = custos.adicionar_item(
+        cenario["marina"], d.id, vazia.versao, "PREVISTO", categoria_id(), "X", Decimal("1"), 1
+    )
     d = ordens.iniciar_execucao(cenario["pedro"], d.id, d.versao)
+    with pytest.raises(ErroValidacao):  # depois de iniciada, o último previsto fica
+        custos.remover_item(cenario["pedro"], d.id, d.itens[0].id, d.versao)
     antes = estado(d.id)
     with pytest.raises(ErroValidacao) as info:
-        ordens.concluir_os(cenario["pedro"], d.id, d.versao, [], INICIO, FIM, "Feito.")
+        ordens.concluir_os(cenario["pedro"], d.id, d.versao, [], INICIO, FIM, "Feito.", NOTA)
     assert info.value.campo == "itens_realizados" and estado(d.id) == antes
-    c = ordens.concluir_os(cenario["pedro"], d.id, d.versao, [item(900)], INICIO, FIM, "Feito.")
+    c = ordens.concluir_os(
+        cenario["pedro"], d.id, d.versao, [item(900)], INICIO, FIM, "Feito.", NOTA
+    )
     realizado = next(i for i in c.itens if i.fase == "REALIZADO")
     with pytest.raises(ErroValidacao):  # nem o admin deixa a conclusão sem item realizado
         custos.remover_item(cenario["admin"], c.id, realizado.id, c.versao)
 
 
-def test_criacao_sem_item_e_recusada(cenario):
-    for invalido in ([], None, [object()], "item"):
+def test_criacao_sem_item_vale_e_item_invalido_e_recusado(cenario):
+    for invalido in ([object()], "item"):
         with pytest.raises(ErroValidacao):
-            ordens.criar_os(
-                cenario["marina"],
-                "Título",
-                "Descrição.",
-                invalido,
-                60,
-                equipamento_outro="Equipamento de teste",
-            )
+            ordens.criar_os(cenario["marina"], "Título", "Descrição.", invalido, 60)
     with sessao() as s:
         assert s.scalar(select(func.count()).select_from(OrdemServico)) == 0
+    for vazio in ([], None):
+        d = ordens.criar_os(cenario["marina"], "Título", "Descrição.", vazio)
+        assert d.itens == () and d.tempo_previsto_minutos is None
+        assert d.pendencias_para_iniciar == (
+            ordens.PENDENCIA_TEMPO,
+            ordens.PENDENCIA_VALOR,
+            ordens.PENDENCIA_TIPO,
+            ordens.PENDENCIA_PRIORIDADE,
+            ordens.PENDENCIA_EQUIPAMENTO,
+        )
 
 
 @pytest.mark.parametrize("op", ["adicionar", "editar", "remover"])
@@ -468,7 +487,6 @@ def test_listar_categorias(cenario):
         ("outra", None, "equipamento_id"),  # de outra filial
         ("inativo", None, "equipamento_id"),
         ("ativo", "Bomba", "equipamento_id"),  # os dois
-        (None, None, "equipamento_id"),  # nenhum
         (None, "ab", "equipamento_outro"),  # 'Outro' curto demais
         (None, "x" * 121, "equipamento_outro"),
         ("inexistente", None, "equipamento_id"),

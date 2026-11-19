@@ -19,6 +19,11 @@ from osapp.services.erros import ErroAutenticacao, ErroMuitasTentativas
 
 LOGIN_MAX = 50
 
+PAPEL_USUARIO = "usuario"
+PAPEL_MANUTENCAO = "manutencao"
+PAPEL_ADMIN = "admin"
+PAPEIS = (PAPEL_USUARIO, PAPEL_MANUTENCAO, PAPEL_ADMIN)
+
 logger = logging.getLogger(__name__)
 
 # Hash usado quando o login não existe, para que o tempo de resposta não revele
@@ -34,8 +39,21 @@ class Ator:
     nome: str
     filial_id: int
     filial_codigo: str
-    is_admin: bool
+    papel: str  # 'usuario', 'manutencao' ou 'admin'
     is_gerente: bool = False
+
+    @property
+    def is_admin(self) -> bool:
+        """Atalho de leitura: o papel é 'admin'."""
+        return self.papel == PAPEL_ADMIN
+
+    @property
+    def is_manutencao(self) -> bool:
+        return self.papel == PAPEL_MANUTENCAO
+
+    @property
+    def is_usuario(self) -> bool:
+        return self.papel == PAPEL_USUARIO
 
 
 def _ator_de(usuario: Usuario) -> Ator:
@@ -44,8 +62,8 @@ def _ator_de(usuario: Usuario) -> Ator:
         nome=usuario.nome,
         filial_id=usuario.filial_id,
         filial_codigo=usuario.filial.codigo,
-        is_admin=usuario.is_admin,
-        is_gerente=usuario.is_gerente and not usuario.is_admin,
+        papel=usuario.papel,
+        is_gerente=usuario.is_gerente and usuario.papel != PAPEL_ADMIN,
     )
 
 

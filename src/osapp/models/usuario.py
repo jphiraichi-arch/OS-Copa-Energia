@@ -18,17 +18,20 @@ class Usuario(Base):
     login: Mapped[str] = mapped_column(String(50), unique=True)
     senha_hash: Mapped[str] = mapped_column(String(255))
     filial_id: Mapped[int] = mapped_column(ForeignKey("filiais.id"))
-    is_admin: Mapped[bool] = mapped_column(default=False, server_default=false())
     # Gerente: vê o relatório completo da própria filial. Administrador prevalece.
     is_gerente: Mapped[bool] = mapped_column(default=False, server_default=false())
     ativo: Mapped[bool] = mapped_column(default=True, server_default=true())
-    # Papel (prompt 16): usuario, manutencao ou admin. Enquanto is_admin existir, papel é
-    # 'admin' exatamente quando is_admin é verdadeiro (mantido pelos serviços).
+    # Papel: usuario (abre solicitações), manutencao (executa) ou admin (tudo).
     papel: Mapped[str] = mapped_column(
         String(20), default="manutencao", server_default="manutencao"
     )
 
     filial: Mapped[Filial] = relationship()
+
+    @property
+    def is_admin(self) -> bool:
+        """Só leitura, derivado do papel (a coluna is_admin saiu na migração 0008)."""
+        return self.papel == "admin"
 
     @validates("login")
     def _login_em_minusculas(self, _chave: str, valor: str) -> str:

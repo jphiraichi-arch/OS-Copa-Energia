@@ -58,7 +58,7 @@ def _exigir_admin(s, login_responsavel: object):
         if isinstance(login_responsavel, str)
         else None
     )
-    if usuario is None or not usuario.ativo or not usuario.is_admin:
+    if usuario is None or not usuario.ativo or usuario.papel != "admin":
         raise ErroPermissao()
     return usuario
 

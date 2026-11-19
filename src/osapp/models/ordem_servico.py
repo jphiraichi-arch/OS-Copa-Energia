@@ -61,9 +61,7 @@ class OrdemServico(Base):
     # Equipamento: um cadastrado da filial, ou "Outro" com texto livre.
     equipamento_id: Mapped[int | None] = mapped_column(ForeignKey("equipamentos.id"))
     equipamento_outro: Mapped[str | None] = mapped_column(String(120))
-    iniciado_em: Mapped[datetime | None] = mapped_column(DataHoraUTC())
     concluido_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
-    concluido_em: Mapped[datetime | None] = mapped_column(DataHoraUTC())
     criado_em: Mapped[datetime] = mapped_column(DataHoraUTC(), default=_agora_utc)
     atualizado_em: Mapped[datetime] = mapped_column(DataHoraUTC(), default=_agora_utc)
     versao: Mapped[int] = mapped_column(default=1, server_default="1")

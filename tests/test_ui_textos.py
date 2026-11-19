@@ -22,7 +22,9 @@ ARQUIVOS_DA_TELA_PRINCIPAL = [
 ]
 SIGLA = re.compile(r"\bOS\b")
 T0 = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
-ATOR = Ator(usuario_id=7, nome="Marina Teste", filial_id=1, filial_codigo="F001", is_admin=False)
+ATOR = Ator(
+    usuario_id=7, nome="Marina Teste", filial_id=1, filial_codigo="F001", papel="manutencao"
+)
 
 
 def textos_visiveis(caminho: Path) -> list[tuple[int, str]]:
@@ -147,7 +149,7 @@ def test_relatorios_e_destino_de_primeiro_nivel_e_item_do_menu():
 
 def test_sessao_guarda_o_perfil_de_gerente_so_para_exibicao():
     sessao = SessaoUI(timeout_min=30)
-    iniciar(sessao, Ator(3, "Gabriela Gerente", 1, "F001", False, True), T0, "gerente.norte")
+    iniciar(sessao, Ator(3, "Gabriela Gerente", 1, "F001", "manutencao", True), T0, "gerente.norte")
     assert sessao.is_gerente is True
     encerrar(sessao)
     assert sessao.is_gerente is False

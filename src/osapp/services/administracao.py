@@ -24,6 +24,7 @@ from osapp.repositories import (
 from osapp.services import ordens as ordens_servico
 from osapp.services import protecao_login, relogio, senhas
 from osapp.services.auth import LOGIN_MAX
+from osapp.services.auth import PAPEIS as PAPEIS_DO_ATOR
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroValidacao
 
 logger = logging.getLogger(__name__)
@@ -47,14 +48,15 @@ class UsuarioCriado:
     filial_codigo: str
     is_admin: bool
     is_gerente: bool = False
+    papel: str = "manutencao"
 
 
 PERFIS = ("usuario", "gerente", "administrador")
-PAPEIS = ("usuario", "manutencao", "admin")
+PAPEIS = PAPEIS_DO_ATOR
 
 
 def papel_de(is_admin: bool) -> str:
-    """Papel proposto a partir do perfil antigo (regra da migração 0007)."""
+    """Papel a partir do perfil antigo (regra da migração 0007)."""
     return "admin" if is_admin else "manutencao"
 
 
@@ -114,12 +116,21 @@ def criar_usuario(
     filial_codigo: str,
     is_admin: bool = False,
     is_gerente: bool = False,
+    *,
+    papel: str | None = None,
 ) -> UsuarioCriado:
+    """Cria um usuário. ``papel`` (usuario, manutencao, admin); sem ele, ``is_admin``
+    decide entre admin e manutencao (comportamento antigo)."""
     nome = _texto("nome", nome, 1, 100)
     login = _validar_login(login)
     validar_senha(senha)
     if not isinstance(is_admin, bool):
         raise ErroValidacao("is_admin", "Valor inválido.")
+    if papel is None:
+        papel = papel_de(is_admin)
+    if papel not in PAPEIS or (is_admin and papel != "admin"):
+        raise ErroValidacao("papel", "Papel inválido. Use usuario, manutencao ou admin.")
+    is_admin = papel == "admin"
     if not isinstance(is_gerente, bool) or (is_admin and is_gerente):
         raise ErroValidacao("perfil", "Escolha um único perfil: usuário, gerente ou administrador.")
     if not isinstance(filial_codigo, str):
@@ -137,14 +148,13 @@ def criar_usuario(
                 login=login,
                 senha_hash=senhas.gerar_hash(senha),
                 filial_id=filial.id,
-                is_admin=is_admin,
                 is_gerente=is_gerente,
-                papel=papel_de(is_admin),
+                papel=papel,
             )
         )
         logger.info("Usuário criado: usuario_id=%s.", usuario.id)
         return UsuarioCriado(
-            usuario.id, usuario.nome, usuario.login, filial.codigo, is_admin, is_gerente
+            usuario.id, usuario.nome, usuario.login, filial.codigo, is_admin, is_gerente, papel
         )
 
 
@@ -185,44 +195,37 @@ def definir_perfil(login: str, perfil: str) -> None:
         raise ErroValidacao("perfil", "Perfil inválido. Use usuario, gerente ou administrador.")
     with sessao() as s:
         usuario = _usuario_por_login(s, login)
-        usuario.is_admin = perfil == "administrador"
         usuario.is_gerente = perfil == "gerente"
-        if usuario.is_admin:
+        if perfil == "administrador":
             usuario.papel = "admin"
         elif usuario.papel == "admin":
-            usuario.papel = "manutencao"  # papel = 'admin' exatamente quando is_admin
+            usuario.papel = "manutencao"
         logger.info("Perfil alterado: usuario_id=%s perfil=%s.", usuario.id, perfil)
 
 
 def previa_papeis() -> list[PreviaPapel]:
-    """Login, filial, is_admin e o papel que a migração 0007 vai dar. Não altera nada.
+    """Login, filial, is_admin (derivado) e o papel atual. Não altera nada.
 
-    Lê só colunas que existem antes e depois da migração (login, is_admin e o código da
-    filial), para poder ser executado antes de migrar.
+    Desde a migração 0008 não há mais coluna is_admin: a prévia antes da 0007 deve ser
+    feita com o código do prompt 16 (commit 3c66de8).
     """
     with sessao() as s:
         linhas = s.execute(
-            select(Usuario.login, Filial.codigo, Usuario.is_admin)
+            select(Usuario.login, Filial.codigo, Usuario.papel)
             .join(Filial, Usuario.filial_id == Filial.id)
             .order_by(Filial.codigo, Usuario.login)
         ).all()
-    return [
-        PreviaPapel(login, codigo, bool(adm), papel_de(bool(adm))) for login, codigo, adm in linhas
-    ]
+    return [PreviaPapel(login, codigo, papel == "admin", papel) for login, codigo, papel in linhas]
 
 
 def definir_papel(login: str, papel: str) -> None:
-    """Corrige o papel de um usuário: 'usuario', 'manutencao' ou 'admin'.
-
-    Mantém is_admin coerente (verdadeiro exatamente quando o papel é 'admin').
-    """
+    """Corrige o papel de um usuário: 'usuario', 'manutencao' ou 'admin'."""
     if papel not in PAPEIS:
         raise ErroValidacao("papel", "Papel inválido. Use usuario, manutencao ou admin.")
     with sessao() as s:
         usuario = _usuario_por_login(s, login)
         usuario.papel = papel
-        usuario.is_admin = papel == "admin"
-        if usuario.is_admin:
+        if papel == "admin":
             usuario.is_gerente = False
         logger.info("Papel alterado: usuario_id=%s papel=%s.", usuario.id, papel)
 
@@ -329,7 +332,7 @@ def aplicar_consolidacao(login_responsavel: str, codigo_destino: str = "1007") -
     """
     with sessao() as s:
         responsavel = _usuario_por_login(s, login_responsavel)
-        if not (responsavel.is_admin and responsavel.ativo):
+        if not (responsavel.papel == "admin" and responsavel.ativo):
             raise ErroValidacao("responsavel", "O responsável deve ser um administrador ativo.")
         destino = _filial_destino(s, codigo_destino)
         plano, desativar, mover, ordens = _plano(s, destino)

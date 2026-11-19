@@ -28,7 +28,8 @@ def test_criacao():
         ("ABERTA", "EM_EXECUCAO", "Status: Aberta -> Em execução"),
         ("EM_EXECUCAO", "ABERTA", "Status: Em execução -> Aberta"),
         ("EM_EXECUCAO", "CONCLUIDA", "Status: Em execução -> Concluída"),
-        ("ABERTA", "CANCELADA", "Status: Aberta -> CANCELADA"),  # status futuro: sem quebrar
+        ("ABERTA", "CANCELADA", "Status: Aberta -> Cancelada"),
+        ("ABERTA", "SUSPENSA", "Status: Aberta -> SUSPENSA"),  # status futuro: sem quebrar
     ],
 )
 def test_status(antigo, novo, esperado):
