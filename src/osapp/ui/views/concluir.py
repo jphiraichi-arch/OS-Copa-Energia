@@ -103,6 +103,14 @@ class ConcluirOs(Tela):
             max_lines=8,
             max_length=ordens.DESCRICAO_MAX,
         )
+        self.nota = self._campo(
+            "Nota para o solicitante",
+            multiline=True,
+            min_lines=3,
+            max_lines=6,
+            max_length=ordens.NOTA_MAX,
+            helper="O solicitante verá esta nota.",
+        )
         self.previa = basicos.coluna([], espaco=theme.ESPACO_P + 4)
         self.aviso = ft.Text("", color=theme.COR_ERRO, size=theme.FONTE_SUBTITULO, visible=False)
         self.botao = basicos.botao_primario(
@@ -114,6 +122,7 @@ class ConcluirOs(Tela):
             "inicio_realizado": self.inicio_data,
             "fim_realizado": self.fim_hora.controle,
             "descricao_realizado": self.descricao,
+            "nota_conclusao": self.nota,
         }
         self.conteudo.controls = [
             basicos.cartao(self._resumo_previsto(d)),
@@ -134,6 +143,7 @@ class ConcluirOs(Tela):
                         self.fim_data,
                         self.fim_hora.controle,
                         self.descricao,
+                        self.nota,
                         self.aviso,
                     ]
                 )
@@ -185,6 +195,7 @@ class ConcluirOs(Tela):
             "fim_data": self.fim_data.value or "",
             "fim_hora": self.fim_hora.controle.value or "",
             "descricao": self.descricao.value or "",
+            "nota": self.nota.value or "",
         }
 
     # --- Eventos ----------------------------------------------------------------------
@@ -254,7 +265,7 @@ class ConcluirOs(Tela):
                     erros.append((campo_hora.controle, campo_hora.erro))
                 else:
                     erros.append((campo_data, str(exc)))
-        for campo in (self.inicio_data, self.fim_data, self.descricao):
+        for campo in (self.inicio_data, self.fim_data, self.descricao, self.nota):
             campo.error = None
         self.inicio_hora.marcar_erro(self.inicio_hora.erro)
         self.fim_hora.marcar_erro(self.fim_hora.erro)
@@ -263,7 +274,11 @@ class ConcluirOs(Tela):
             campo.error = mensagem
         if erros:
             return None
-        return {**instantes, "descricao": (self.descricao.value or "").strip()}
+        return {
+            **instantes,
+            "descricao": (self.descricao.value or "").strip(),
+            "nota": (self.nota.value or "").strip(),
+        }
 
     async def _concluir(self, _e=None) -> None:
         if self.botao.disabled:
@@ -285,6 +300,7 @@ class ConcluirOs(Tela):
                 valores["inicio"],
                 valores["fim"],
                 valores["descricao"],
+                valores["nota"],
                 campos=self.campos,
                 erros_tratados=(ErroConflito, ErroPermissao, ErroNaoEncontrado),
             )

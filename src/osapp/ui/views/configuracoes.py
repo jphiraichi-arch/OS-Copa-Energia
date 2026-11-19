@@ -10,7 +10,7 @@ from importlib import metadata
 import flet as ft
 
 from osapp.services import ordens
-from osapp.ui import textos, theme
+from osapp.ui import rotulos, textos, theme
 from osapp.ui.components import basicos
 from osapp.ui.views.base import Tela
 
@@ -44,9 +44,11 @@ class Configuracoes(Tela):
                         basicos.rotulo_valor(textos.CONFIG_NOME, sessao.nome),
                         basicos.rotulo_valor(textos.CONFIG_LOGIN, sessao.login),
                         self.filial,
-                        basicos.rotulo_valor(
-                            textos.CONFIG_PERFIL,
-                            rotulo_do_perfil(sessao.is_admin, sessao.is_gerente),
+                        basicos.rotulo_valor(textos.CONFIG_PAPEL, rotulos.papel(sessao.papel)),
+                        *(
+                            [basicos.rotulo_valor(textos.CONFIG_PERFIL, textos.PERFIL_GERENTE)]
+                            if sessao.is_gerente
+                            else []
                         ),
                     ],
                 ),

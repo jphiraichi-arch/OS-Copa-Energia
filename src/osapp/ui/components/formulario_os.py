@@ -8,7 +8,7 @@ from __future__ import annotations
 import flet as ft
 
 from osapp.services import equipamentos, ordens
-from osapp.ui import formularios, theme
+from osapp.ui import formularios, rotulos, theme
 from osapp.ui.components import basicos
 from osapp.ui.components.campos import CampoDuracao, CampoHora
 
@@ -41,15 +41,27 @@ class FormularioOs:
     """
 
     def __init__(
-        self, app, filiais, lista_equipamentos, os=None, com_realizado: bool = False
+        self,
+        app,
+        filiais,
+        lista_equipamentos,
+        os=None,
+        com_realizado: bool = False,
+        tipos=(),
     ) -> None:
         self.app = app
         self.tz = app.config.tz
         self.com_realizado = com_realizado and os is not None
+        # Título e descrição de uma solicitação são do solicitante: só leitura aqui.
+        self.texto_editavel = not (os and os.origem == ordens.ORIGEM_SOLICITACAO)
         limpar = self._limpar_erro
 
         self.titulo = basicos.campo_texto(
-            "Título", value=os.titulo if os else "", max_length=ordens.TITULO_MAX, on_change=limpar
+            "Título",
+            value=os.titulo if os else "",
+            max_length=ordens.TITULO_MAX,
+            on_change=limpar,
+            read_only=not self.texto_editavel,
         )
         self.descricao = basicos.campo_texto(
             "Descrição do problema e do serviço",
@@ -59,6 +71,19 @@ class FormularioOs:
             max_lines=8,
             max_length=ordens.DESCRICAO_MAX,
             on_change=limpar,
+            read_only=not self.texto_editavel,
+        )
+        self.tipo = lista_suspensa(
+            "Tipo de manutenção",
+            [ft.DropdownOption(key=str(t.id), text=t.nome) for t in tipos],
+            str(os.tipo_id) if os and os.tipo_id else None,
+            on_select=self._ao_escolher_lista,
+        )
+        self.prioridade = lista_suspensa(
+            "Prioridade",
+            [ft.DropdownOption(key=n, text=rotulos.nivel(n)) for n in ordens.NIVEIS],
+            os.prioridade if os else None,
+            on_select=self._ao_escolher_lista,
         )
         lista_equipamentos = list(lista_equipamentos)
         if os and os.equipamento_id and all(e.id != os.equipamento_id for e in lista_equipamentos):
@@ -80,7 +105,7 @@ class FormularioOs:
             visible=self.equipamento.value == formularios.OPCAO_OUTRO,
         )
         self.tempo = CampoDuracao(
-            "Tempo previsto (horas:minutos)", os.tempo_previsto_minutos if os else 0
+            "Tempo previsto (horas:minutos)", (os.tempo_previsto_minutos or 0) if os else 0
         )
         filial_inicial = os.filial_id if os else app.sessao.filial_id
         self.filial = lista_suspensa(
@@ -94,6 +119,8 @@ class FormularioOs:
             self.titulo,
             self.descricao,
             ft.Row([self.filial]),
+            ft.Row([self.tipo]),
+            ft.Row([self.prioridade]),
             ft.Row([self.equipamento]),
             self.equipamento_outro,
             self.tempo.controle,
@@ -106,6 +133,8 @@ class FormularioOs:
             "equipamento_outro": self.equipamento_outro,
             "equipamento_id": _ErroNaLista(self.equipamento),
             "filial_id": _ErroNaLista(self.filial),
+            "tipo_id": _ErroNaLista(self.tipo),
+            "prioridade": _ErroNaLista(self.prioridade),
         }
 
         if self.com_realizado:
@@ -170,6 +199,11 @@ class FormularioOs:
             e.control.error = None
             e.control.update()
 
+    def _ao_escolher_lista(self, e) -> None:
+        if e.control.error_text:
+            e.control.error_text = None
+            e.control.update()
+
     def _ao_escolher_equipamento(self, _e=None) -> None:
         self.equipamento.error_text = None
         self.equipamento_outro.error = None
@@ -201,6 +235,8 @@ class FormularioOs:
             "equipamento_outro": self.equipamento_outro.value or "",
             "tempo": self.tempo.controle.value or "",
             "filial": self.filial.value or "",
+            "tipo": self.tipo.value or "",
+            "prioridade": self.prioridade.value or "",
         }
         if self.com_realizado:
             valores.update(
@@ -218,21 +254,23 @@ class FormularioOs:
     def ler(self, marcar_erros: bool = True) -> dict | None:
         """Valores prontos para o serviço, ou None se algum campo não pôde ser lido.
 
-        Erros locais (equipamento não escolhido, máscara de hora com erro, data) aparecem
-        sob o campo. O serviço valida tudo de novo.
+        O previsto (tempo, tipo, prioridade, equipamento) é opcional aqui: iniciar a
+        execução é que exige tudo. Erros locais (máscara de hora, data) aparecem sob o
+        campo. O serviço valida tudo de novo.
         """
         erros: list[tuple[object, str]] = []
         if self.tempo.erro:
             erros.append((self.tempo.controle, self.tempo.erro))
-        if not self.equipamento.value:
-            erros.append((self.campos["equipamento_id"], "Escolha o equipamento."))
         valores: dict = {
-            "titulo": (self.titulo.value or "").strip(),
-            "descricao": (self.descricao.value or "").strip(),
-            "tempo_previsto_minutos": self.tempo.valor,
+            "tempo_previsto_minutos": self.tempo.valor or None,  # 0:00 = não informado
             "filial_id": int(self.filial.value) if self.filial.value else None,
+            "tipo_id": int(self.tipo.value) if self.tipo.value else None,
+            "prioridade": self.prioridade.value or None,
             **formularios.ler_equipamento(self.equipamento.value, self.equipamento_outro.value),
         }
+        if self.texto_editavel:
+            valores["titulo"] = (self.titulo.value or "").strip()
+            valores["descricao"] = (self.descricao.value or "").strip()
         if self.com_realizado:
             for nome, campo_data, campo_hora in (
                 ("inicio_realizado", self.inicio_data, self.inicio_hora),

@@ -55,9 +55,7 @@ def upgrade() -> None:
             concluida_em=ordens.c.concluido_em,
         )
     )
-    conexao.execute(
-        usuarios.update().where(usuarios.c.is_admin == sa.true()).values(papel="admin")
-    )
+    conexao.execute(usuarios.update().where(usuarios.c.is_admin == sa.true()).values(papel="admin"))
     conexao.execute(
         usuarios.update()
         .where(usuarios.c.is_admin == sa.false(), usuarios.c.papel == "admin")

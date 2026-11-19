@@ -35,7 +35,15 @@ COR_AVISO_TEXTO = "#7A4A00"
 COR_STATUS_ABERTA = ("#E0ECFF", "#1D4ED8")
 COR_STATUS_EM_EXECUCAO = ("#FFEDD5", "#9A3412")
 COR_STATUS_CONCLUIDA = ("#DCFCE7", "#166534")
+COR_STATUS_CANCELADA = ("#F3F4F6", "#4B5563")
 COR_STATUS_OUTRO = ("#E5E7EB", "#374151")
+# Urgência e prioridade (fundo, texto). Emergencial: fundo vermelho cheio, texto branco.
+COR_NIVEL_BAIXA = ("#ECFDF5", "#065F46")
+COR_NIVEL_MEDIA = ("#FEF9C3", "#713F12")
+COR_NIVEL_ALTA = ("#FFEDD5", "#9A3412")
+COR_NIVEL_EMERGENCIAL = ("#B3261E", "#FFFFFF")
+COR_NIVEL_VAZIO = ("#F3F4F6", "#4B5563")
+COR_ORIGEM = ("#EEF2FF", "#3730A3")
 
 # --- Raios -----------------------------------------------------------------
 RAIO_CARTAO = 16
@@ -146,4 +154,15 @@ def cores_status(status: str) -> tuple[str, str]:
         "ABERTA": COR_STATUS_ABERTA,
         "EM_EXECUCAO": COR_STATUS_EM_EXECUCAO,
         "CONCLUIDA": COR_STATUS_CONCLUIDA,
+        "CANCELADA": COR_STATUS_CANCELADA,
     }.get(status, COR_STATUS_OUTRO)
+
+
+def cores_nivel(nivel: str | None) -> tuple[str, str]:
+    """(fundo, texto) do selo de urgência ou prioridade."""
+    return {
+        "baixa": COR_NIVEL_BAIXA,
+        "media": COR_NIVEL_MEDIA,
+        "alta": COR_NIVEL_ALTA,
+        "emergencial": COR_NIVEL_EMERGENCIAL,
+    }.get(nivel, COR_NIVEL_VAZIO)

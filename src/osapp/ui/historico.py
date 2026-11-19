@@ -45,6 +45,11 @@ CAMPOS: dict[str, tuple[str, Callable[[str], str]]] = {
     "fim_realizado": ("Fim", _data_hora),
     "descricao_realizado": ("Descrição do que foi feito", _texto),
     "equipamento_id": ("Equipamento", _texto),
+    "urgencia": ("Urgência", lambda v: _rotulos().nivel(v)),
+    "prioridade": ("Prioridade", lambda v: _rotulos().nivel(v)),
+    "tipo_id": ("Tipo de manutenção", _texto),
+    "origem": ("Origem", lambda v: _rotulos().origem(v)),
+    "nota_conclusao": ("Nota para o solicitante", _texto),
     "equipamento_outro": ("Equipamento (outro)", _texto),
 }
 
@@ -52,6 +57,12 @@ CAMPOS: dict[str, tuple[str, Callable[[str], str]]] = {
 FRASE_ITEM_ADICIONADO = "Item de custo adicionado"
 FRASE_ITEM_ALTERADO = "Item de custo alterado"
 FRASE_ITEM_REMOVIDO = "Item de custo removido"
+
+
+def _rotulos():
+    from osapp.ui import rotulos
+
+    return rotulos
 
 
 def _formatar(campo: str | None, valor: str | None) -> str:

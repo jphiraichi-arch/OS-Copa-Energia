@@ -10,11 +10,13 @@ import flet as ft
 
 from osapp import formatacao
 from osapp.services import ordens, status
-from osapp.ui import rotas, textos, theme
+from osapp.ui import rotas, rotulos, textos, theme
 from osapp.ui.components import basicos
 from osapp.ui.views.base import Tela
 
 TODAS_AS_FILIAIS = "todas"
+SOLICITACOES_ABERTAS = "solicitacoes_abertas"  # filtro rápido (manutenção e administrador)
+ROTULO_SOLICITACOES_ABERTAS = "Solicitações abertas"
 
 
 class Home(Tela):
@@ -82,6 +84,8 @@ class Home(Tela):
 
     def _montar_chips(self) -> None:
         opcoes = [(None, textos.HOME_TODAS), *status.ROTULOS.items()]
+        if not self.app.sessao.is_usuario:
+            opcoes.insert(1, (SOLICITACOES_ABERTAS, ROTULO_SOLICITACOES_ABERTAS))
         self.chips.controls = [
             ft.Chip(
                 label=ft.Text(rotulo, color=theme.COR_TITULO, size=theme.FONTE_SUBTITULO),
@@ -141,17 +145,21 @@ class Home(Tela):
         if self.pagina == 1:
             self.lista.controls = []
         self.conteudo.update()
+        rapido = self.filtro_status == SOLICITACOES_ABERTAS
         resultado = await self.app.chamar(
             ordens.listar_os,
             self.app.sessao.ator_id,
             self.busca.value or None,
-            self.filtro_status,
+            status.ABERTA if rapido else self.filtro_status,
             self.filtro_filial,
             self.pagina,
+            ordens.ORIGEM_SOLICITACAO if rapido else None,
         )
         self.rodape.controls = []
         if resultado.ok:
             self.itens.extend(resultado.valor.itens)
+            if rapido:  # Emergencial primeiro, depois a mais antiga
+                self.itens = rotulos.ordenar_solicitacoes_abertas(self.itens)
             self.lista.controls = [self._cartao(item) for item in self.itens]
             if not self.itens:
                 self.rodape.controls = [basicos.mensagem_central(textos.HOME_VAZIA)]
@@ -169,12 +177,22 @@ class Home(Tela):
     # --- Cartão de uma OS -------------------------------------------------------------
 
     def _cartao(self, item) -> ft.Control:
-        detalhes = [
-            formatacao.formatar_brl(item.total_previsto_centavos),
-            formatacao.formatar_data(item.criado_em),
-        ]
-        if self.app.sessao.is_admin:
-            detalhes.append(item.filial_codigo)
+        if isinstance(item, ordens.ResumoSolicitante):
+            selos = [basicos.selo_nivel(item.urgencia, "Urgência: ")]
+            detalhes = [item.solicitante, f"aberta em {formatacao.formatar_data(item.aberta_em)}"]
+        else:
+            selos = [basicos.selo_origem(item.origem)]
+            if item.urgencia:
+                selos.append(basicos.selo_nivel(item.urgencia, "Urgência: "))
+            if item.prioridade:
+                selos.append(basicos.selo_nivel(item.prioridade, "Prioridade: "))
+            detalhes = [
+                item.solicitante,
+                formatacao.formatar_brl(item.total_previsto_centavos),
+                formatacao.formatar_data(item.aberta_em or item.criado_em),
+            ]
+            if self.app.sessao.is_admin:
+                detalhes.append(item.filial_codigo)
         return basicos.cartao(
             ft.Row(
                 [
@@ -199,8 +217,9 @@ class Home(Tela):
                                 max_lines=2,
                                 overflow=ft.TextOverflow.ELLIPSIS,
                             ),
+                            ft.Row(selos, wrap=True, spacing=6, run_spacing=6),
                             ft.Text(
-                                "  ·  ".join(detalhes),
+                                "  ·  ".join(d for d in detalhes if d),
                                 color=theme.COR_SUBTITULO,
                                 size=theme.FONTE_SUBTITULO,
                             ),

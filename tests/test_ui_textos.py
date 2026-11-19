@@ -81,7 +81,8 @@ def test_a_tela_principal_usa_o_modulo_de_rotulos():
     home = (RAIZ_UI / "views" / "home.py").read_text(encoding="utf-8")
     app = (RAIZ_UI / "app.py").read_text(encoding="utf-8")
     assert "textos.HOME_TITULO" in home and "textos.HOME_VAZIA" in home
-    assert "textos.NAVEGACAO_ORDENS" in app and "textos.MENU_CONFIGURACOES" in app
+    navegacao = (RAIZ_UI / "navegacao.py").read_text(encoding="utf-8")
+    assert "textos.NAVEGACAO_ORDENS" in navegacao and "textos.MENU_CONFIGURACOES" in app
     assert app.index("textos.MENU_CONFIGURACOES") < app.index("textos.MENU_SAIR")  # acima de Sair
 
 

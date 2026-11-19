@@ -16,6 +16,8 @@ MENSAGEM_SESSAO_EXPIRADA = "Sessão expirada. Entre novamente."
 
 @dataclass
 class SessaoUI:
+    """Estado de exibição; ``is_admin``/``is_usuario`` são derivados do papel."""
+
     timeout_min: int
     ator_id: int | None = None
     ultima_atividade: datetime | None = None
@@ -24,12 +26,21 @@ class SessaoUI:
     login: str = ""
     filial_id: int | None = None
     filial_codigo: str = ""
-    is_admin: bool = False
+    papel: str = ""
     is_gerente: bool = False
     # Rota pedida antes do login (link direto), para onde ir depois de entrar.
     rota_pendente: str | None = None
     # Mensagem a mostrar uma vez na tela de login.
     mensagem_login: str | None = None
+
+
+def _papel_e(papel: str):
+    return property(lambda self: self.papel == papel)
+
+
+SessaoUI.is_admin = _papel_e("admin")
+SessaoUI.is_usuario = _papel_e("usuario")
+SessaoUI.is_manutencao = _papel_e("manutencao")
 
 
 def expirada(sessao: SessaoUI, agora: datetime) -> bool:
@@ -69,7 +80,7 @@ def iniciar(sessao: SessaoUI, ator, agora: datetime, login: str = "") -> None:
     sessao.login = login.strip().lower()
     sessao.filial_id = ator.filial_id
     sessao.filial_codigo = ator.filial_codigo
-    sessao.is_admin = ator.is_admin
+    sessao.papel = ator.papel
     sessao.is_gerente = ator.is_gerente
     sessao.ultima_atividade = agora
     sessao.mensagem_login = None
@@ -83,7 +94,7 @@ def encerrar(sessao: SessaoUI, mensagem: str | None = None) -> None:
     sessao.login = ""
     sessao.filial_id = None
     sessao.filial_codigo = ""
-    sessao.is_admin = False
+    sessao.papel = ""
     sessao.is_gerente = False
     sessao.rota_pendente = None
     sessao.mensagem_login = mensagem

@@ -16,7 +16,7 @@ import flet as ft
 from osapp.config import Config
 from osapp.services import relogio
 from osapp.services.erros import ErroAutenticacao, ErroValidacao
-from osapp.ui import rotas, textos, theme
+from osapp.ui import navegacao, rotas, textos, theme
 from osapp.ui import sessao as sessao_ui
 from osapp.ui.components import cabecalho
 from osapp.ui.views.base import Tela
@@ -25,38 +25,21 @@ from osapp.ui.views.configuracoes import Configuracoes
 from osapp.ui.views.detalhe import Detalhe
 from osapp.ui.views.home import Home
 from osapp.ui.views.login import Login
-from osapp.ui.views.os_formulario import CriarOs, EditarOs
+from osapp.ui.views.os_formulario import AssumirOs, CriarOs, EditarOs
 from osapp.ui.views.relatorios import Relatorios
+from osapp.ui.views.solicitacao import EditarSolicitacao, NovaSolicitacao
 
 logger = logging.getLogger(__name__)
 
 MENSAGEM_GENERICA = "Não foi possível concluir a operação. Tente novamente."
 
-# Destinos da navegação principal:
-# (rótulo na barra inferior, rótulo no trilho lateral, ícone, ícone selecionado, rota).
-DESTINOS = [
-    (
-        textos.NAVEGACAO_ORDENS,
-        textos.TRILHO_ORDENS,
-        ft.Icons.ASSIGNMENT_OUTLINED,
-        ft.Icons.ASSIGNMENT,
-        rotas.HOME,
-    ),
-    (
-        textos.NAVEGACAO_NOVA_ORDEM,
-        textos.TRILHO_NOVA_ORDEM,
-        ft.Icons.ADD_CIRCLE_OUTLINE,
-        ft.Icons.ADD_CIRCLE,
-        rotas.OS_NOVA,
-    ),
-    (
-        textos.NAVEGACAO_RELATORIOS,
-        textos.TRILHO_RELATORIOS,
-        ft.Icons.INSERT_CHART_OUTLINED,
-        ft.Icons.INSERT_CHART,
-        rotas.RELATORIOS,
-    ),
-]
+# Ícones de cada destino da navegação (os destinos por papel vêm de ui/navegacao.py).
+ICONES = {
+    "ordens": (ft.Icons.ASSIGNMENT_OUTLINED, ft.Icons.ASSIGNMENT),
+    "nova_ordem": (ft.Icons.ADD_CIRCLE_OUTLINE, ft.Icons.ADD_CIRCLE),
+    "nova_solicitacao": (ft.Icons.ADD_COMMENT_OUTLINED, ft.Icons.ADD_COMMENT),
+    "relatorios": (ft.Icons.INSERT_CHART_OUTLINED, ft.Icons.INSERT_CHART),
+}
 
 
 # Tabela central: nome da rota (ver ui/rotas.py) -> construtor da tela.
@@ -68,6 +51,9 @@ TELAS = {
     "os_nova": CriarOs,
     "os_detalhe": Detalhe,
     "os_editar": EditarOs,
+    "os_assumir": AssumirOs,
+    "os_solicitacao": EditarSolicitacao,
+    "solicitacao_nova": NovaSolicitacao,
     "os_concluir": ConcluirOs,
 }
 
@@ -252,14 +238,17 @@ class App:
     def _e_largo(self) -> bool:
         return (self.page.width or 0) >= theme.LARGURA_TRILHO_MIN
 
+    def _destinos(self):
+        return navegacao.destinos(self.sessao.papel)
+
     def _indice_destino(self) -> int:
-        for indice, destino in enumerate(DESTINOS):
-            if destino[4] == self._rota_mostrada:
+        for indice, destino in enumerate(self._destinos()):
+            if destino.rota == self._rota_mostrada:
                 return indice
         return 0
 
     async def _ao_escolher_destino(self, e) -> None:
-        await self.ir(DESTINOS[int(e.control.selected_index)][4])
+        await self.ir(self._destinos()[int(e.control.selected_index)].rota)
 
     def _montar(self) -> None:
         """Monta a View da rota atual em volta do conteúdo da tela."""
@@ -304,7 +293,17 @@ class App:
             mostrar_voltar=rotas.rota_anterior(rota) is not None,
             itens_menu=[
                 (textos.MENU_CONFIGURACOES, ft.Icons.SETTINGS, self.abrir_configuracoes),
-                (textos.MENU_RELATORIOS, ft.Icons.INSERT_CHART_OUTLINED, self.abrir_relatorios),
+                *(
+                    [
+                        (
+                            textos.MENU_RELATORIOS,
+                            ft.Icons.INSERT_CHART_OUTLINED,
+                            self.abrir_relatorios,
+                        )
+                    ]
+                    if navegacao.ve_relatorios(self.sessao.papel)
+                    else []
+                ),
                 (textos.MENU_SAIR, ft.Icons.LOGOUT, self.sair),
             ],
             recuo_esquerda=theme.LARGURA_TRILHO + 1 if self._largo else 0,
@@ -319,16 +318,16 @@ class App:
                 min_width=theme.LARGURA_TRILHO,
                 destinations=[
                     ft.NavigationRailDestination(
-                        icon=ft.Icon(icone, color=theme.COR_SUBTITULO),
-                        selected_icon=ft.Icon(selecionado, color=theme.COR_TITULO),
+                        icon=ft.Icon(ICONES[d.chave][0], color=theme.COR_SUBTITULO),
+                        selected_icon=ft.Icon(ICONES[d.chave][1], color=theme.COR_TITULO),
                         label=ft.Text(
-                            rotulo_trilho,
+                            d.rotulo_trilho,
                             color=theme.COR_TITULO,
                             size=theme.FONTE_PEQUENA,
                             text_align=ft.TextAlign.CENTER,
                         ),
                     )
-                    for _rotulo, rotulo_trilho, icone, selecionado, _rota in DESTINOS
+                    for d in self._destinos()
                 ],
                 on_change=self._ao_escolher_destino,
             )
@@ -350,11 +349,11 @@ class App:
                 indicator_color=theme.COR_INDICADOR_NAVEGACAO,
                 destinations=[
                     ft.NavigationBarDestination(
-                        icon=ft.Icon(icone, color=theme.COR_SUBTITULO),
-                        selected_icon=ft.Icon(selecionado, color=theme.COR_TITULO),
-                        label=rotulo,
+                        icon=ft.Icon(ICONES[d.chave][0], color=theme.COR_SUBTITULO),
+                        selected_icon=ft.Icon(ICONES[d.chave][1], color=theme.COR_TITULO),
+                        label=d.rotulo,
                     )
-                    for rotulo, _rotulo_trilho, icone, selecionado, _rota in DESTINOS
+                    for d in self._destinos()
                 ],
                 on_change=self._ao_escolher_destino,
             )

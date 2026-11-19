@@ -25,6 +25,7 @@ USUARIOS_EXEMPLO = (
     ("Gabriela Gerente", "gerente.norte", "gerente"),
     ("Marina Teste", "marina.teste", "usuario"),
     ("João Fictício", "joao.ficticio", "usuario"),
+    ("Usuário Teste", "usuario.teste", "solicitante"),  # papel usuario: abre solicitações
 )
 
 
@@ -51,6 +52,7 @@ def executar(senha: str, exemplos: bool = False) -> dict[str, int]:
                 codigo,
                 perfil == "administrador",
                 perfil == "gerente",
+                papel="usuario" if perfil == "solicitante" else None,
             )
             criados["usuarios"] += 1
         except ErroConflito:

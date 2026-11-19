@@ -7,6 +7,7 @@ import re
 LOGIN = "/login"
 HOME = "/"
 OS_NOVA = "/os/nova"
+SOLICITACAO_NOVA = "/solicitacao/nova"
 CONFIGURACOES = "/configuracoes"
 RELATORIOS = "/relatorios"
 
@@ -17,9 +18,12 @@ TABELA: dict[str, re.Pattern[str]] = {
     "configuracoes": re.compile(r"^/configuracoes$"),
     "relatorios": re.compile(r"^/relatorios$"),
     "os_nova": re.compile(r"^/os/nova$"),
+    "solicitacao_nova": re.compile(r"^/solicitacao/nova$"),
     "os_detalhe": re.compile(r"^/os/(?P<os_id>[1-9]\d{0,17})$"),
     "os_editar": re.compile(r"^/os/(?P<os_id>[1-9]\d{0,17})/editar$"),
     "os_concluir": re.compile(r"^/os/(?P<os_id>[1-9]\d{0,17})/concluir$"),
+    "os_assumir": re.compile(r"^/os/(?P<os_id>[1-9]\d{0,17})/assumir$"),
+    "os_solicitacao": re.compile(r"^/os/(?P<os_id>[1-9]\d{0,17})/solicitacao$"),
 }
 
 
@@ -33,6 +37,14 @@ def rota_editar(os_id: int) -> str:
 
 def rota_concluir(os_id: int) -> str:
     return f"/os/{os_id}/concluir"
+
+
+def rota_assumir(os_id: int) -> str:
+    return f"/os/{os_id}/assumir"
+
+
+def rota_editar_solicitacao(os_id: int) -> str:
+    return f"/os/{os_id}/solicitacao"
 
 
 def _caminho(rota: str | None) -> str:
@@ -63,8 +75,8 @@ def rota_anterior(rota: str) -> str | None:
     if resolvida is None:
         return None
     nome, params = resolvida
-    if nome in ("os_nova", "os_detalhe", "configuracoes", "relatorios"):
+    if nome in ("os_nova", "solicitacao_nova", "os_detalhe", "configuracoes", "relatorios"):
         return HOME
-    if nome in ("os_editar", "os_concluir"):
+    if nome in ("os_editar", "os_concluir", "os_assumir", "os_solicitacao"):
         return rota_os(params["os_id"])
     return None

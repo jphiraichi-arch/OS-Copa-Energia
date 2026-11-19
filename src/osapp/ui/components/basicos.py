@@ -107,6 +107,40 @@ def selo_status(status: str) -> ft.Container:
     )
 
 
+def selo(texto: str, fundo: str, cor: str, icone=None) -> ft.Container:
+    conteudo: ft.Control = ft.Text(
+        texto, color=cor, size=theme.FONTE_PEQUENA, weight=ft.FontWeight.BOLD, no_wrap=True
+    )
+    if icone is not None:
+        conteudo = ft.Row(
+            [ft.Icon(icone, color=cor, size=theme.FONTE_PEQUENA + 2), conteudo],
+            spacing=4,
+            tight=True,
+        )
+    return ft.Container(
+        bgcolor=fundo,
+        border_radius=theme.RAIO_CHIP,
+        padding=ft.Padding.symmetric(horizontal=10, vertical=4),
+        content=conteudo,
+    )
+
+
+def selo_nivel(nivel: str | None, prefixo: str = "") -> ft.Container:
+    """Selo de urgência ou prioridade: a palavra sempre aparece; Emergencial com ícone."""
+    from osapp.ui import rotulos
+
+    fundo, cor = theme.cores_nivel(nivel)
+    icone = ft.Icons.WARNING_AMBER_ROUNDED if nivel == "emergencial" else None
+    return selo(f"{prefixo}{rotulos.nivel(nivel)}", fundo, cor, icone)
+
+
+def selo_origem(origem: str) -> ft.Container:
+    from osapp.ui import rotulos
+
+    fundo, cor = theme.COR_ORIGEM
+    return selo(rotulos.origem(origem), fundo, cor)
+
+
 def rotulo_valor(rotulo: str, valor: str) -> ft.Column:
     """Um par 'rótulo pequeno em cima, valor embaixo'."""
     return ft.Column(

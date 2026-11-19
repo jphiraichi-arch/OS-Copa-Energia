@@ -13,10 +13,12 @@ MARCA_ROTULO = "Copa Energia"
 # Barra inferior (celular): três destinos em 390 px, por isso a forma curta por extenso.
 NAVEGACAO_ORDENS = "Ordens"
 NAVEGACAO_NOVA_ORDEM = "Nova Ordem"
+NAVEGACAO_NOVA_SOLICITACAO = "Nova Solicitação"
 NAVEGACAO_RELATORIOS = "Relatórios"
 # Trilho lateral (telas largas): o nome completo, em duas linhas.
 TRILHO_ORDENS = "Ordens de\nServiço"
 TRILHO_NOVA_ORDEM = "Nova Ordem\nde Serviço"
+TRILHO_NOVA_SOLICITACAO = "Nova\nSolicitação"
 TRILHO_RELATORIOS = "Relatórios"
 
 # --- Login -----------------------------------------------------------------------------
@@ -47,6 +49,7 @@ CONFIG_NOME = "Nome"
 CONFIG_LOGIN = "Usuário (login)"
 CONFIG_FILIAL = "Filial"
 CONFIG_PERFIL = "Perfil"
+CONFIG_PAPEL = "Papel"
 CONFIG_VERSAO = "Versão"
 PERFIL_ADMINISTRADOR = "Administrador"
 PERFIL_GERENTE = "Gerente"

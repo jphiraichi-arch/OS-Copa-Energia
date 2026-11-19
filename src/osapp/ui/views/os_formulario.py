@@ -7,7 +7,7 @@ from functools import partial
 import flet as ft
 
 from osapp.services import custos, equipamentos, ordens
-from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao
+from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao, ErroValidacao
 from osapp.ui import formularios, rotas, theme
 from osapp.ui.components import basicos
 from osapp.ui.components.editor_itens import ADICIONAR, EDITAR, EditorItens
@@ -118,11 +118,17 @@ class CriarOs(_TelaDeFormulario):
 
     async def carregar(self) -> None:
         ator_id = self.app.sessao.ator_id
+        # listar_tipos recusa o papel usuario: a rota digitada mostra a mensagem genérica.
+        tipos = await self.app.chamar(ordens.listar_tipos, ator_id, erros_tratados=(ErroPermissao,))
+        if not tipos.ok:  # recusa do serviço (já registrada por ele no log)
+            self._mostrar_mensagem(self.app.MENSAGEM_GENERICA, rotas.HOME, "Voltar para a lista")
+            self._atualizar()
+            return
         filiais = await self.app.chamar(ordens.listar_filiais, ator_id)
         categorias = await self.app.chamar(custos.listar_categorias, ator_id)
         lista = await self.app.chamar(equipamentos.listar_equipamentos, ator_id)
         if filiais.ok and categorias.ok and lista.ok:
-            self.formulario = FormularioOs(self.app, filiais.valor, lista.valor)
+            self.formulario = FormularioOs(self.app, filiais.valor, lista.valor, tipos=tipos.valor)
             self.previstos = EditorItens(
                 self.app, custos.FASE_PREVISTO, categorias.valor, titulo=TITULO_PREVISTOS
             )
@@ -141,6 +147,8 @@ class CriarOs(_TelaDeFormulario):
                 ordens.criar_os,
                 equipamento_id=valores["equipamento_id"],
                 equipamento_outro=valores["equipamento_outro"],
+                tipo_id=valores["tipo_id"],
+                prioridade=valores["prioridade"],
             ),
             self.app.sessao.ator_id,
             valores["titulo"],
@@ -169,6 +177,12 @@ class EditarOs(_TelaDeFormulario):
 
     async def carregar(self) -> None:
         ator_id = self.app.sessao.ator_id
+        # listar_tipos recusa o papel usuario: a rota digitada mostra a mensagem genérica.
+        tipos = await self.app.chamar(ordens.listar_tipos, ator_id, erros_tratados=(ErroPermissao,))
+        if not tipos.ok:
+            self._mostrar_mensagem(self.app.MENSAGEM_GENERICA, rotas.rota_os(self.os_id), "Voltar")
+            self._atualizar()
+            return
         resultado = await self.app.chamar(
             ordens.obter_os, ator_id, self.os_id, erros_tratados=(ErroNaoEncontrado,)
         )
@@ -196,6 +210,7 @@ class EditarOs(_TelaDeFormulario):
                     lista.valor,
                     os=os_,
                     com_realizado=os_.acoes.pode_editar_realizado,
+                    tipos=tipos.valor,
                 )
                 self.editores = [
                     EditorItens(
@@ -295,3 +310,104 @@ class EditarOs(_TelaDeFormulario):
             self._avisar_conflito()
         elif isinstance(resultado.erro, ErroPermissao | ErroNaoEncontrado):
             self.app.avisar(self.app.MENSAGEM_GENERICA)
+
+
+class AssumirOs(EditarOs):
+    """Assumir solicitação (/os/{id}/assumir): a solicitação no topo, só leitura; tipo,
+    prioridade e previsto; 'Salvar' ou 'Salvar e iniciar execução'."""
+
+    titulo_da_tela = "Assumir solicitação"
+    rotulo_do_botao = "Salvar"
+
+    def __init__(self, app, os_id: int, **_params) -> None:
+        super().__init__(app, os_id)
+        self.botao_iniciar = basicos.botao_primario(
+            "Salvar e iniciar execução", ft.Icons.PLAY_ARROW, self._salvar_e_iniciar
+        )
+        self.botao = basicos.botao_secundario("Salvar", ft.Icons.SAVE, self._salvar)
+        self.pendencias = ft.Text(
+            "", color=theme.COR_ERRO, size=theme.FONTE_SUBTITULO, visible=False
+        )
+
+    def _mostrar_formulario(self) -> None:
+        d = self.os
+        pedido = basicos.cartao(
+            basicos.coluna(
+                [
+                    basicos.titulo("Solicitação"),
+                    ft.Row(
+                        [
+                            basicos.selo_nivel(d.urgencia, "Urgência: "),
+                            basicos.selo_status(d.status),
+                        ],
+                        wrap=True,
+                        spacing=6,
+                    ),
+                    basicos.rotulo_valor("Número", d.numero),
+                    basicos.rotulo_valor("Título", d.titulo),
+                    basicos.rotulo_valor("Descrição", d.descricao),
+                    basicos.rotulo_valor("Solicitante", d.criado_por_nome),
+                ],
+                espaco=theme.ESPACO_P + 4,
+            )
+        )
+        super()._mostrar_formulario()
+        self.conteudo.controls = [
+            pedido,
+            *self.conteudo.controls[:-1],
+            self.pendencias,
+            self.botao_iniciar,
+            self.botao,
+        ]
+
+    async def _salvar_e_iniciar(self, _e=None) -> None:
+        if self.botao_iniciar.disabled or self.formulario is None:
+            return
+        self.pendencias.visible = False
+        valores = self.formulario.ler()
+        if valores is None:
+            self._atualizar()
+            return
+        self.botao_iniciar.disabled = True
+        self._atualizar()
+        try:
+            alteracoes = self.formulario.alteracoes(valores)
+            if alteracoes:
+                salvo = await self.app.chamar(
+                    ordens.editar_os,
+                    self.app.sessao.ator_id,
+                    self.os_id,
+                    self.os.versao,
+                    alteracoes,
+                    campos=self.formulario.campos,
+                    erros_tratados=(ErroConflito, ErroPermissao, ErroNaoEncontrado),
+                )
+                if not salvo.ok:
+                    if isinstance(salvo.erro, ErroConflito):
+                        self._avisar_conflito()
+                    elif isinstance(salvo.erro, ErroPermissao | ErroNaoEncontrado):
+                        self.app.avisar(self.app.MENSAGEM_GENERICA)
+                    return
+                self.os = salvo.valor
+                self.formulario.marcar_como_salvo()
+            iniciado = await self.app.chamar(
+                ordens.iniciar_execucao,
+                self.app.sessao.ator_id,
+                self.os_id,
+                self.os.versao,
+                erros_tratados=(ErroValidacao, ErroConflito, ErroPermissao, ErroNaoEncontrado),
+            )
+            if iniciado.ok:
+                self.formulario.marcar_como_salvo()
+                await self.app.ir(rotas.rota_os(self.os_id), mensagem="Execução iniciada.")
+            elif isinstance(iniciado.erro, ErroValidacao):
+                # O serviço recusou: mostra o que falta (texto do próprio serviço).
+                self.pendencias.value = iniciado.erro.mensagem
+                self.pendencias.visible = True
+            elif isinstance(iniciado.erro, ErroConflito):
+                self._avisar_conflito()
+            else:
+                self.app.avisar(self.app.MENSAGEM_GENERICA)
+        finally:
+            self.botao_iniciar.disabled = False
+            self._atualizar()

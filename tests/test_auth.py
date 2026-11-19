@@ -253,15 +253,16 @@ def test_seed_duas_vezes_nao_duplica(banco):
 
 
 def test_seed_com_exemplos(banco):
-    assert seed.executar(SENHA, exemplos=True)["usuarios"] == 4
+    assert seed.executar(SENHA, exemplos=True)["usuarios"] == 5
     assert seed.executar(SENHA, exemplos=True)["usuarios"] == 0
     with sessao() as s:
-        usuarios = {u.login: (u.filial.codigo, u.is_admin, u.is_gerente) for u in s.query(Usuario)}
+        usuarios = {u.login: (u.filial.codigo, u.papel, u.is_gerente) for u in s.query(Usuario)}
     assert usuarios == {
-        "admin": ("1007", True, False),
-        "gerente.norte": ("1007", False, True),
-        "marina.teste": ("1007", False, False),
-        "joao.ficticio": ("1007", False, False),
+        "admin": ("1007", "admin", False),
+        "gerente.norte": ("1007", "manutencao", True),
+        "marina.teste": ("1007", "manutencao", False),
+        "joao.ficticio": ("1007", "manutencao", False),
+        "usuario.teste": ("1007", "usuario", False),  # prompt 19: abre solicitações
     }
     assert autenticar("joao.ficticio", SENHA).nome == "João Fictício"
 
@@ -275,7 +276,7 @@ def test_seed_le_os_seed_exemplos(banco, monkeypatch):
     monkeypatch.setenv("OS_SEED_EXEMPLOS", "1")
     assert seed.main() == 0
     with sessao() as s:
-        assert s.query(Usuario).count() == 4
+        assert s.query(Usuario).count() == 5
 
 
 def test_seed_exige_senha_e_nao_a_imprime(banco, monkeypatch, capsys):

@@ -878,3 +878,33 @@ relógio substituído; migração 0008 com dados.
 
 - `previa-papeis` depois da 0008 lista o papel atual; a prévia antes da 0007 se faz com o
   código do prompt 16 (commit 3c66de8).
+
+## Prompt 19 — telas por papel: solicitação, assumir, cancelar, nota de conclusão (19/11/2026)
+
+**Implantar junto com o prompt 17.**
+
+- `ui/rotulos.py` (puro): rótulos de status (com Cancelada), urgência/prioridade, origem e
+  papel; `ordenar_solicitacoes_abertas` (Emergencial primeiro, depois a mais antiga).
+  Selos com a palavra sempre visível (`basicos.selo_nivel`, `selo_origem`); Emergencial em
+  vermelho cheio com ícone. Cores novas em `theme.py`.
+- `ui/navegacao.py` (puro): `destinos(papel)` — usuario: Ordens e Nova Solicitação;
+  manutencao: Ordens e Nova Ordem de Serviço; admin: as três. `ve_relatorios(papel)`: o
+  menu só mostra Relatórios para manutenção e administrador.
+- Telas novas: Nova Solicitação (`/solicitacao/nova`; urgência em quatro opções de 56 px;
+  filial travada; mostra o número gerado), Editar solicitação (`/os/{id}/solicitacao`),
+  Assumir solicitação (`/os/{id}/assumir`: a solicitação só leitura no topo; tipo,
+  prioridade e previsto; "Salvar" e "Salvar e iniciar execução", que mostra o que falta
+  com o texto do serviço).
+- Home: o usuario vê número, título, urgência, status, solicitante e data; manutenção e
+  administrador veem também origem e prioridade e o filtro rápido "Solicitações abertas".
+- Detalhe: usuario só com o modelo reduzido (linha do tempo e, se concluída, a "Nota da
+  manutenção" em destaque; Editar e Cancelar solicitação conforme `acoes`); manutenção e
+  administrador com urgência e prioridade separadas, tipo, as quatro datas, a nota e o
+  botão Cancelar (com confirmação "Sim, cancelar").
+- Formulário de OS: tipo e prioridade; previsto e equipamento opcionais; título e
+  descrição de uma solicitação só leitura. Concluir: "Nota para o solicitante" (500
+  caracteres, contador, ajuda "O solicitante verá esta nota.").
+- Rotas digitadas por usuario (`/os/{id}/editar`, `/assumir`, `/concluir`, `/os/nova`):
+  `listar_tipos` recusa e a tela mostra a mensagem genérica.
+- Seed com exemplos: `usuario.teste` (papel usuario, 1007).
+- Conferido no navegador (Playwright, 390 px e 1280 px) os 7 passos do VERIFY.
