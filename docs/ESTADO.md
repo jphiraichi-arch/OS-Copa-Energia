@@ -927,3 +927,32 @@ relógio substituído; migração 0008 com dados.
   `/relatorios/mensal`, com botão a partir do novo.
 - Conferido no navegador: com 5 solicitações (uma cancelada) os números batem com a
   conta à mão; usuario.teste não tem Relatórios e `/relatorios` mostra a recusa genérica.
+
+## Prompt 20 — gestão de usuários e troca de senha (19/11/2026)
+
+- Migração `0009`: `usuarios.deve_trocar_senha` (padrão falso), `usuarios.versao` (trava
+  otimista, como nas OS) e a tabela `usuarios_eventos` (admin_id, usuario_id, data_hora,
+  campo, valor_antigo, valor_novo), só de inserção. Downgrade remove as três.
+- `services/usuarios.py` (só administrador, todas as filiais): `listar_usuarios` (busca
+  por nome ou login; filtros papel, filial, ativo), `obter_usuario`,
+  `listar_eventos_usuario`, `criar_usuario` (senha temporária), `alterar_usuario` (nome,
+  filial, papel, ativo; com versão), `redefinir_senha` (temporária) e, para todos,
+  `trocar_propria_senha` (confere a atual). Senha: pelo menos 10 caracteres e diferente
+  do login (`senhas.SENHA_MIN = 10`, vale também para CLI e seed). O último administrador
+  ativo não perde o papel nem se desativa. Um evento por campo; senha só como
+  'senha redefinida' / 'senha alterada'.
+- CLI pelos mesmos serviços (eventos com admin_id nulo): `criar-usuario` e
+  `redefinir-senha` criam senha temporária; `desativar-usuario`, `definir-papel` e
+  `definir-perfil` respeitam a regra do último administrador. O seed não marca troca.
+- Telas: Configurações com "Alterar senha" (todos) e "Usuários" (admin); `/usuarios`
+  (busca, filtros, novo), `/usuarios/novo` e `/usuarios/{id}` (alterar, Redefinir senha,
+  Desativar/Reativar com confirmação, histórico); `/trocar-senha` obrigatória: a guarda
+  de rotas (`sessao.decidir_rota`) manda para lá enquanto a troca estiver pendente.
+- Conferido no navegador: o administrador cria um usuário; no login dele a troca é
+  obrigatória (recarregar e digitar outra rota não pula); senha igual ao login recusada;
+  depois da troca, a Home.
+
+### Lacunas
+
+- A troca obrigatória é aplicada pela guarda de rotas da interface; os serviços não
+  recusam outras chamadas de quem ainda tem senha temporária.

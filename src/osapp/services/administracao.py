@@ -13,16 +13,14 @@ from sqlalchemy import select
 
 from osapp.db import sessao
 from osapp.models import CategoriaCusto, Equipamento, Filial, OrdemServico, Usuario
-from osapp.models.tentativa_login import TIPO_LOGIN
 from osapp.repositories import (
     CategoriaCustoRepo,
     EquipamentoRepo,
     FilialRepo,
-    TentativaLoginRepo,
     UsuarioRepo,
 )
 from osapp.services import ordens as ordens_servico
-from osapp.services import protecao_login, relogio, senhas
+from osapp.services import protecao_login, relogio, usuarios
 from osapp.services.auth import LOGIN_MAX
 from osapp.services.auth import PAPEIS as PAPEIS_DO_ATOR
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroValidacao
@@ -77,12 +75,9 @@ def _texto(campo: str, valor: object, minimo: int, maximo: int) -> str:
     return valor
 
 
-def validar_senha(senha: object) -> str:
-    if not isinstance(senha, str) or not senhas.SENHA_MIN <= len(senha) <= senhas.SENHA_MAX:
-        raise ErroValidacao(
-            "senha", f"A senha deve ter de {senhas.SENHA_MIN} a {senhas.SENHA_MAX} caracteres."
-        )
-    return senha
+def validar_senha(senha: object, login: str | None = None) -> str:
+    """A mesma regra da gestão de usuários: pelo menos 10 caracteres e diferente do login."""
+    return usuarios.validar_senha_nova(senha, login)
 
 
 def _validar_login(login: object) -> str:
@@ -118,43 +113,37 @@ def criar_usuario(
     is_gerente: bool = False,
     *,
     papel: str | None = None,
+    temporaria: bool = False,
 ) -> UsuarioCriado:
-    """Cria um usuário. ``papel`` (usuario, manutencao, admin); sem ele, ``is_admin``
-    decide entre admin e manutencao (comportamento antigo)."""
-    nome = _texto("nome", nome, 1, 100)
-    login = _validar_login(login)
-    validar_senha(senha)
+    """Cria um usuário pela linha de comando ou pelo seed (sem administrador logado).
+
+    ``papel`` (usuario, manutencao, admin); sem ele, ``is_admin`` decide entre admin e
+    manutencao. ``temporaria``: o usuário troca a senha no próximo login. As regras e o
+    histórico são os de services/usuarios.py.
+    """
     if not isinstance(is_admin, bool):
         raise ErroValidacao("is_admin", "Valor inválido.")
     if papel is None:
         papel = papel_de(is_admin)
     if papel not in PAPEIS or (is_admin and papel != "admin"):
         raise ErroValidacao("papel", "Papel inválido. Use usuario, manutencao ou admin.")
-    is_admin = papel == "admin"
-    if not isinstance(is_gerente, bool) or (is_admin and is_gerente):
-        raise ErroValidacao("perfil", "Escolha um único perfil: usuário, gerente ou administrador.")
     if not isinstance(filial_codigo, str):
         raise ErroValidacao("filial", "Filial inválida.")
     with sessao() as s:
         filial = FilialRepo(s).obter_por_codigo(filial_codigo.strip().upper())
         if filial is None:
             raise ErroValidacao("filial", "Filial não encontrada.")
-        repo = UsuarioRepo(s)
-        if repo.obter_por_login(login) is not None:
-            raise ErroConflito()
-        usuario = repo.adicionar(
-            Usuario(
-                nome=nome,
-                login=login,
-                senha_hash=senhas.gerar_hash(senha),
-                filial_id=filial.id,
-                is_gerente=is_gerente,
-                papel=papel,
-            )
+        usuario = usuarios.criar(
+            s, None, nome, login, filial.id, papel, senha, is_gerente, temporaria
         )
-        logger.info("Usuário criado: usuario_id=%s.", usuario.id)
         return UsuarioCriado(
-            usuario.id, usuario.nome, usuario.login, filial.codigo, is_admin, is_gerente, papel
+            usuario.id,
+            usuario.nome,
+            usuario.login,
+            filial.codigo,
+            papel == "admin",
+            usuario.is_gerente,
+            papel,
         )
 
 
@@ -165,14 +154,10 @@ def _usuario_por_login(s, login: object) -> Usuario:
     return usuario
 
 
-def redefinir_senha(login: str, senha: str) -> None:
-    """Troca a senha e zera o atraso progressivo daquele login."""
-    validar_senha(senha)
+def redefinir_senha(login: str, senha: str, temporaria: bool = True) -> None:
+    """Senha nova (temporária por padrão) e zera o atraso progressivo daquele login."""
     with sessao() as s:
-        usuario = _usuario_por_login(s, login)
-        usuario.senha_hash = senhas.gerar_hash(senha)
-        TentativaLoginRepo(s).apagar(TIPO_LOGIN, protecao_login.chave_do_login(usuario.login))
-        logger.info("Senha redefinida: usuario_id=%s.", usuario.id)
+        usuarios.redefinir(s, None, _usuario_por_login(s, login), senha, temporaria)
 
 
 def limpar_tentativas_antigas() -> int:
@@ -184,9 +169,7 @@ def limpar_tentativas_antigas() -> int:
 
 def desativar_usuario(login: str) -> None:
     with sessao() as s:
-        usuario = _usuario_por_login(s, login)
-        usuario.ativo = False
-        logger.info("Usuário desativado: usuario_id=%s.", usuario.id)
+        usuarios.alterar(s, None, _usuario_por_login(s, login), {"ativo": False})
 
 
 def definir_perfil(login: str, perfil: str) -> None:
@@ -195,12 +178,12 @@ def definir_perfil(login: str, perfil: str) -> None:
         raise ErroValidacao("perfil", "Perfil inválido. Use usuario, gerente ou administrador.")
     with sessao() as s:
         usuario = _usuario_por_login(s, login)
-        usuario.is_gerente = perfil == "gerente"
+        alteracoes: dict = {"gerente": perfil == "gerente"}
         if perfil == "administrador":
-            usuario.papel = "admin"
+            alteracoes["papel"] = "admin"
         elif usuario.papel == "admin":
-            usuario.papel = "manutencao"
-        logger.info("Perfil alterado: usuario_id=%s perfil=%s.", usuario.id, perfil)
+            alteracoes["papel"] = "manutencao"
+        usuarios.alterar(s, None, usuario, alteracoes)
 
 
 def previa_papeis() -> list[PreviaPapel]:
@@ -223,11 +206,7 @@ def definir_papel(login: str, papel: str) -> None:
     if papel not in PAPEIS:
         raise ErroValidacao("papel", "Papel inválido. Use usuario, manutencao ou admin.")
     with sessao() as s:
-        usuario = _usuario_por_login(s, login)
-        usuario.papel = papel
-        if papel == "admin":
-            usuario.is_gerente = False
-        logger.info("Papel alterado: usuario_id=%s papel=%s.", usuario.id, papel)
+        usuarios.alterar(s, None, _usuario_por_login(s, login), {"papel": papel})
 
 
 # --- Cadastros básicos (seed) ----------------------------------------------------------

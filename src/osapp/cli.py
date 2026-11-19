@@ -45,12 +45,12 @@ def _criar_usuario(args) -> str:
     filial = _perguntar(args.filial, "Código da filial")
     papel = "admin" if args.admin else args.papel
     usuario = administracao.criar_usuario(
-        nome, login, _ler_senha(), filial, False, args.gerente, papel=papel
+        nome, login, _ler_senha(), filial, False, args.gerente, papel=papel, temporaria=True
     )
     extra = ", gerente" if usuario.is_gerente else ""
     return (
         f"Usuário {usuario.login} criado na filial {usuario.filial_codigo} "
-        f"(papel {usuario.papel}{extra})."
+        f"(papel {usuario.papel}{extra}). A senha é temporária: será trocada no primeiro login."
     )
 
 
@@ -95,7 +95,7 @@ def _desativar_equipamento(args) -> str:
 def _redefinir_senha(args) -> str:
     login = _perguntar(args.login, "Login")
     administracao.redefinir_senha(login, _ler_senha())
-    return "Senha redefinida."
+    return "Senha redefinida (temporária: será trocada no próximo login)."
 
 
 def _limpar_tentativas(_args) -> str:

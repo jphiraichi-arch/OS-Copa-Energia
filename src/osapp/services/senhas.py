@@ -5,7 +5,7 @@ from __future__ import annotations
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
 
-SENHA_MIN = 8
+SENHA_MIN = 10  # prompt 20: pelo menos 10 caracteres e diferente do login
 SENHA_MAX = 128
 
 _hasher = PasswordHasher()  # padrões da biblioteca: argon2id

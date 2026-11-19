@@ -28,6 +28,8 @@ class SessaoUI:
     filial_codigo: str = ""
     papel: str = ""
     is_gerente: bool = False
+    # Senha temporária: nenhuma tela antes de trocar a senha (prompt 20).
+    troca_obrigatoria: bool = False
     # Rota pedida antes do login (link direto), para onde ir depois de entrar.
     rota_pendente: str | None = None
     # Mensagem a mostrar uma vez na tela de login.
@@ -59,11 +61,16 @@ def decidir_rota(rota: str | None, sessao: SessaoUI, agora: datetime) -> str:
 
     - Sem login (ou com a sessão expirada): /login.
     - Com login e em /login: a rota pedida antes do login, ou /.
+    - Com senha temporária: /trocar-senha, qualquer que seja a rota pedida.
     - Rota desconhecida: /.
     """
     if not autenticada(sessao, agora):
         return rotas.LOGIN
+    if sessao.troca_obrigatoria:
+        return rotas.TROCAR_SENHA
     destino = rotas.normalizar(rota)
+    if destino == rotas.TROCAR_SENHA:
+        return rotas.HOME  # sem senha temporária, não há o que trocar aqui
     if destino == rotas.LOGIN:
         return rotas.normalizar(sessao.rota_pendente) if sessao.rota_pendente else rotas.HOME
     return destino
@@ -82,6 +89,7 @@ def iniciar(sessao: SessaoUI, ator, agora: datetime, login: str = "") -> None:
     sessao.filial_codigo = ator.filial_codigo
     sessao.papel = ator.papel
     sessao.is_gerente = ator.is_gerente
+    sessao.troca_obrigatoria = ator.deve_trocar_senha
     sessao.ultima_atividade = agora
     sessao.mensagem_login = None
 
@@ -96,6 +104,7 @@ def encerrar(sessao: SessaoUI, mensagem: str | None = None) -> None:
     sessao.filial_codigo = ""
     sessao.papel = ""
     sessao.is_gerente = False
+    sessao.troca_obrigatoria = False
     sessao.rota_pendente = None
     sessao.mensagem_login = mensagem
 

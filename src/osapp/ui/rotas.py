@@ -9,6 +9,9 @@ HOME = "/"
 OS_NOVA = "/os/nova"
 SOLICITACAO_NOVA = "/solicitacao/nova"
 CONFIGURACOES = "/configuracoes"
+TROCAR_SENHA = "/trocar-senha"
+USUARIOS = "/usuarios"
+USUARIO_NOVO = "/usuarios/novo"
 RELATORIOS = "/relatorios"
 RELATORIO_MENSAL = "/relatorios/mensal"
 
@@ -17,6 +20,10 @@ TABELA: dict[str, re.Pattern[str]] = {
     "login": re.compile(r"^/login$"),
     "home": re.compile(r"^/$"),
     "configuracoes": re.compile(r"^/configuracoes$"),
+    "trocar_senha": re.compile(r"^/trocar-senha$"),
+    "usuarios": re.compile(r"^/usuarios$"),
+    "usuario_novo": re.compile(r"^/usuarios/novo$"),
+    "usuario": re.compile(r"^/usuarios/(?P<usuario_id>[1-9]\d{0,17})$"),
     "relatorios": re.compile(r"^/relatorios$"),
     "relatorios_mensal": re.compile(r"^/relatorios/mensal$"),
     "os_nova": re.compile(r"^/os/nova$"),
@@ -39,6 +46,10 @@ def rota_editar(os_id: int) -> str:
 
 def rota_concluir(os_id: int) -> str:
     return f"/os/{os_id}/concluir"
+
+
+def rota_usuario(usuario_id: int) -> str:
+    return f"/usuarios/{usuario_id}"
 
 
 def rota_assumir(os_id: int) -> str:
@@ -81,6 +92,10 @@ def rota_anterior(rota: str) -> str | None:
         return HOME
     if nome == "relatorios_mensal":
         return RELATORIOS
+    if nome == "usuarios":
+        return CONFIGURACOES
+    if nome in ("usuario_novo", "usuario"):
+        return USUARIOS
     if nome in ("os_editar", "os_concluir", "os_assumir", "os_solicitacao"):
         return rota_os(params["os_id"])
     return None

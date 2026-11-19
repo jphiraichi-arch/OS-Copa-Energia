@@ -25,6 +25,12 @@ class Usuario(Base):
     papel: Mapped[str] = mapped_column(
         String(20), default="manutencao", server_default="manutencao"
     )
+    # Senha temporária (criada ou redefinida pelo administrador): trocar no próximo login.
+    deve_trocar_senha: Mapped[bool] = mapped_column(default=False, server_default=false())
+    versao: Mapped[int] = mapped_column(default=1, server_default="1")
+
+    # Trava otimista: edições com versão desatualizada são recusadas.
+    __mapper_args__ = {"version_id_col": versao}
 
     filial: Mapped[Filial] = relationship()
 

@@ -91,12 +91,17 @@ Se o IP do cliente não puder ser determinado, o app usa um limite comum chamado
 ## 5. Contas
 
 - [ ] A senha do `admin` criada pelo seed foi **trocada** antes da entrada em produção
-      (`python -m osapp.cli redefinir-senha --login admin`; a senha é pedida no terminal).
+      (no app: Configurações > Alterar senha; ou `python -m osapp.cli redefinir-senha
+      --login admin`, que cria uma senha temporária a ser trocada no primeiro login).
+- [ ] Senhas: pelo menos 10 caracteres e diferentes do login (regra do sistema). Usuários
+      novos e senhas redefinidas pelo administrador são temporários.
 - [ ] `OS_SEED_SENHA` removida do ambiente depois da primeira subida.
 - [ ] **Nenhum usuário de exemplo** em produção (`gerente.norte`, `marina.teste`,
       `joao.ficticio`): `OS_SEED_EXEMPLOS` não está definida; se existirem, desativar
       com `python -m osapp.cli desativar-usuario --login <login>`.
-- [ ] Cada pessoa tem o próprio login (nada de login compartilhado).
+- [ ] Cada pessoa tem o próprio login (nada de login compartilhado). Usuários são criados,
+      alterados e desativados pelo administrador em Configurações > Usuários (o histórico
+      fica em `usuarios_eventos`).
 
 ## 6. Proteção do login (como funciona, para o suporte)
 

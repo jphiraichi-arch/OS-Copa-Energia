@@ -41,6 +41,7 @@ class Ator:
     filial_codigo: str
     papel: str  # 'usuario', 'manutencao' ou 'admin'
     is_gerente: bool = False
+    deve_trocar_senha: bool = False  # senha temporária: trocar antes de qualquer tela
 
     @property
     def is_admin(self) -> bool:
@@ -64,6 +65,7 @@ def _ator_de(usuario: Usuario) -> Ator:
         filial_codigo=usuario.filial.codigo,
         papel=usuario.papel,
         is_gerente=usuario.is_gerente and usuario.papel != PAPEL_ADMIN,
+        deve_trocar_senha=usuario.deve_trocar_senha,
     )
 
 

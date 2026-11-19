@@ -28,7 +28,9 @@ from osapp.ui.views.login import Login
 from osapp.ui.views.os_formulario import AssumirOs, CriarOs, EditarOs
 from osapp.ui.views.relatorio_tempos import RelatorioTempos
 from osapp.ui.views.relatorios import Relatorios
+from osapp.ui.views.senha import TrocarSenha
 from osapp.ui.views.solicitacao import EditarSolicitacao, NovaSolicitacao
+from osapp.ui.views.usuarios import FormularioUsuario, ListaUsuarios
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +50,10 @@ TELAS = {
     "login": Login,
     "home": Home,
     "configuracoes": Configuracoes,
+    "trocar_senha": TrocarSenha,
+    "usuarios": ListaUsuarios,
+    "usuario_novo": FormularioUsuario,
+    "usuario": FormularioUsuario,
     "relatorios": RelatorioTempos,
     "relatorios_mensal": Relatorios,
     "os_nova": CriarOs,
@@ -258,7 +264,7 @@ class App:
             return
         page, rota = self.page, self._rota_mostrada
         self._largo = self._e_largo()
-        if rota == rotas.LOGIN:
+        if rota in (rotas.LOGIN, rotas.TROCAR_SENHA):  # sem navegação nem menu
             view = ft.View(
                 route=rota,
                 padding=0,
