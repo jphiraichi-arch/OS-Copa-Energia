@@ -988,3 +988,36 @@ medida no banco de produção (`EXPLAIN ANALYZE`), vale criar no PostgreSQL
 `CREATE EXTENSION pg_trgm` e índices GIN `gin_trgm_ops` em `ordens_servico.busca_texto`
 e `os_itens_custo.busca_texto`, numa migração só para PostgreSQL (o SQLite continua
 varrendo). Antes disso o índice só custa espaço e tempo de gravação.
+
+## Prompt 22 — escopo da busca, sugestões de descrição, relatório com busca (21/11/2026)
+
+- Uma só função monta a busca: `ordens.condicao_busca(termo, escopo, ator)`. O termo
+  passa por `normalizar_busca` e vira palavras; cada palavra precisa aparecer no escopo
+  da mesma OS (`LIKE` com `autoescape`: `%` e `_` valem como caracteres comuns).
+  Escopos (`ordens.ESCOPOS`): `itens` (padrão; `busca_texto` dos itens das duas fases)
+  e `tudo` (título + descrição + itens). O papel usuario busca sempre só em título +
+  descrição, qualquer que seja o escopo pedido. Itens entram por `EXISTS` em
+  `os_itens_custo` (nunca JOIN): a OS aparece e conta uma vez. Termo só com dígitos e
+  traços também casa com `numero`, em qualquer escopo. A filial entra na mesma consulta.
+- `listar_os(..., escopo='itens')`; o repositório recebe a condição pronta
+  (`_filtrar(..., condicao, ...)`) em vez do texto.
+- `custos.sugerir_descricoes(ator_id, filial_id, termo, limite=8)`: manutenção da
+  própria filial e administrador (usuario: `ErroPermissao`); termo normalizado com menos
+  de 2 caracteres devolve []; agrupa por `busca_texto` do item, mais usado primeiro e
+  depois o uso mais recente (`criado_em`), e devolve a grafia original mais frequente
+  de cada grupo; no máximo 20.
+- `relatorios.relatorio_tempos(..., termo=None, escopo='itens', pagina=1)`: o termo
+  restringe o relatório inteiro (tempos, por urgência e também as solicitações em
+  aberto). Com termo, `busca` (`ResultadoBusca`) traz correspondentes / total do
+  período / percentual (`custos.percentual`, None com total 0), custos via
+  `calcular_resumo` (previsto de todas; previsto x realizado e diferença só das
+  concluídas) e a lista paginada (50, mais recentes primeiro). Sem termo, nada muda.
+  Os tempos usam a mesma função `_medidas` com ou sem busca.
+- Telas: seletor `Itens`/`Tudo` (`ui/components/escopo_busca.py`, chips) na Home e no
+  relatório, só para manutenção e administrador; para usuario a dica do campo diz que a
+  busca olha título e descrição. Editor de itens: sugestões numa lista sob o campo
+  Descrição (após 2 caracteres e ~300 ms; opções de 48 px), porque o `ft.AutoComplete`
+  do Flet 1.1.2 tem o próprio campo de texto e não aceita o campo padrão do app. No
+  relatório: linha de resumo, cartões de tempo, cartão de custos e lista (toque abre o
+  Detalhe); sem correspondência: 'Nenhuma ordem corresponde à busca no período.'
+- Sem mudança em modelos nem migrações.

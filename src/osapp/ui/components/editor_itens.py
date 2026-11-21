@@ -11,12 +11,14 @@ Os subtotais são uma prévia calculada com ``custos.calcular_resumo`` (sem floa
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 
 import flet as ft
 
 from osapp import formatacao
 from osapp.services import custos
+from osapp.services.erros import ErroPermissao, ErroValidacao
 from osapp.ui import formularios, theme
 from osapp.ui.components import basicos
 from osapp.ui.components.campos import CampoDinheiro
@@ -30,6 +32,8 @@ TITULO_NOVO = "Novo item de custo"
 TITULO_EDITAR = "Alterar item de custo"
 SEM_ITENS = "Nenhum item incluído."
 ROTULO_TOTAL = "Total"
+SUGESTAO_MIN_CARACTERES = 2
+SUGESTAO_PAUSA_S = 0.3  # pausa na digitação antes de buscar sugestões
 
 # (operação, item antes, item depois) -> True se gravou.
 Gravar = Callable[
@@ -49,8 +53,11 @@ class EditorItens:
         somente_leitura: bool = False,
         ao_gravar: Gravar | None = None,
         ao_mudar: Callable[[], None] | None = None,
+        filial_de: Callable[[], int | None] | None = None,
     ) -> None:
         self.app = app
+        # Filial das sugestões de descrição (prompt 22); None: sem sugestões.
+        self.filial_de = filial_de
         self.fase = fase
         self.categorias = list(categorias)
         self.titulo = titulo
@@ -287,8 +294,12 @@ class DialogoItem:
             "Descrição",
             value=item.descricao if item else "",
             max_length=custos.DESCRICAO_ITEM_MAX,
-            on_change=self._ao_digitar,
+            on_change=self._ao_digitar_descricao,
         )
+        # Sugestões de descrições já usadas na filial: lista sob o campo (prompt 22).
+        self.sugestoes = basicos.coluna([], espaco=0)
+        self.sugestoes.visible = False
+        self._geracao_sugestoes = 0
         self.quantidade = basicos.campo_texto(
             "Quantidade",
             value=formularios.quantidade_para_campo(item.quantidade) if item else "1",
@@ -324,6 +335,7 @@ class DialogoItem:
         campos = [
             ft.Row([self.categoria]),
             self.descricao,
+            self.sugestoes,
             self.quantidade,
             self.valor.controle,
             self.total,
@@ -396,6 +408,61 @@ class DialogoItem:
             e.control.error = None
             e.control.update()
         self._atualizar_total()
+
+    # --- Sugestões de descrição -------------------------------------------------------
+
+    def _ao_digitar_descricao(self, e) -> None:
+        self._ao_digitar(e)
+        if self.editor.filial_de is None or self.app.sessao.is_usuario:
+            return
+        self._geracao_sugestoes += 1
+        self.app.page.run_task(self._sugerir, self._geracao_sugestoes, self.descricao.value or "")
+
+    async def _sugerir(self, geracao: int, termo: str) -> None:
+        """Espera a pausa na digitação e busca as sugestões; resultados velhos são
+        descartados pela ``geracao``."""
+        filial_id = self.editor.filial_de()
+        if len(termo.strip()) < SUGESTAO_MIN_CARACTERES or filial_id is None:
+            self._mostrar_sugestoes([])
+            return
+        await asyncio.sleep(SUGESTAO_PAUSA_S)
+        if geracao != self._geracao_sugestoes:
+            return
+        resultado = await self.app.chamar(
+            custos.sugerir_descricoes,
+            self.app.sessao.ator_id,
+            filial_id,
+            termo,
+            erros_tratados=(ErroPermissao, ErroValidacao),
+        )
+        if geracao != self._geracao_sugestoes or not resultado.ok:
+            return
+        atual = (self.descricao.value or "").strip()
+        self._mostrar_sugestoes([t for t in resultado.valor if t != atual])
+
+    def _mostrar_sugestoes(self, textos_: list[str]) -> None:
+        self.sugestoes.controls = [self._opcao(texto) for texto in textos_]
+        self.sugestoes.visible = bool(textos_)
+        _atualizar(self.sugestoes)
+
+    def _opcao(self, texto: str) -> ft.Control:
+        async def escolher(_e=None, texto=texto) -> None:
+            self._geracao_sugestoes += 1  # descarta buscas ainda em andamento
+            self.descricao.value = texto
+            self.descricao.error = None
+            _atualizar(self.descricao)
+            self._mostrar_sugestoes([])
+
+        return ft.Container(
+            content=ft.Text(texto, color=theme.COR_TITULO, size=theme.FONTE_CORPO),
+            height=theme.ALVO_TOQUE_MIN + 1,  # 48 px tocáveis + 1 px da linha divisória
+            alignment=ft.Alignment.CENTER_LEFT,
+            padding=ft.Padding.symmetric(horizontal=theme.ESPACO_M),
+            bgcolor=theme.COR_CAMPO_FUNDO,
+            border=ft.Border.only(bottom=ft.BorderSide(width=1, color=theme.COR_CONTORNO)),
+            ink=True,
+            on_click=escolher,
+        )
 
     def _calcular_total(self) -> None:
         try:

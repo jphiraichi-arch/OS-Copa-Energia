@@ -52,7 +52,9 @@ def test_texto_acentuado_ida_e_volta_pelo_banco(cenario):
     lida = ordens.obter_os(cenario["marina"], d.id)
     assert (lida.titulo, lida.descricao) == (TEXTO, TEXTO)
     # a busca sem diferenciar maiúsculas também funciona com acentos
-    assert [i.id for i in ordens.listar_os(cenario["marina"], busca="jardinÓpolis").itens] == [d.id]
+    assert [
+        i.id for i in ordens.listar_os(cenario["marina"], busca="jardinÓpolis", escopo="tudo").itens
+    ] == [d.id]
     assert [i.titulo for i in ordens.listar_os(cenario["marina"]).itens] == [TEXTO]
 
     novo = TEXTO + " (revisão)"

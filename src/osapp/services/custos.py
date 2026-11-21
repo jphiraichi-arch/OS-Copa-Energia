@@ -18,12 +18,14 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 
 from osapp import formatacao
+from osapp.busca import normalizar_busca
 from osapp.db import sessao
 from osapp.models import OsItemCusto
 from osapp.models.custos import FASE_PREVISTO, FASE_REALIZADO
-from osapp.repositories import CategoriaCustoRepo
+from osapp.repositories import CategoriaCustoRepo, OrdemServicoRepo
 from osapp.services.auth import carregar_ator
-from osapp.services.erros import ErroValidacao
+from osapp.services.erros import ErroPermissao, ErroValidacao
+from osapp.services.permissoes import pode_acessar_filial
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,9 @@ QUANTIDADE_MIN = Decimal("0.01")
 QUANTIDADE_MAX = Decimal("99999.99")
 VALOR_UNITARIO_MAX = 9_999_999_999
 ITENS_MAX_POR_FASE = 100
+SUGESTOES_PADRAO = 8
+SUGESTOES_MAX = 20
+SUGESTAO_TERMO_MIN = 2  # caracteres (já normalizados)
 
 TIPO_ITEM_ADICIONADO = "ITEM_ADICIONADO"
 TIPO_ITEM_ALTERADO = "ITEM_ALTERADO"
@@ -282,6 +287,37 @@ def listar_categorias(ator_id: int) -> list[CategoriaDTO]:
         return [
             CategoriaDTO(c.id, c.codigo, c.nome, c.ordem) for c in CategoriaCustoRepo(s).listar()
         ]
+
+
+def sugerir_descricoes(
+    ator_id: int, filial_id: int, termo: object, limite: int = SUGESTOES_PADRAO
+) -> list[str]:
+    """Descrições de itens já usadas em OS da filial, para o editor de itens.
+
+    Só manutenção da filial e administrador (o papel usuario recebe ErroPermissao).
+    Termo normalizado com menos de 2 caracteres: lista vazia. Mais usada primeiro, depois
+    a de uso mais recente; de cada grupo, a grafia original mais frequente. No máximo
+    ``limite`` (8 por padrão, nunca mais que 20).
+    """
+    ator = carregar_ator(ator_id)
+    if not _e_int(filial_id):
+        raise ErroValidacao("filial_id", "Filial inválida.")
+    if ator.is_usuario or not pode_acessar_filial(ator, filial_id):
+        logger.warning(
+            "Permissão negada: usuario_id=%s ação=sugestões de descrição.", ator.usuario_id
+        )
+        raise ErroPermissao()
+    if termo is not None and not isinstance(termo, str):
+        raise ErroValidacao("termo", "Busca inválida.")
+    if not _e_int(limite) or limite < 1:
+        raise ErroValidacao("limite", "Limite inválido.")
+    normalizado = normalizar_busca((termo or "")[:DESCRICAO_ITEM_MAX])
+    if len(normalizado) < SUGESTAO_TERMO_MIN:
+        return []
+    with sessao() as s:
+        return OrdemServicoRepo(s).sugestoes_de_descricao(
+            filial_id, normalizado, min(limite, SUGESTOES_MAX)
+        )
 
 
 # --- Escrita ---------------------------------------------------------------------------

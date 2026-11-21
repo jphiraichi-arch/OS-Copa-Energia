@@ -21,11 +21,10 @@ from zoneinfo import ZoneInfo
 from osapp.config import carregar_config
 from osapp.db import sessao
 from osapp.repositories import FilialRepo, OrdemServicoRepo
-from osapp.services import custos, relogio
+from osapp.services import custos, ordens, relogio
 from osapp.services import status as _status
 from osapp.services.auth import Ator, carregar_ator
 from osapp.services.erros import ErroPermissao, ErroValidacao
-from osapp.services.ordens import NIVEIS
 from osapp.services.permissoes import pode_ver_relatorio_completo
 
 logger = logging.getLogger(__name__)
@@ -292,6 +291,43 @@ class Backlog:
 
 
 @dataclass(frozen=True)
+class CustosBusca:
+    """Custos das OS que correspondem à busca (calculados com custos.calcular_resumo)."""
+
+    previsto_total_centavos: int  # todas as OS correspondentes
+    concluidas: int  # quantas das correspondentes estão CONCLUIDA
+    previsto_concluidas_centavos: int
+    realizado_concluidas_centavos: int
+    diferenca_centavos: int  # realizado - previsto, só concluídas
+    diferenca_percentual: float | None  # None quando o previsto das concluídas é 0
+
+
+@dataclass(frozen=True)
+class LinhaBusca:
+    os_id: int
+    numero: str
+    titulo: str
+    status: str
+    urgencia: str | None
+    aberta_em: datetime
+    previsto_centavos: int
+    realizado_centavos: int | None  # só quando CONCLUIDA
+
+
+@dataclass(frozen=True)
+class ResultadoBusca:
+    termo: str
+    escopo: str
+    correspondentes: int
+    total_periodo: int  # população do relatório sem a busca
+    percentual: float | None  # None quando total_periodo é 0
+    custos: CustosBusca
+    ordens: tuple[LinhaBusca, ...]  # a página pedida, mais recentes primeiro
+    pagina: int
+    total_paginas: int
+
+
+@dataclass(frozen=True)
 class RelatorioTempos:
     data_inicio: date
     data_fim: date
@@ -302,7 +338,8 @@ class RelatorioTempos:
     solucao: Medida
     por_urgencia: tuple[TemposPorUrgencia, ...]  # baixa, media, alta, emergencial
     backlog: Backlog
-    total_no_periodo: int  # OS consideradas (com ou sem início)
+    total_no_periodo: int  # OS consideradas (com ou sem início), já filtradas pela busca
+    busca: ResultadoBusca | None = None  # só quando há termo de busca
 
 
 def _arredondar(valor: Decimal) -> int:
@@ -352,33 +389,15 @@ def _validar_status(status: object) -> tuple[str, ...]:
     return tuple(s for s in STATUS_DO_RELATORIO if s in status)
 
 
-def relatorio_tempos(
-    ator_id: int,
-    data_inicio: date | None = None,
-    data_fim: date | None = None,
-    status: object = None,
-    filial_id: int | None = None,
-) -> RelatorioTempos:
-    """Tempos de resposta e até a solução das solicitações. Manutenção (própria filial) e
-    administrador (uma filial ou todas); o papel usuario recebe ErroPermissao."""
-    ator = carregar_ator(ator_id)
-    if ator.is_usuario:
-        logger.warning("Permissão negada: usuario_id=%s ação=relatório de tempos.", ator.usuario_id)
-        raise ErroPermissao()
-    tz = carregar_config().tz
-    data_inicio, data_fim = _validar_periodo(data_inicio, data_fim, tz)
-    status_escolhidos = _validar_status(status)
-    inicio, fim = limites_do_periodo(data_inicio, data_fim, tz)
-    agora = relogio.agora()
-    with sessao() as s:
-        filial, rotulo = _filial_permitida(s, ator, filial_id)
-        repo = OrdemServicoRepo(s)
-        linhas = repo.tempos_de_solicitacoes(filial, inicio, fim, status_escolhidos)
-        abertas = repo.abertas_de_solicitacoes(filial)
-    respostas = {n: [] for n in NIVEIS}
-    solucoes = {n: [] for n in NIVEIS}
+POR_PAGINA_BUSCA = 50
+
+
+def _medidas(linhas) -> tuple[Medida, Medida, tuple[TemposPorUrgencia, ...]]:
+    """Resposta e solução (geral e por urgência) das linhas de tempos_de_solicitacoes."""
+    respostas = {n: [] for n in ordens.NIVEIS}
+    solucoes = {n: [] for n in ordens.NIVEIS}
     todas_resp, todas_sol = [], []
-    for _id, urgencia, aberta, inicio_exec, concluida in linhas:
+    for _id, urgencia, aberta, inicio_exec, concluida, *_resto in linhas:
         if inicio_exec is not None:
             valor = _segundos(aberta, inicio_exec)
             todas_resp.append(valor)
@@ -387,6 +406,109 @@ def relatorio_tempos(
             valor = _segundos(aberta, concluida)
             todas_sol.append(valor)
             solucoes.setdefault(urgencia, []).append(valor)
+    por_urgencia = tuple(
+        TemposPorUrgencia(n, medir(respostas[n]), medir(solucoes[n])) for n in ordens.NIVEIS
+    )
+    return medir(todas_resp), medir(todas_sol), por_urgencia
+
+
+def _validar_pagina(pagina: object) -> int:
+    if not _e_int(pagina) or pagina < 1:
+        raise ErroValidacao("pagina", "Página inválida.")
+    return pagina
+
+
+def _resultado_busca(repo, termo, escopo, linhas, total_periodo, pagina) -> ResultadoBusca:
+    """Contagem, custos e lista paginada das OS que correspondem à busca."""
+    itens_por_os: dict[int, list] = defaultdict(list)
+    for item in repo.itens_das_ordens([linha[0] for linha in linhas]):
+        itens_por_os[item.os_id].append(custos.item_dto(item))
+    resumos = {linha[0]: custos.calcular_resumo(itens_por_os[linha[0]]) for linha in linhas}
+    concluidas = [linha[0] for linha in linhas if linha[5] == _status.CONCLUIDA]
+    resumo_concluidas = custos.calcular_resumo(
+        item for os_id in concluidas for item in itens_por_os[os_id]
+    )
+    recentes = sorted(linhas, key=lambda linha: (linha[2], linha[0]), reverse=True)
+    total_paginas = max(1, -(-len(recentes) // POR_PAGINA_BUSCA))
+    pagina = min(pagina, total_paginas)
+    trecho = recentes[(pagina - 1) * POR_PAGINA_BUSCA : pagina * POR_PAGINA_BUSCA]
+    return ResultadoBusca(
+        termo=termo,
+        escopo=escopo,
+        correspondentes=len(linhas),
+        total_periodo=total_periodo,
+        percentual=custos.percentual(len(linhas), total_periodo),
+        custos=CustosBusca(
+            previsto_total_centavos=sum(r.total_previsto_centavos for r in resumos.values()),
+            concluidas=len(concluidas),
+            previsto_concluidas_centavos=resumo_concluidas.total_previsto_centavos,
+            realizado_concluidas_centavos=resumo_concluidas.total_realizado_centavos,
+            diferenca_centavos=resumo_concluidas.diferenca_centavos,
+            diferenca_percentual=resumo_concluidas.diferenca_percentual,
+        ),
+        ordens=tuple(
+            LinhaBusca(
+                os_id=os_id,
+                numero=numero,
+                titulo=titulo,
+                status=situacao,
+                urgencia=urgencia,
+                aberta_em=aberta,
+                previsto_centavos=resumos[os_id].total_previsto_centavos,
+                realizado_centavos=(
+                    resumos[os_id].total_realizado_centavos
+                    if situacao == _status.CONCLUIDA
+                    else None
+                ),
+            )
+            for os_id, urgencia, aberta, _i, _c, situacao, numero, titulo in trecho
+        ),
+        pagina=pagina,
+        total_paginas=total_paginas,
+    )
+
+
+def relatorio_tempos(
+    ator_id: int,
+    data_inicio: date | None = None,
+    data_fim: date | None = None,
+    status: object = None,
+    filial_id: int | None = None,
+    termo: object = None,
+    escopo: str | None = ordens.ESCOPO_ITENS,
+    pagina: int = 1,
+) -> RelatorioTempos:
+    """Tempos de resposta e até a solução das solicitações. Manutenção (própria filial) e
+    administrador (uma filial ou todas); o papel usuario recebe ErroPermissao.
+
+    ``termo`` e ``escopo`` (prompt 22) restringem o relatório INTEIRO às OS que
+    correspondem à busca (ordens.condicao_busca); com termo, ``busca`` traz a contagem
+    sobre o total do período, os custos e a lista paginada (50 por página).
+    """
+    ator = carregar_ator(ator_id)
+    if ator.is_usuario:
+        logger.warning("Permissão negada: usuario_id=%s ação=relatório de tempos.", ator.usuario_id)
+        raise ErroPermissao()
+    tz = carregar_config().tz
+    data_inicio, data_fim = _validar_periodo(data_inicio, data_fim, tz)
+    status_escolhidos = _validar_status(status)
+    escopo = ordens.validar_escopo(escopo)
+    pagina = _validar_pagina(pagina)
+    condicao = ordens.condicao_busca(termo, escopo, ator)
+    inicio, fim = limites_do_periodo(data_inicio, data_fim, tz)
+    agora = relogio.agora()
+    busca = None
+    with sessao() as s:
+        filial, rotulo = _filial_permitida(s, ator, filial_id)
+        repo = OrdemServicoRepo(s)
+        linhas = repo.tempos_de_solicitacoes(filial, inicio, fim, status_escolhidos, condicao)
+        abertas = repo.abertas_de_solicitacoes(filial, condicao)
+        if condicao is not None:
+            total_periodo = len(repo.tempos_de_solicitacoes(filial, inicio, fim, status_escolhidos))
+            busca = _resultado_busca(
+                repo, termo.strip()[: ordens.BUSCA_MAX], escopo, linhas, total_periodo, pagina
+            )
+    resposta, solucao, por_urgencia = _medidas(linhas)
     mais_antiga = min(abertas) if abertas else None
     return RelatorioTempos(
         data_inicio=data_inicio,
@@ -394,13 +516,12 @@ def relatorio_tempos(
         status=status_escolhidos,
         filial_id=filial,
         filial_rotulo=rotulo,
-        resposta=medir(todas_resp),
-        solucao=medir(todas_sol),
-        por_urgencia=tuple(
-            TemposPorUrgencia(n, medir(respostas[n]), medir(solucoes[n])) for n in NIVEIS
-        ),
+        resposta=resposta,
+        solucao=solucao,
+        por_urgencia=por_urgencia,
         backlog=Backlog(
             len(abertas), _segundos(mais_antiga, agora) if mais_antiga is not None else None
         ),
         total_no_periodo=len(linhas),
+        busca=busca,
     )

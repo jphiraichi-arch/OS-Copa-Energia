@@ -59,9 +59,15 @@ def dados(banco):
         return {"f1": f1.id, "f2": f2.id, "u1": u1.id, "u2": u2.id}
 
 
-def _numeros(**filtros) -> list[str]:
+def _numeros(busca=None, **filtros) -> list[str]:
+    """A busca chega ao repositório como condição pronta (prompt 22): escopo 'tudo'."""
+    from types import SimpleNamespace
+
+    from osapp.services import ordens
+
+    condicao = ordens.condicao_busca(busca, ordens.ESCOPO_TUDO, SimpleNamespace(is_usuario=False))
     with sessao() as s:
-        return [o.numero for o in OrdemServicoRepo(s).listar(**filtros)]
+        return [o.numero for o in OrdemServicoRepo(s).listar(condicao=condicao, **filtros)]
 
 
 def test_filial_repo(dados):

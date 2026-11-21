@@ -13,8 +13,9 @@ import flet as ft
 from osapp import formatacao
 from osapp.services import ordens, relatorios
 from osapp.services.erros import ErroPermissao
-from osapp.ui import formularios, rotas, rotulos, textos, theme
+from osapp.ui import formularios, historico, rotas, rotulos, textos, theme
 from osapp.ui.components import basicos
+from osapp.ui.components.escopo_busca import SeletorEscopo
 from osapp.ui.views.base import Tela
 
 TODAS = "todas"
@@ -29,12 +30,37 @@ def _data(d: date) -> str:
     return f"{d.day:02d}/{d.month:02d}/{d.year:04d}"
 
 
+def _percentual(valor: float) -> str:
+    """30.0 -> '30'; 33.33 -> '33,3'."""
+    if valor == int(valor):
+        return str(int(valor))
+    return f"{valor:.1f}".replace(".", ",")
+
+
+def linha_resumo_busca(b) -> str:
+    """Ex.: '12 de 40 ordens no período (30%) correspondem a "balança"'."""
+    proporcao = f" ({_percentual(b.percentual)}%)" if b.percentual is not None else ""
+    verbo = "corresponde" if b.correspondentes == 1 else "correspondem"
+    return (
+        f"{b.correspondentes} de {b.total_periodo} ordens no período{proporcao} "
+        f'{verbo} a "{b.termo}"'
+    )
+
+
 class RelatorioTempos(Tela):
     def __init__(self, app, **_params) -> None:
         self.app = app
         self.status = set(relatorios.STATUS_DO_RELATORIO)
         self.filial_id: int | None = None  # None: a própria (manutenção) ou todas (admin)
         self.relatorio = None
+        self._datas: tuple[date | None, date | None] = (None, None)
+        self.pagina = 1
+        self.termo = basicos.campo_texto(
+            textos.TEMPOS_BUSCA,
+            hint_text=textos.HOME_BUSCA_DICA,
+            on_submit=self._aplicar,
+        )
+        self.escopo = SeletorEscopo(app, self._aplicar)
         self.de = basicos.campo_texto(
             textos.TEMPOS_DE,
             hint_text="dd/mm/aaaa",
@@ -69,6 +95,8 @@ class RelatorioTempos(Tela):
                 basicos.cartao(
                     basicos.coluna(
                         [
+                            self.termo,
+                            self.escopo.controle,
                             basicos.subtitulo(textos.TEMPOS_PERIODO),
                             ft.Row([self.de, self.ate], spacing=theme.ESPACO_P),
                             self.chips,
@@ -131,7 +159,12 @@ class RelatorioTempos(Tela):
         if datas is None:
             self.conteudo.update()
             return
+        self.pagina = 1
         await self._buscar(*datas)
+
+    async def _ir_para_pagina(self, pagina: int) -> None:
+        self.pagina = pagina
+        await self._buscar(*self._datas)
 
     # --- Carga ------------------------------------------------------------------------
 
@@ -160,11 +193,15 @@ class RelatorioTempos(Tela):
             data_fim,
             tuple(self.status),
             self.filial_id,
+            (self.termo.value or "").strip() or None,
+            self.escopo.valor,
+            self.pagina,
             erros_tratados=(ErroPermissao,),
         )
         if resultado.ok:
             r = resultado.valor
             self.relatorio = r
+            self._datas = (r.data_inicio, r.data_fim)
             self.de.value, self.ate.value = _data(r.data_inicio), _data(r.data_fim)
             self.corpo.controls = self._montar(r)
         else:
@@ -182,7 +219,18 @@ class RelatorioTempos(Tela):
 
     def _montar(self, r) -> list[ft.Control]:
         partes: list[ft.Control] = [basicos.subtitulo(r.filial_rotulo)]
-        if r.total_no_periodo == 0:
+        if r.busca is not None:
+            partes.append(
+                ft.Text(
+                    linha_resumo_busca(r.busca),
+                    color=theme.COR_TITULO,
+                    size=theme.FONTE_CORPO,
+                    weight=ft.FontWeight.BOLD,
+                )
+            )
+        if r.busca is not None and r.busca.correspondentes == 0:
+            partes.append(basicos.cartao(basicos.mensagem_central(textos.TEMPOS_BUSCA_VAZIA)))
+        elif r.total_no_periodo == 0:
             partes.append(basicos.cartao(basicos.mensagem_central(textos.TEMPOS_VAZIO)))
         else:
             partes += [
@@ -201,6 +249,8 @@ class RelatorioTempos(Tela):
                 basicos.subtitulo(textos.TEMPOS_NOTA),
                 self._por_urgencia(r),
             ]
+            if r.busca is not None:
+                partes += [self._custos_busca(r.busca.custos), self._lista_busca(r.busca)]
         partes.append(self._backlog(r.backlog))
         partes.append(
             basicos.botao_secundario(
@@ -293,6 +343,111 @@ class RelatorioTempos(Tela):
         return basicos.cartao(
             basicos.coluna(
                 [basicos.titulo(textos.TEMPOS_POR_URGENCIA), *corpo], espaco=theme.ESPACO_P
+            )
+        )
+
+    # --- Busca (prompt 22) ------------------------------------------------------------
+
+    @staticmethod
+    def _custos_busca(c) -> ft.Control:
+        return basicos.cartao(
+            basicos.coluna(
+                [
+                    basicos.titulo(textos.TEMPOS_CUSTOS, theme.FONTE_CORPO + 2),
+                    basicos.rotulo_valor(
+                        textos.TEMPOS_PREVISTO_TODAS,
+                        formatacao.formatar_brl(c.previsto_total_centavos),
+                    ),
+                    basicos.subtitulo(textos.TEMPOS_CUSTOS_NOTA.format(n=c.concluidas)),
+                    ft.Row(
+                        [
+                            basicos.rotulo_valor(
+                                textos.TEMPOS_PREVISTO,
+                                formatacao.formatar_brl(c.previsto_concluidas_centavos),
+                            ),
+                            basicos.rotulo_valor(
+                                textos.TEMPOS_REALIZADO,
+                                formatacao.formatar_brl(c.realizado_concluidas_centavos),
+                            ),
+                        ],
+                        spacing=theme.ESPACO_G,
+                        wrap=True,
+                    ),
+                    basicos.rotulo_valor(
+                        textos.TEMPOS_DIFERENCA,
+                        historico.texto_diferenca_valor(
+                            c.diferenca_centavos, c.diferenca_percentual
+                        )
+                        if c.concluidas
+                        else SEM_VALOR,
+                    ),
+                ],
+                espaco=theme.ESPACO_P,
+            )
+        )
+
+    def _lista_busca(self, b) -> ft.Control:
+        tz = self.app.config.tz
+        cartoes: list[ft.Control] = []
+        for o in b.ordens:
+            valores = f"Previsto {formatacao.formatar_brl(o.previsto_centavos)}"
+            if o.realizado_centavos is not None:
+                valores += f" · Realizado {formatacao.formatar_brl(o.realizado_centavos)}"
+
+            async def abrir(_e=None, os_id=o.os_id) -> None:
+                await self.app.ir(rotas.rota_os(os_id))
+
+            cartoes.append(
+                ft.Container(
+                    bgcolor=theme.COR_FUNDO_PAGINA,
+                    border_radius=theme.RAIO_BOTAO,
+                    padding=theme.ESPACO_P + 4,
+                    ink=True,
+                    on_click=abrir,
+                    content=basicos.coluna(
+                        [
+                            ft.Text(
+                                f"{o.numero} · {o.titulo}",
+                                color=theme.COR_TITULO,
+                                size=theme.FONTE_CORPO,
+                                weight=ft.FontWeight.BOLD,
+                            ),
+                            basicos.subtitulo(
+                                f"{rotulos.status(o.status)} · {rotulos.nivel(o.urgencia)} · "
+                                f"aberta em {formatacao.formatar_data_hora(o.aberta_em, tz)}"
+                            ),
+                            basicos.subtitulo(valores),
+                        ],
+                        espaco=2,
+                    ),
+                )
+            )
+        navegar: list[ft.Control] = []
+        if b.pagina > 1:
+            navegar.append(
+                basicos.botao_secundario(
+                    textos.TEMPOS_PAGINA_ANTERIOR,
+                    ft.Icons.CHEVRON_LEFT,
+                    lambda _e: self.app.page.run_task(self._ir_para_pagina, b.pagina - 1),
+                )
+            )
+        if b.pagina < b.total_paginas:
+            navegar.append(
+                basicos.botao_secundario(
+                    textos.TEMPOS_PROXIMA_PAGINA,
+                    ft.Icons.CHEVRON_RIGHT,
+                    lambda _e: self.app.page.run_task(self._ir_para_pagina, b.pagina + 1),
+                )
+            )
+        return basicos.cartao(
+            basicos.coluna(
+                [
+                    basicos.titulo(textos.TEMPOS_ORDENS, theme.FONTE_CORPO + 2),
+                    basicos.subtitulo(f"Página {b.pagina} de {b.total_paginas}"),
+                    *cartoes,
+                    *navegar,
+                ],
+                espaco=theme.ESPACO_P,
             )
         )
 

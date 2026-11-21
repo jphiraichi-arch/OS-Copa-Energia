@@ -8,16 +8,19 @@ objetos do ORM). As regras de filial e de papel são aplicadas aqui.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import and_, exists, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.orm.exc import StaleDataError
 
+from osapp.busca import normalizar_busca
 from osapp.config import carregar_config
 from osapp.db import sessao
 from osapp.models import OrdemServico, OsEvento, OsItemCusto
@@ -56,6 +59,12 @@ TIPO_STATUS = "STATUS"
 TIPO_REALIZADO = "REALIZADO"  # campos preenchidos na conclusão (valor_antigo é sempre nulo)
 
 TOLERANCIA_FUTURO_MINUTOS = 5
+
+ESCOPO_ITENS = "itens"  # padrão: busca nos itens de custo da OS
+ESCOPO_TUDO = "tudo"  # título + descrição + itens
+ESCOPOS = (ESCOPO_ITENS, ESCOPO_TUDO)
+# Termo que parece número de OS: dígitos e traços, com ou sem o prefixo 'OS-'.
+_RE_NUMERO = re.compile(r"^(os-)?[0-9][0-9-]*$", re.IGNORECASE)
 
 ORIGEM_SOLICITACAO = "solicitacao"
 ORIGEM_MANUTENCAO = "manutencao"
@@ -327,6 +336,56 @@ def _validar_tipo(s: Session, valor: object) -> int | None:
     if tipo is None or not tipo.ativo:
         raise ErroValidacao("tipo_id", "Escolha um tipo de manutenção válido.")
     return tipo.id
+
+
+# --- Busca (uma só função monta a condição; listar_os e o relatório usam) ------------
+
+
+def validar_escopo(escopo: object) -> str:
+    if escopo is None:
+        return ESCOPO_ITENS
+    if escopo not in ESCOPOS:
+        raise ErroValidacao("escopo", "Escopo de busca inválido.")
+    return escopo
+
+
+def condicao_busca(termo: object, escopo: str, ator: Ator):
+    """Condição SQL da busca, ou None sem termo.
+
+    O termo passa por normalizar_busca e vira palavras; cada palavra precisa aparecer no
+    escopo da mesma OS. Escopo 'itens': busca_texto dos itens (as duas fases); 'tudo':
+    também título + descrição. O papel usuario busca SEMPRE só em título + descrição
+    (um item encontrado revelaria o que ele diz). Os itens entram por EXISTS, nunca por
+    JOIN: a OS aparece e conta uma vez só. % e _ valem como caracteres comuns. Um termo
+    que parece número de OS também casa com ``numero``.
+    """
+    if termo is not None and not isinstance(termo, str):
+        raise ErroValidacao("busca", "Busca inválida.")
+    bruto = (termo or "").strip()[:BUSCA_MAX]
+    palavras = normalizar_busca(bruto).split()
+    if not palavras:
+        return None
+    if ator.is_usuario:
+        no_texto, nos_itens = True, False
+    else:
+        no_texto, nos_itens = escopo == ESCOPO_TUDO, True
+    partes = []
+    for palavra in palavras:
+        alternativas = []
+        if no_texto:
+            alternativas.append(OrdemServico.busca_texto.contains(palavra, autoescape=True))
+        if nos_itens:
+            alternativas.append(
+                exists().where(
+                    OsItemCusto.os_id == OrdemServico.id,
+                    OsItemCusto.busca_texto.contains(palavra, autoescape=True),
+                )
+            )
+        partes.append(or_(*alternativas))
+    condicao = and_(*partes)
+    if _RE_NUMERO.fullmatch(bruto):
+        condicao = or_(condicao, OrdemServico.numero.icontains(bruto, autoescape=True))
+    return condicao
 
 
 # --- Regras de permissão (as mesmas funções alimentam as ações e as verificações) ----
@@ -779,8 +838,12 @@ def listar_os(
     filial_id: int | None = None,
     pagina: int = 1,
     origem: str | None = None,
+    escopo: str | None = ESCOPO_ITENS,
 ) -> PaginaOs:
-    """Lista paginada. O papel usuario recebe ResumoSolicitante, só da própria filial."""
+    """Lista paginada. O papel usuario recebe ResumoSolicitante, só da própria filial.
+
+    ``busca`` e ``escopo``: ver condicao_busca (o usuario busca só em título e descrição).
+    """
     ator = carregar_ator(ator_id)
     if filial_id is not None and not _e_int(filial_id):
         raise ErroValidacao("filial_id", "Filial inválida.")
@@ -791,9 +854,7 @@ def listar_os(
     else:
         raise _negar(ator, "listar OS de outra filial")
 
-    if busca is not None and not isinstance(busca, str):
-        raise ErroValidacao("busca", "Busca inválida.")
-    busca = (busca or "").strip()[:BUSCA_MAX] or None
+    condicao = condicao_busca(busca, validar_escopo(escopo), ator)
     if status is not None and not _status.status_conhecido(status):
         raise ErroValidacao("status", "Status inválido.")
     if origem is not None and origem not in ORIGENS:
@@ -806,14 +867,14 @@ def listar_os(
         repo = OrdemServicoRepo(s)
         if ator.is_usuario:
             linhas = repo.listar_visao_solicitante(
-                filtro_filial, status, busca, limite, deslocamento
+                filtro_filial, status, condicao, limite, deslocamento
             )
             itens = tuple(_resumo_solicitante(linha) for linha in linhas[:ITENS_POR_PAGINA])
             return PaginaOs(itens=itens, tem_mais=len(linhas) > ITENS_POR_PAGINA)
         ordens = repo.listar(
             filial_id=filtro_filial,
             status=status,
-            busca=busca,
+            condicao=condicao,
             limite=limite,
             deslocamento=deslocamento,
             origem=origem,

@@ -215,10 +215,12 @@ def test_lista_de_usuario_comum_nunca_tem_outra_filial(cenario):
         {"status": status.ABERTA},
         {"filial_id": cenario["f1"]},
     ):
-        ids = {i.id for i in ordens.listar_os(cenario["marina"], **filtros).itens}
+        ids = {i.id for i in ordens.listar_os(cenario["marina"], escopo="tudo", **filtros).itens}
         assert alheia.id not in ids, filtros
-    assert [i.id for i in ordens.listar_os(cenario["marina"], busca="pintura").itens] == [minha.id]
-    assert ordens.listar_os(cenario["marina"], busca=alheia.numero).itens == ()
+    assert [
+        i.id for i in ordens.listar_os(cenario["marina"], busca="pintura", escopo="tudo").itens
+    ] == [minha.id]
+    assert ordens.listar_os(cenario["marina"], busca=alheia.numero, escopo="tudo").itens == ()
 
 
 def test_usuario_comum_nao_lista_outra_filial(cenario):
@@ -242,7 +244,7 @@ def test_resumo_filtros_e_ordem(cenario, monkeypatch):
     )
     assert (r.total_previsto_centavos, r.criado_em) == (999, T0 + timedelta(hours=1))
     assert ordens.listar_os(cenario["marina"], status=status.CONCLUIDA).itens == ()
-    assert len(ordens.listar_os(cenario["marina"], busca="  segunda  ").itens) == 1
+    assert len(ordens.listar_os(cenario["marina"], busca="  segunda  ", escopo="tudo").itens) == 1
 
 
 @pytest.mark.parametrize(
@@ -264,14 +266,19 @@ def test_listar_valida_os_filtros(cenario, kwargs, campo):
 
 def test_busca_e_limitada_a_100_caracteres(cenario):
     criar(cenario["marina"], titulo="x" * 100)
-    assert len(ordens.listar_os(cenario["marina"], busca="x" * 100 + "y" * 50).itens) == 1
+    assert (
+        len(ordens.listar_os(cenario["marina"], busca="x" * 100 + "y" * 50, escopo="tudo").itens)
+        == 1
+    )
 
 
 @pytest.mark.parametrize("texto", ["' OR 1=1 --", "%", "_", "'; DROP TABLE ordens_servico; --"])
 def test_busca_trata_caracteres_especiais_como_texto(cenario, texto):
     criar(cenario["marina"], titulo="Troca de rolamento")
     literal = criar(cenario["marina"], titulo="Caso especial", descricao=f"contém {texto} aqui")
-    assert [i.id for i in ordens.listar_os(cenario["marina"], busca=texto).itens] == [literal.id]
+    assert [
+        i.id for i in ordens.listar_os(cenario["marina"], busca=texto, escopo="tudo").itens
+    ] == [literal.id]
     assert contar(OrdemServico) == 2
 
 

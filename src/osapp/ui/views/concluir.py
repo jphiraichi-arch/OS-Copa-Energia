@@ -91,6 +91,7 @@ class ConcluirOs(Tela):
             categorias,
             titulo=TITULO_REALIZADOS,
             ao_mudar=self._atualizar_previa,
+            filial_de=lambda: d.filial_id,
         )
         self.inicio_data = self._campo("Início - data (dd/mm/aaaa)", hoje, **data)
         self.inicio_hora = CampoHora("Início - hora", ao_mudar=self._atualizar_previa)

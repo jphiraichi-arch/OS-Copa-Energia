@@ -129,7 +129,11 @@ class CriarOs(_TelaDeFormulario):
         if filiais.ok and categorias.ok:
             self.formulario = FormularioOs(self.app, filiais.valor, tipos=tipos.valor)
             self.previstos = EditorItens(
-                self.app, custos.FASE_PREVISTO, categorias.valor, titulo=TITULO_PREVISTOS
+                self.app,
+                custos.FASE_PREVISTO,
+                categorias.valor,
+                titulo=TITULO_PREVISTOS,
+                filial_de=self._filial_escolhida,
             )
             self.editores = [self.previstos]
             self._mostrar_formulario()
@@ -138,6 +142,10 @@ class CriarOs(_TelaDeFormulario):
                 "Não foi possível abrir o formulário.", rotas.HOME, "Voltar para a lista"
             )
         self._atualizar()
+
+    def _filial_escolhida(self) -> int | None:
+        valor = self.formulario.filial.value if self.formulario else None
+        return int(valor) if valor else None
 
     async def _gravar(self, valores: dict) -> None:
         campos = {**self.formulario.campos, "itens_previstos": AlvoDeErro(self.previstos)}
@@ -216,6 +224,7 @@ class EditarOs(_TelaDeFormulario):
                         titulo=TITULO_PREVISTOS,
                         somente_leitura=not os_.acoes.pode_editar_itens_previstos,
                         ao_gravar=partial(self._gravar_item, custos.FASE_PREVISTO),
+                        filial_de=lambda: os_.filial_id,
                     )
                 ]
                 if os_.acoes.pode_editar_itens_realizados:
@@ -227,6 +236,7 @@ class EditarOs(_TelaDeFormulario):
                             formularios.itens_da_fase(os_.itens, custos.FASE_REALIZADO),
                             titulo=TITULO_REALIZADOS,
                             ao_gravar=partial(self._gravar_item, custos.FASE_REALIZADO),
+                            filial_de=lambda: os_.filial_id,
                         )
                     )
                 self._mostrar_formulario()

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session, raiseload
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, joinedload, raiseload
 
-from osapp.models import Filial, OrdemServico, Usuario
+from osapp.models import Filial, OrdemServico, OsItemCusto, Usuario
 
 LARGURA_SEQUENCIA = 6
 
@@ -38,17 +38,16 @@ class OrdemServicoRepo:
         self,
         filial_id: int | None = None,
         status: str | None = None,
-        busca: str | None = None,
+        condicao=None,
         limite: int = 50,
         deslocamento: int = 0,
         origem: str | None = None,
     ) -> list[OrdemServico]:
         """Lista da mais nova para a mais antiga, com filtros opcionais.
 
-        A busca compara numero, titulo e descricao sem diferenciar maiúsculas; os
-        caracteres % e _ do texto são escapados e valem como caracteres comuns.
+        ``condicao``: a condição de busca montada por services/ordens.condicao_busca.
         """
-        consulta = _filtrar(select(OrdemServico), filial_id, status, busca, origem)
+        consulta = _filtrar(select(OrdemServico), filial_id, status, condicao, origem)
         consulta = (
             consulta.order_by(OrdemServico.criado_em.desc(), OrdemServico.id.desc())
             .limit(limite)
@@ -59,16 +58,25 @@ class OrdemServicoRepo:
     # --- Relatório de tempos: só as colunas necessárias, filtros na consulta ----------
 
     def tempos_de_solicitacoes(
-        self, filial_id: int | None, inicio: datetime, fim: datetime, status: tuple[str, ...]
+        self,
+        filial_id: int | None,
+        inicio: datetime,
+        fim: datetime,
+        status: tuple[str, ...],
+        condicao=None,
     ) -> list[tuple]:
-        """(id, urgencia, aberta_em, inicio_execucao_em, concluida_em) das solicitações
-        (nunca canceladas) abertas em [inicio, fim) com um dos ``status``."""
+        """(id, urgencia, aberta_em, inicio_execucao_em, concluida_em, status, numero,
+        titulo) das solicitações (nunca canceladas) abertas em [inicio, fim) com um dos
+        ``status``; ``condicao``: a busca montada pelo serviço."""
         consulta = select(
             OrdemServico.id,
             OrdemServico.urgencia,
             OrdemServico.aberta_em,
             OrdemServico.inicio_execucao_em,
             OrdemServico.concluida_em,
+            OrdemServico.status,
+            OrdemServico.numero,
+            OrdemServico.titulo,
         ).where(
             OrdemServico.origem == "solicitacao",
             OrdemServico.status != "CANCELADA",
@@ -78,16 +86,70 @@ class OrdemServicoRepo:
         )
         if filial_id is not None:
             consulta = consulta.where(OrdemServico.filial_id == filial_id)
+        if condicao is not None:
+            consulta = consulta.where(condicao)
         return [tuple(linha) for linha in self._s.execute(consulta.order_by(OrdemServico.id))]
 
-    def abertas_de_solicitacoes(self, filial_id: int | None) -> list[datetime]:
+    def abertas_de_solicitacoes(self, filial_id: int | None, condicao=None) -> list[datetime]:
         """aberta_em de cada solicitação ainda ABERTA (situação de agora)."""
         consulta = select(OrdemServico.aberta_em).where(
             OrdemServico.origem == "solicitacao", OrdemServico.status == "ABERTA"
         )
         if filial_id is not None:
             consulta = consulta.where(OrdemServico.filial_id == filial_id)
+        if condicao is not None:
+            consulta = consulta.where(condicao)
         return list(self._s.scalars(consulta))
+
+    def itens_das_ordens(self, os_ids: list[int]) -> list[OsItemCusto]:
+        """Itens de custo (com a categoria carregada) das OS indicadas."""
+        if not os_ids:
+            return []
+        consulta = (
+            select(OsItemCusto)
+            .options(joinedload(OsItemCusto.categoria))
+            .where(OsItemCusto.os_id.in_(os_ids))
+            .order_by(OsItemCusto.os_id, OsItemCusto.id)
+        )
+        return list(self._s.scalars(consulta))
+
+    def sugestoes_de_descricao(self, filial_id: int, termo: str, limite: int) -> list[str]:
+        """Descrições de itens já usadas na filial que contêm ``termo`` (já normalizado).
+
+        Agrupa pelo texto normalizado; mais usado primeiro, depois o uso mais recente.
+        Devolve, de cada grupo, a grafia original mais frequente (empate: a mais recente).
+        """
+        filtro = (
+            OsItemCusto.os_id == OrdemServico.id,
+            OrdemServico.filial_id == filial_id,
+            OsItemCusto.busca_texto.contains(termo, autoescape=True),
+        )
+        usos = func.count(OsItemCusto.id)
+        ultimo = func.max(OsItemCusto.criado_em)
+        grupos = (
+            self._s.execute(
+                select(OsItemCusto.busca_texto)
+                .where(*filtro)
+                .group_by(OsItemCusto.busca_texto)
+                .order_by(usos.desc(), ultimo.desc(), OsItemCusto.busca_texto)
+                .limit(limite)
+            )
+            .scalars()
+            .all()
+        )
+        if not grupos:
+            return []
+        grafias = self._s.execute(
+            select(OsItemCusto.busca_texto, OsItemCusto.descricao, usos, ultimo)
+            .where(*filtro, OsItemCusto.busca_texto.in_(grupos))
+            .group_by(OsItemCusto.busca_texto, OsItemCusto.descricao)
+        ).all()
+        melhor: dict[str, tuple] = {}
+        for chave, descricao, n, quando in grafias:
+            atual = melhor.get(chave)
+            if atual is None or (n, quando) > (atual[1], atual[2]):
+                melhor[chave] = (descricao, n, quando)
+        return [melhor[g][0] for g in grupos]
 
     # --- Visão do solicitante: só as colunas permitidas, nunca a entidade inteira -----
 
@@ -107,11 +169,11 @@ class OrdemServicoRepo:
         self,
         filial_id: int,
         status: str | None = None,
-        busca: str | None = None,
+        condicao=None,
         limite: int = 50,
         deslocamento: int = 0,
     ) -> list:
-        consulta = _filtrar(self._consulta_solicitante(), filial_id, status, busca, None)
+        consulta = _filtrar(self._consulta_solicitante(), filial_id, status, condicao, None)
         consulta = (
             consulta.order_by(OrdemServico.aberta_em.desc(), OrdemServico.id.desc())
             .limit(limite)
@@ -191,21 +253,14 @@ COLUNAS_SOLICITANTE = (
 )
 
 
-def _filtrar(consulta, filial_id, status, busca, origem):
-    """Filtros comuns. A busca compara número, título e descrição, sem diferenciar
-    maiúsculas; % e _ do texto valem como caracteres comuns."""
+def _filtrar(consulta, filial_id, status, condicao, origem):
+    """Filtros comuns; ``condicao`` é a busca já montada pelo serviço (ou None)."""
     if filial_id is not None:
         consulta = consulta.where(OrdemServico.filial_id == filial_id)
     if status is not None:
         consulta = consulta.where(OrdemServico.status == status)
     if origem is not None:
         consulta = consulta.where(OrdemServico.origem == origem)
-    if busca:
-        consulta = consulta.where(
-            or_(
-                OrdemServico.numero.icontains(busca, autoescape=True),
-                OrdemServico.titulo.icontains(busca, autoescape=True),
-                OrdemServico.descricao.icontains(busca, autoescape=True),
-            )
-        )
+    if condicao is not None:
+        consulta = consulta.where(condicao)
     return consulta

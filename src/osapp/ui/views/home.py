@@ -12,6 +12,7 @@ from osapp import formatacao
 from osapp.services import ordens, status
 from osapp.ui import navegacao, rotas, rotulos, textos, theme
 from osapp.ui.components import basicos
+from osapp.ui.components.escopo_busca import SeletorEscopo
 from osapp.ui.views.base import Tela
 
 TODAS_AS_FILIAIS = "todas"
@@ -28,9 +29,12 @@ class Home(Tela):
         self.pagina = 1
         self.itens: list = []
 
+        self.escopo = None if app.sessao.is_usuario else SeletorEscopo(app, self._buscar)
         self.busca = basicos.campo_texto(
             textos.HOME_BUSCA,
-            hint_text=textos.HOME_BUSCA_DICA,
+            hint_text=textos.HOME_BUSCA_DICA_USUARIO
+            if app.sessao.is_usuario
+            else textos.HOME_BUSCA_DICA,
             on_submit=self._buscar,
             suffix_icon=ft.IconButton(
                 icon=ft.Icons.SEARCH,
@@ -97,6 +101,7 @@ class Home(Tela):
                 basicos.titulo(textos.HOME_TITULO, theme.FONTE_SAUDACAO),
                 *atalhos,
                 self.busca,
+                *([self.escopo.controle] if self.escopo else []),
                 self.chips,
                 ft.Row(
                     [self.filial, self.atualizar],
@@ -182,6 +187,7 @@ class Home(Tela):
             self.filtro_filial,
             self.pagina,
             ordens.ORIGEM_SOLICITACAO if rapido else None,
+            self.escopo.valor if self.escopo else ordens.ESCOPO_ITENS,
         )
         self.rodape.controls = []
         if resultado.ok:
