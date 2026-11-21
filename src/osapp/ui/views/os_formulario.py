@@ -6,7 +6,7 @@ from functools import partial
 
 import flet as ft
 
-from osapp.services import custos, equipamentos, ordens
+from osapp.services import custos, ordens
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao, ErroValidacao
 from osapp.ui import formularios, rotas, theme
 from osapp.ui.components import basicos
@@ -126,9 +126,8 @@ class CriarOs(_TelaDeFormulario):
             return
         filiais = await self.app.chamar(ordens.listar_filiais, ator_id)
         categorias = await self.app.chamar(custos.listar_categorias, ator_id)
-        lista = await self.app.chamar(equipamentos.listar_equipamentos, ator_id)
-        if filiais.ok and categorias.ok and lista.ok:
-            self.formulario = FormularioOs(self.app, filiais.valor, lista.valor, tipos=tipos.valor)
+        if filiais.ok and categorias.ok:
+            self.formulario = FormularioOs(self.app, filiais.valor, tipos=tipos.valor)
             self.previstos = EditorItens(
                 self.app, custos.FASE_PREVISTO, categorias.valor, titulo=TITULO_PREVISTOS
             )
@@ -145,8 +144,6 @@ class CriarOs(_TelaDeFormulario):
         resultado = await self.app.chamar(
             partial(
                 ordens.criar_os,
-                equipamento_id=valores["equipamento_id"],
-                equipamento_outro=valores["equipamento_outro"],
                 tipo_id=valores["tipo_id"],
                 prioridade=valores["prioridade"],
             ),
@@ -201,13 +198,11 @@ class EditarOs(_TelaDeFormulario):
             os_ = resultado.valor
             filiais = await self.app.chamar(ordens.listar_filiais, ator_id)
             categorias = await self.app.chamar(custos.listar_categorias, ator_id)
-            lista = await self.app.chamar(equipamentos.listar_equipamentos, ator_id, os_.filial_id)
-            if filiais.ok and categorias.ok and lista.ok:
+            if filiais.ok and categorias.ok:
                 self.os = os_
                 self.formulario = FormularioOs(
                     self.app,
                     filiais.valor,
-                    lista.valor,
                     os=os_,
                     com_realizado=os_.acoes.pode_editar_realizado,
                     tipos=tipos.valor,

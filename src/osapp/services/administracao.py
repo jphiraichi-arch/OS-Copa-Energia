@@ -12,10 +12,9 @@ from dataclasses import dataclass
 from sqlalchemy import select
 
 from osapp.db import sessao
-from osapp.models import CategoriaCusto, Equipamento, Filial, OrdemServico, Usuario
+from osapp.models import CategoriaCusto, Filial, OrdemServico, Usuario
 from osapp.repositories import (
     CategoriaCustoRepo,
-    EquipamentoRepo,
     FilialRepo,
     UsuarioRepo,
 )
@@ -232,18 +231,29 @@ def garantir_categorias() -> int:
     return criadas
 
 
-def garantir_equipamento(filial_codigo: str, nome: str) -> bool:
-    """Cria o equipamento na filial se ainda não existir com esse nome. True se criou."""
-    nome = _texto("nome", nome, 1, 120)
+# --- Texto de busca ---------------------------------------------------------------
+
+
+def recalcular_busca() -> dict[str, int]:
+    """Refaz busca_texto de todas as ordens e itens. Idempotente: num banco coerente não
+    muda nada. Devolve quantas ordens e itens mudaram."""
+    from osapp.busca import normalizar_busca
+    from osapp.models import OsItemCusto
+
+    mudou = {"ordens": 0, "itens": 0}
     with sessao() as s:
-        filial = FilialRepo(s).obter_por_codigo(filial_codigo)
-        if filial is None:
-            raise ErroValidacao("filial", "Filial não encontrada.")
-        repo = EquipamentoRepo(s)
-        if repo.obter_por_nome(filial.id, nome) is not None:
-            return False
-        repo.adicionar(Equipamento(filial_id=filial.id, nome=nome))
-        return True
+        for ordem in s.scalars(select(OrdemServico)):
+            certo = normalizar_busca(f"{ordem.titulo or ''} {ordem.descricao or ''}")
+            if ordem.busca_texto != certo:
+                ordem.busca_texto = certo
+                mudou["ordens"] += 1
+        for item in s.scalars(select(OsItemCusto)):
+            certo = normalizar_busca(item.descricao)
+            if item.busca_texto != certo:
+                item.busca_texto = certo
+                mudou["itens"] += 1
+    logger.info("Busca recalculada: %s.", mudou)
+    return mudou
 
 
 # --- Consolidação na filial 1007 -------------------------------------------------------

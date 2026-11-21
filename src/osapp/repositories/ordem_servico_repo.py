@@ -18,7 +18,7 @@ class OrdemServicoRepo:
         return self._s.get(OrdemServico, os_id)
 
     def obter_sem_relacoes(self, os_id: int) -> OrdemServico | None:
-        """Só a linha da OS. Acessar um relacionamento (itens, equipamento...) levanta
+        """Só a linha da OS. Acessar um relacionamento (itens, executor...) levanta
         erro em vez de carregá-lo."""
         return self._s.scalars(
             select(OrdemServico).where(OrdemServico.id == os_id).options(raiseload("*"))

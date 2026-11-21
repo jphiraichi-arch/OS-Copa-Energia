@@ -956,3 +956,35 @@ relógio substituído; migração 0008 com dados.
 
 - A troca obrigatória é aplicada pela guarda de rotas da interface; os serviços não
   recusam outras chamadas de quem ainda tem senha temporária.
+
+## Prompt 21 — sem cadastro de equipamento; texto de busca normalizado (21/11/2026)
+
+- Decisão de 21/11: o que foi atendido é descrito pelos itens de custo. Saíram o modelo, o
+  repositório e o serviço do cadastro, os campos da OS, a pendência no
+  `previsto_completo` (agora: tempo, itens previstos, tipo e prioridade), os comandos de
+  CLI, o seed de exemplo, a lista suspensa nas telas e os testes que só tratavam disso.
+  `numero_sap` fica.
+- `osapp/busca.py`: `normalizar_busca(texto)` (NFKD sem marcas combinantes, casefold,
+  espaços únicos, aparado; None/'' -> ''), sem Flet nem banco. O termo digitado deve
+  passar pela mesma função (a busca em si muda no prompt 22).
+- `ordens_servico.busca_texto` (título + descrição) e `os_itens_custo.busca_texto`
+  (descrição): texto, padrão ''. Mantidos por eventos `before_insert`/`before_update` do
+  ORM nos dois modelos. Inserção/alteração em lote pulam esses eventos: há um teste que
+  falha se aparecerem em `src/`.
+- Migração `0010`: cria e preenche as duas colunas (cópia congelada da normalização no
+  próprio arquivo), remove a chave estrangeira, as duas colunas da OS e a tabela do
+  cadastro. O downgrade recria a estrutura vazia (os dados não voltam; fonte: o CSV).
+- CLI: `recalcular-busca` (idempotente; imprime quantas linhas mudaram) e a exportação
+  prévia `exportar-equipamentos ARQUIVO.csv`, em `osapp/exportacao_legada.py`, que
+  lê as tabelas por reflexão: os modelos do app não têm mais essas colunas. É o único
+  arquivo de `src/` com o nome antigo (exceção no teste de referências).
+
+### Quando um índice pg_trgm passa a valer a pena
+
+A busca atual é `LIKE '%termo%'` sobre `busca_texto`, sem índice: varre a tabela (das OS
+da filial, quando filtrada) e funciona igual no SQLite e no PostgreSQL. Com algumas
+dezenas de milhares de OS ou itens por filial, ou quando uma busca passar de ~300 ms
+medida no banco de produção (`EXPLAIN ANALYZE`), vale criar no PostgreSQL
+`CREATE EXTENSION pg_trgm` e índices GIN `gin_trgm_ops` em `ordens_servico.busca_texto`
+e `os_itens_custo.busca_texto`, numa migração só para PostgreSQL (o SQLite continua
+varrendo). Antes disso o índice só custa espaço e tempo de gravação.

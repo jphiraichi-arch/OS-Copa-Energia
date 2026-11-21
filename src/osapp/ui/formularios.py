@@ -19,7 +19,6 @@ MSG_DATA = "Data inválida. Use o formato dd/mm/aaaa."
 MSG_HORA = "Hora inválida. Use o formato HH:MM, por exemplo 13:50."
 MSG_QUANTIDADE = "Quantidade inválida. Use o formato 1 ou 1,5."
 MSG_CATEGORIA = "Escolha a categoria."
-OPCAO_OUTRO = "outro"  # chave da opção 'Outro' na lista de equipamentos
 
 _RE_DATA = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})$")
 _RE_HORA = re.compile(r"^(\d{1,2}):(\d{2})$")
@@ -204,27 +203,6 @@ def alteracoes_do_item(antes: ItemLocal, depois: ItemLocal) -> dict:
 def resumo_previa(itens: list[ItemLocal]) -> custos.ResumoCustos:
     """Prévia dos totais (o número oficial é o ``resumo_custos`` devolvido pelo serviço)."""
     return custos.calcular_resumo(itens)
-
-
-# --- Equipamento ------------------------------------------------------------------------
-
-
-def chave_do_equipamento(equipamento_id: int | None, equipamento_outro: str | None) -> str | None:
-    """Valor do dropdown para a OS carregada."""
-    if equipamento_id is not None:
-        return str(equipamento_id)
-    if equipamento_outro:
-        return OPCAO_OUTRO
-    return None
-
-
-def ler_equipamento(chave: str | None, texto_outro: str | None) -> dict:
-    """Escolha do dropdown -> {'equipamento_id', 'equipamento_outro'} para os serviços."""
-    if chave == OPCAO_OUTRO:
-        return {"equipamento_id": None, "equipamento_outro": (texto_outro or "").strip()}
-    if chave:
-        return {"equipamento_id": int(chave), "equipamento_outro": None}
-    return {"equipamento_id": None, "equipamento_outro": None}
 
 
 # --- Conclusão --------------------------------------------------------------------------

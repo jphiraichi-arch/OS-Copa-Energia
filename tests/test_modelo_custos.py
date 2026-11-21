@@ -1,4 +1,4 @@
-"""Prompt 12: itens de custo (quantidade exata), equipamentos, migração 0004, consolidação 1007."""
+"""Prompt 12: itens de custo (quantidade exata), campos SAP, migração 0004, consolidação 1007."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError, StatementError
 
 from osapp import cli, db
 from osapp.db import sessao
-from osapp.models import CategoriaCusto, Equipamento, OrdemServico, OsItemCusto, Usuario
+from osapp.models import CategoriaCusto, OrdemServico, OsItemCusto, Usuario
 from osapp.services import administracao, ordens
 from osapp.services.erros import ErroValidacao
 from tests.conftest import config_alembic
@@ -89,21 +89,11 @@ def test_os_com_itens_nao_pode_ser_apagada(os_base):
         s.delete(s.get(OrdemServico, os_base["os"]))
 
 
-def test_equipamento_e_campos_sap(os_base):
+def test_numero_sap(os_base):
     with sessao() as s:
-        eq = Equipamento(filial_id=os_base["filial"], nome="Compressor 1", codigo_sap="10002345")
-        s.add(eq)
-        s.flush()
-        o = s.get(OrdemServico, os_base["os"])
-        o.equipamento_id, o.numero_sap = eq.id, "4000123"
+        s.get(OrdemServico, os_base["os"]).numero_sap = "4000123"
     with sessao() as s:
-        o = s.get(OrdemServico, os_base["os"])
-        assert (o.equipamento_id is not None, o.equipamento_outro, o.numero_sap) == (
-            True,
-            None,
-            "4000123",
-        )
-        assert s.get(Equipamento, o.equipamento_id).ativo is True
+        assert s.get(OrdemServico, os_base["os"]).numero_sap == "4000123"
 
 
 # --- Migração 0004 com dados do esquema anterior ---------------------------------------
@@ -167,17 +157,13 @@ def test_migracao_0004_preserva_os_dados(banco_vazio):
 
     command.upgrade(cfg, "0004")
     os_, gerente, eventos, tabelas = ler()
-    assert {"categorias_custo", "os_itens_custo", "equipamentos", "os_sequencias"} <= tabelas
+    assert {"categorias_custo", "os_itens_custo", "os_sequencias"} <= tabelas
     assert (os_["numero"], os_["valor_previsto_centavos"], os_["valor_realizado_centavos"]) == (
         "OS-2026-000001",
         10000,
         12000,
     )
-    assert (os_["numero_sap"], os_["equipamento_id"], os_["equipamento_outro"]) == (
-        None,
-        None,
-        None,
-    )
+    assert os_["numero_sap"] is None
     assert (os_["versao"], gerente, eventos) == (3, True, 1)
     with db.obter_engine().connect() as c:
         m = MetaData()
@@ -270,7 +256,6 @@ def test_migracao_0005_mantem_os_totais_e_o_downgrade_os_restaura(banco_vazio):
     engine = db.obter_engine()
     t = MetaData()
     t.reflect(bind=engine)
-    eq = None
     with engine.begin() as c:
         c.execute(t.tables["filiais"].insert().values(id=1, codigo="1007", nome="Jardinópolis"))
         c.execute(
@@ -278,9 +263,6 @@ def test_migracao_0005_mantem_os_totais_e_o_downgrade_os_restaura(banco_vazio):
             .insert()
             .values(id=1, nome="Ana", login="ana", senha_hash="x", filial_id=1)
         )
-        eq = c.execute(
-            t.tables["equipamentos"].insert().values(filial_id=1, nome="Compressor 1")
-        ).inserted_primary_key[0]
         base = {
             "filial_id": 1,
             "criado_por_id": 1,
@@ -313,7 +295,6 @@ def test_migracao_0005_mantem_os_totais_e_o_downgrade_os_restaura(banco_vazio):
                 numero="A3",
                 status="ABERTA",
                 valor_previsto_centavos=0,
-                equipamento_id=eq,
                 **base,
             )
         )
@@ -354,10 +335,6 @@ def test_migracao_0005_mantem_os_totais_e_o_downgrade_os_restaura(banco_vazio):
             assert totais["PREVISTO"] == previsto
             assert totais["REALIZADO"] == (realizado or 0)
             assert any(i.fase == "REALIZADO" for i in ordem.itens) == (realizado is not None)
-    equipamentos = {
-        linha["id"]: (linha["equipamento_id"], linha["equipamento_outro"]) for linha in linhas
-    }
-    assert equipamentos == {1: (None, "Não informado"), 2: (None, "Não informado"), 3: (eq, None)}
 
     command.downgrade(cfg, "0004")
     linhas, itens_ = estado()
@@ -365,7 +342,6 @@ def test_migracao_0005_mantem_os_totais_e_o_downgrade_os_restaura(banco_vazio):
         r["id"]: (r["valor_previsto_centavos"], r["valor_realizado_centavos"]) for r in linhas
     } == antes
     assert itens_ == []  # os itens migrados saem; os totais voltam às colunas
-    assert all(r["equipamento_outro"] is None for r in linhas)
 
     command.upgrade(cfg, "head")  # e sobe de novo sem duplicar
     with sessao() as s:
@@ -394,7 +370,6 @@ def test_migracao_0005_soma_itens_reais_no_downgrade(banco):
             ItemEntrada(categoria_id("PECAS_MATERIAIS"), "Peça", Decimal("2"), 1000),
         ],
         60,
-        equipamento_outro="Equipamento de teste",
     )
     assert d.resumo_custos.total_previsto_centavos == 7000
     command.downgrade(config_alembic(), "0004")

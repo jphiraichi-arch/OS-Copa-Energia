@@ -9,9 +9,10 @@ import argparse
 import getpass
 import sys
 
+from osapp import exportacao_legada
 from osapp.config import ConfigError
 from osapp.logs import configurar_logging
-from osapp.services import administracao, equipamentos, ordens
+from osapp.services import administracao, ordens
 from osapp.services.erros import (
     ErroConflito,
     ErroDominio,
@@ -82,14 +83,12 @@ def _consolidar_1007(args) -> str:
     return "\n".join(linhas)
 
 
-def _criar_equipamento(args) -> str:
-    e = equipamentos.criar_equipamento(args.responsavel, args.filial, args.nome, args.codigo_sap)
-    return f"Equipamento {e.id} criado: {e.nome}."
-
-
-def _desativar_equipamento(args) -> str:
-    e = equipamentos.desativar_equipamento(args.responsavel, args.id)
-    return f"Equipamento {e.id} desativado: {e.nome}."
+def _recalcular_busca(_args) -> str:
+    resultado = administracao.recalcular_busca()
+    return (
+        f"Busca recalculada: {resultado['ordens']} ordem(ns) e {resultado['itens']} item(ns) "
+        "alterados."
+    )
 
 
 def _redefinir_senha(args) -> str:
@@ -175,17 +174,13 @@ def criar_parser() -> argparse.ArgumentParser:
     p.add_argument("--responsavel", help="Login do administrador que aplica")
     p.set_defaults(func=_consolidar_1007)
 
-    p = sub.add_parser("criar-equipamento", help="Cadastra um equipamento (administrador)")
-    p.add_argument("--responsavel", required=True, help="Login do administrador")
-    p.add_argument("--filial", required=True, help="Código da filial")
-    p.add_argument("--nome", required=True)
-    p.add_argument("--codigo-sap", dest="codigo_sap")
-    p.set_defaults(func=_criar_equipamento)
+    p = sub.add_parser(
+        "recalcular-busca",
+        help="Recalcula o texto de busca de todas as ordens e itens (pode repetir)",
+    )
+    p.set_defaults(func=_recalcular_busca)
 
-    p = sub.add_parser("desativar-equipamento", help="Desativa um equipamento (administrador)")
-    p.add_argument("--responsavel", required=True, help="Login do administrador")
-    p.add_argument("--id", required=True, type=int)
-    p.set_defaults(func=_desativar_equipamento)
+    exportacao_legada.registrar_comando(sub)  # exportação antes da migração 0010
 
     p = sub.add_parser(
         "previa-papeis",

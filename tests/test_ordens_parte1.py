@@ -47,7 +47,6 @@ def test_usuario_comum_cria_os_na_propria_filial(cenario, monkeypatch):
     assert re.fullmatch(r"F001-2026-\d{6}", d.numero) and d.numero == "F001-2026-000001"
     assert (d.titulo, d.descricao) == ("Troca de rolamento", "Esteira com ruído.")
     assert (d.resumo_custos.total_previsto_centavos, d.tempo_previsto_minutos) == (15000, 90)
-    assert d.equipamento == "Equipamento de teste"
     assert (d.criado_por_id, d.criado_por_nome) == (cenario["marina"], "Marina Teste")
     assert d.criado_em == T0 and d.versao == 1
     assert d.executor_id is None and d.resumo_custos.total_realizado_centavos == 0

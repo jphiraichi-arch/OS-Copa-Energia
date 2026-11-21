@@ -23,7 +23,6 @@ from osapp.db import sessao
 from osapp.models import OrdemServico, OsEvento, OsItemCusto
 from osapp.repositories import (
     CategoriaCustoRepo,
-    EquipamentoRepo,
     FilialRepo,
     OrdemServicoRepo,
     OsEventoRepo,
@@ -70,17 +69,13 @@ PENDENCIA_TEMPO = "tempo previsto"
 PENDENCIA_VALOR = "custos previstos (pelo menos um item)"
 PENDENCIA_TIPO = "tipo de manutenção"
 PENDENCIA_PRIORIDADE = "prioridade"
-PENDENCIA_EQUIPAMENTO = "equipamento"
 
 CAMPOS_TEXTO = ("titulo", "descricao")
 CAMPOS_PREVISTO = ("titulo", "descricao", "tempo_previsto_minutos")  # compatibilidade
 CAMPOS_MANUTENCAO = ("tempo_previsto_minutos", "tipo_id", "prioridade")
 CAMPOS_SOLICITACAO = ("titulo", "descricao", "urgencia")
 CAMPOS_REALIZADO = ("inicio_realizado", "fim_realizado", "descricao_realizado")
-CAMPOS_EQUIPAMENTO = ("equipamento_id", "equipamento_outro")
 CAMPO_FILIAL = "filial_id"
-EQUIPAMENTO_OUTRO_MIN = 3
-EQUIPAMENTO_OUTRO_MAX = 120
 
 
 # --- DTOs -----------------------------------------------------------------------------
@@ -181,7 +176,7 @@ class AcoesSolicitante:
 @dataclass(frozen=True)
 class OsVisaoSolicitante:
     """Detalhe para o papel usuario. A consulta só lê estas colunas: previsto, realizado,
-    custos, equipamento, tipo, prioridade, executor e histórico nem são carregados."""
+    custos, tipo, prioridade, executor e histórico nem são carregados."""
 
     id: int
     numero: str
@@ -216,9 +211,6 @@ class OsDetalhe:
     criado_em: datetime
     atualizado_em: datetime
     tempo_previsto_minutos: int | None
-    equipamento_id: int | None
-    equipamento_outro: str | None
-    equipamento: str | None  # nome do equipamento ou o texto de 'Outro'
     numero_sap: str | None
     executor_id: int | None
     executor_nome: str | None
@@ -409,8 +401,6 @@ def pendencias_para_iniciar(ordem: OrdemServico) -> tuple[str, ...]:
         faltam.append(PENDENCIA_TIPO)
     if ordem.prioridade is None:
         faltam.append(PENDENCIA_PRIORIDADE)
-    if ordem.equipamento_id is None and not ordem.equipamento_outro:
-        faltam.append(PENDENCIA_EQUIPAMENTO)
     return tuple(faltam)
 
 
@@ -466,7 +456,7 @@ def _carregar_visivel(s: Session, ator: Ator, os_id: object) -> OrdemServico:
 
 def _carregar_para_escrita(s: Session, ator: Ator, os_id: object) -> OrdemServico:
     """Como _carregar_visivel; para o papel usuario não carrega relacionamentos (itens,
-    equipamento, executor...): só a linha da OS, para gravar."""
+    executor...): só a linha da OS, para gravar."""
     if not ator.is_usuario:
         return _carregar_visivel(s, ator, os_id)
     ordem = OrdemServicoRepo(s).obter_sem_relacoes(os_id) if _e_int(os_id) else None
@@ -479,12 +469,6 @@ def _itens_ordenados(ordem: OrdemServico) -> tuple[custos.ItemDTO, ...]:
     ordem_fase = {custos.FASE_PREVISTO: 0, custos.FASE_REALIZADO: 1}
     dtos = [custos.item_dto(item) for item in ordem.itens]
     return tuple(sorted(dtos, key=lambda d: (ordem_fase[d.fase], d.categoria_ordem, d.id)))
-
-
-def _nome_do_equipamento(ordem: OrdemServico) -> str | None:
-    if ordem.equipamento is not None:
-        return ordem.equipamento.nome
-    return ordem.equipamento_outro
 
 
 def _detalhe(ordem: OrdemServico, ator: Ator) -> OsDetalhe:
@@ -513,9 +497,6 @@ def _detalhe(ordem: OrdemServico, ator: Ator) -> OsDetalhe:
         criado_em=ordem.criado_em,
         atualizado_em=ordem.atualizado_em,
         tempo_previsto_minutos=ordem.tempo_previsto_minutos,
-        equipamento_id=ordem.equipamento_id,
-        equipamento_outro=ordem.equipamento_outro,
-        equipamento=_nome_do_equipamento(ordem),
         numero_sap=ordem.numero_sap,
         executor_id=ordem.executor_id,
         executor_nome=ordem.executor.nome if ordem.executor else None,
@@ -625,42 +606,6 @@ def _ano_local(instante: datetime) -> int:
     return instante.astimezone(ZoneInfo(carregar_config().tz)).year
 
 
-def _validar_equipamento(
-    s: Session,
-    filial_id: int,
-    equipamento_id: object,
-    equipamento_outro: object,
-    opcional: bool = False,
-) -> tuple[int | None, str | None]:
-    """No máximo um: equipamento ativo da filial da OS, ou 'Outro' com texto de 3 a 120.
-    Com ``opcional``, nenhum dos dois também vale (o previsto completo cobra depois)."""
-    tem_id = equipamento_id is not None
-    tem_outro = equipamento_outro is not None and (
-        not isinstance(equipamento_outro, str) or equipamento_outro.strip() != ""
-    )
-    if opcional and not tem_id and not tem_outro:
-        return None, None
-    if tem_id == tem_outro:
-        raise ErroValidacao(
-            "equipamento_id", "Escolha um equipamento da lista ou informe 'Outro', não os dois."
-        )
-    if tem_id:
-        equipamento = EquipamentoRepo(s).obter(equipamento_id) if _e_int(equipamento_id) else None
-        if equipamento is None or equipamento.filial_id != filial_id or not equipamento.ativo:
-            raise ErroValidacao("equipamento_id", "Escolha um equipamento ativo desta filial.")
-        return equipamento.id, None
-    if not isinstance(equipamento_outro, str):
-        raise ErroValidacao("equipamento_outro", "Descreva o equipamento.")
-    texto = equipamento_outro.strip()
-    if not EQUIPAMENTO_OUTRO_MIN <= len(texto) <= EQUIPAMENTO_OUTRO_MAX:
-        raise ErroValidacao(
-            "equipamento_outro",
-            f"Descreva o equipamento com {EQUIPAMENTO_OUTRO_MIN} a {EQUIPAMENTO_OUTRO_MAX} "
-            "caracteres.",
-        )
-    return None, texto
-
-
 def _gravar_itens(
     s: Session, ordem: OrdemServico, ator: Ator, fase: str, itens: list[tuple], agora: datetime
 ) -> None:
@@ -762,13 +707,11 @@ def criar_os(
     tempo_previsto_minutos: int | None = None,
     filial_id: int | None = None,
     *,
-    equipamento_id: int | None = None,
-    equipamento_outro: str | None = None,
     tipo_id: int | None = None,
     prioridade: str | None = None,
 ) -> OsDetalhe:
     """OS completa (origem 'manutencao'): só manutenção e administrador. Previsto, tipo,
-    prioridade e equipamento são opcionais aqui; iniciar exige o previsto completo.
+    prioridade são opcionais aqui; iniciar exige o previsto completo.
     Um evento CRIACAO e um ITEM_ADICIONADO por item, numa só transação."""
     ator = carregar_ator(ator_id)
     if ator.is_usuario:
@@ -789,9 +732,6 @@ def criar_os(
                 if itens_previstos
                 else []
             )
-            eq_id, eq_outro = _validar_equipamento(
-                s, destino, equipamento_id, equipamento_outro, opcional=True
-            )
             agora = relogio.agora()
             ordem = _nova_ordem(
                 s,
@@ -802,8 +742,6 @@ def criar_os(
                 titulo=titulo,
                 descricao=descricao,
                 tempo_previsto_minutos=tempo,
-                equipamento_id=eq_id,
-                equipamento_outro=eq_outro,
                 tipo_id=_validar_tipo(s, tipo_id),
                 prioridade=prioridade,
             )
@@ -989,7 +927,7 @@ def _registrar_mudancas(s, ator, ordem, mudancas, agora) -> None:
 
 
 def editar_os(ator_id: int, os_id: int, versao: int, alteracoes: dict) -> OsDetalhe:
-    """Campos da manutenção (tempo previsto, tipo, prioridade, equipamento; filial só o
+    """Campos da manutenção (tempo previsto, tipo, prioridade; filial só o
     administrador; título e descrição só em OS de origem 'manutencao'; realizado só o
     administrador em OS concluída). Um evento EDICAO por campo que mudou."""
     ator = carregar_ator(ator_id)
@@ -1002,7 +940,7 @@ def editar_os(ator_id: int, os_id: int, versao: int, alteracoes: dict) -> OsDeta
                 raise ErroValidacao("alteracoes", "Dados inválidos.")
             if not _pode_editar(ator, ordem):
                 raise _negar(ator, "editar OS")
-            permitidos = set(CAMPOS_MANUTENCAO) | set(CAMPOS_EQUIPAMENTO)
+            permitidos = set(CAMPOS_MANUTENCAO)
             if ordem.origem == ORIGEM_MANUTENCAO:
                 permitidos.update(CAMPOS_TEXTO)
             if ator.is_admin:
@@ -1032,19 +970,6 @@ def editar_os(ator_id: int, os_id: int, versao: int, alteracoes: dict) -> OsDeta
                     if not _e_int(valor) or FilialRepo(s).obter(valor) is None:
                         raise ErroValidacao(campo, "Filial não encontrada.")
                     novos[campo] = valor
-            if set(alteracoes) & {*CAMPOS_EQUIPAMENTO, CAMPO_FILIAL}:
-                # Informar um dos dois troca o tipo: escolher da lista apaga o 'Outro' e
-                # vice-versa. Mudar a filial exige que o equipamento seja da nova filial.
-                if "equipamento_id" in alteracoes or "equipamento_outro" in alteracoes:
-                    eq_id = alteracoes.get("equipamento_id")
-                    eq_outro = alteracoes.get("equipamento_outro")
-                else:
-                    eq_id, eq_outro = ordem.equipamento_id, ordem.equipamento_outro
-                filial_final = novos.get(CAMPO_FILIAL, ordem.filial_id)
-                eq_id, eq_outro = _validar_equipamento(
-                    s, filial_final, eq_id, eq_outro, opcional=True
-                )
-                novos["equipamento_id"], novos["equipamento_outro"] = eq_id, eq_outro
             if "inicio_realizado" in novos or "fim_realizado" in novos:
                 _validar_periodo(
                     novos.get("inicio_realizado", ordem.inicio_realizado),
@@ -1059,15 +984,6 @@ def editar_os(ator_id: int, os_id: int, versao: int, alteracoes: dict) -> OsDeta
                     continue
                 if campo == CAMPO_FILIAL:  # no histórico vai o código da filial, não o id
                     mudancas.append((campo, ordem.filial.codigo, FilialRepo(s).obter(novo).codigo))
-                elif campo == "equipamento_id":  # e o nome do equipamento, não o id
-                    repo = EquipamentoRepo(s)
-                    mudancas.append(
-                        (
-                            campo,
-                            repo.obter(antigo).nome if antigo else None,
-                            repo.obter(novo).nome if novo else None,
-                        )
-                    )
                 elif campo == "tipo_id":  # e o nome do tipo
                     repo_tipo = TipoManutencaoRepo(s)
                     mudancas.append(

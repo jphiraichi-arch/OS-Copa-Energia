@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text, func
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text, event, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from osapp.busca import normalizar_busca
 from osapp.db import Base
 from osapp.models.custos import OsItemCusto
-from osapp.models.equipamento import Equipamento
 from osapp.models.filial import Filial
 from osapp.models.tipo_manutencao import TipoManutencao
 from osapp.models.tipos import DataHoraUTC
@@ -58,9 +58,6 @@ class OrdemServico(Base):
     fim_realizado: Mapped[datetime | None] = mapped_column(DataHoraUTC())
     descricao_realizado: Mapped[str | None] = mapped_column(Text)
     executor_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
-    # Equipamento: um cadastrado da filial, ou "Outro" com texto livre.
-    equipamento_id: Mapped[int | None] = mapped_column(ForeignKey("equipamentos.id"))
-    equipamento_outro: Mapped[str | None] = mapped_column(String(120))
     concluido_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
     criado_em: Mapped[datetime] = mapped_column(DataHoraUTC(), default=_agora_utc)
     atualizado_em: Mapped[datetime] = mapped_column(DataHoraUTC(), default=_agora_utc)
@@ -81,6 +78,9 @@ class OrdemServico(Base):
     concluida_em: Mapped[datetime | None] = mapped_column(DataHoraUTC())
     cancelada_em: Mapped[datetime | None] = mapped_column(DataHoraUTC())
     cancelada_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
+    # Busca sem acento e sem maiúsculas: normalizar_busca(título + ' ' + descrição).
+    # Mantida pelos eventos do ORM abaixo; nunca usar insert/update em lote nesta tabela.
+    busca_texto: Mapped[str] = mapped_column(Text, default="", server_default="")
 
     # Trava otimista: o ORM inclui "WHERE versao = ?" em cada UPDATE e incrementa o valor.
     __mapper_args__ = {"version_id_col": versao}
@@ -89,10 +89,15 @@ class OrdemServico(Base):
     criado_por: Mapped[Usuario] = relationship(foreign_keys=[criado_por_id])
     executor: Mapped[Usuario | None] = relationship(foreign_keys=[executor_id])
     concluido_por: Mapped[Usuario | None] = relationship(foreign_keys=[concluido_por_id])
-    equipamento: Mapped[Equipamento | None] = relationship()
     tipo: Mapped[TipoManutencao | None] = relationship()
     cancelada_por: Mapped[Usuario | None] = relationship(foreign_keys=[cancelada_por_id])
     # Itens de custo (os totais são sempre calculados a partir deles).
     itens: Mapped[list[OsItemCusto]] = relationship(
         order_by="OsItemCusto.id", lazy="selectin", viewonly=True
     )
+
+
+@event.listens_for(OrdemServico, "before_insert")
+@event.listens_for(OrdemServico, "before_update")
+def _atualizar_busca_da_os(_mapper, _conexao, ordem: OrdemServico) -> None:
+    ordem.busca_texto = normalizar_busca(f"{ordem.titulo or ''} {ordem.descricao or ''}")

@@ -44,13 +44,11 @@ CAMPOS: dict[str, tuple[str, Callable[[str], str]]] = {
     "inicio_realizado": ("Início", _data_hora),
     "fim_realizado": ("Fim", _data_hora),
     "descricao_realizado": ("Descrição do que foi feito", _texto),
-    "equipamento_id": ("Equipamento", _texto),
     "urgencia": ("Urgência", lambda v: _rotulos().nivel(v)),
     "prioridade": ("Prioridade", lambda v: _rotulos().nivel(v)),
     "tipo_id": ("Tipo de manutenção", _texto),
     "origem": ("Origem", lambda v: _rotulos().origem(v)),
     "nota_conclusao": ("Nota para o solicitante", _texto),
-    "equipamento_outro": ("Equipamento (outro)", _texto),
 }
 
 # Eventos de item de custo: o campo gravado é 'item 12' ou 'item 12 - valor unitário'.

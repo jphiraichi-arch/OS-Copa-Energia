@@ -63,7 +63,6 @@ def abrir(p, tempo, aberta, urgencia="media", sol="sol", man="man"):
             "tempo_previsto_minutos": 60,
             "tipo_id": tipo_id(),
             "prioridade": "media",
-            "equipamento_outro": "Bomba",
         },
     )
     return custos.adicionar_item(
@@ -142,7 +141,6 @@ def test_exclusoes(p, tempo):
         "Plano.",
         itens(100),
         60,
-        equipamento_outro="Bomba",
         tipo_id=tipo_id(),
         prioridade="baixa",
     )
@@ -158,7 +156,6 @@ def test_exclusoes(p, tempo):
             "tempo_previsto_minutos": 60,
             "tipo_id": tipo_id(),
             "prioridade": "media",
-            "equipamento_outro": "Bomba",
         },
     )
     d = custos.adicionar_item(

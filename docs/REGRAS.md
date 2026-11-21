@@ -94,3 +94,14 @@ Toda função de serviço começa por `carregar_ator`; usuário inativo é recus
 
 Status cancelada, triagem, aceite pela operação, KPIs, fotos, notificações, planos preventivos,
 estoque, exportação PDF/Excel.
+
+## Busca e cadastro de equipamento (prompt 21)
+
+- Não existe cadastro de equipamento: o que foi atendido é descrito pelos itens de custo
+  (peça, mão de obra, terceiros...). `numero_sap` continua na OS para a integração futura.
+- Busca sem diferença de maiúsculas e acentos: o texto gravado (`busca_texto`) e o termo
+  digitado passam pela mesma `osapp.busca.normalizar_busca`. Nada específico de um banco
+  (nem `unaccent`, nem índice trigram por enquanto): o mesmo código no SQLite e no
+  PostgreSQL.
+- `busca_texto` é mantido por eventos do ORM: nunca usar inserção ou alteração em lote em
+  `ordens_servico` e `os_itens_custo`.

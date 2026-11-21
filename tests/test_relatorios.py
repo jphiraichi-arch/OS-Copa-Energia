@@ -35,7 +35,6 @@ def dados(cenario, monkeypatch):
             itens(previsto),
             60,
             filial_id,
-            equipamento_outro="Equipamento de teste",
             tipo_id=tipo_id(),
             prioridade="media",
         )
@@ -67,7 +66,6 @@ def dados(cenario, monkeypatch):
         "Descrição.",
         itens(100),
         30,
-        equipamento_outro="Equipamento de teste",
     )
     d = ordens.criar_os(
         c["joao"],
@@ -75,7 +73,6 @@ def dados(cenario, monkeypatch):
         "Descrição.",
         itens(100),
         30,
-        equipamento_outro="Equipamento de teste",
         tipo_id=tipo_id(),
         prioridade="media",
     )
@@ -210,7 +207,6 @@ def test_no_maximo_cinco_maiores_desvios(cenario, monkeypatch):
             "Descrição.",
             itens(1000),
             60,
-            equipamento_outro="Equipamento de teste",
             tipo_id=tipo_id(),
             prioridade="media",
         )

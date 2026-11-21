@@ -74,7 +74,6 @@ def completar(p, os_id):
             "tempo_previsto_minutos": 60,
             "tipo_id": tipo_id(),
             "prioridade": "media",
-            "equipamento_outro": "Bomba de teste",
         },
     )
     return custos.adicionar_item(
@@ -236,7 +235,6 @@ PROIBIDOS = (
     "realizado",
     "custo",
     "valor",
-    "equipamento",
     "tipo",
     "prioridade",
     "executor",
@@ -308,7 +306,6 @@ def test_consulta_do_usuario_nem_le_colunas_restritas(pessoas):
     for sql in consultas_de_os:
         for coluna in (
             "os_itens_custo",
-            "equipamento",
             "tempo_previsto",
             "prioridade",
             "tipo_id",
@@ -383,7 +380,7 @@ def test_criar_os_completa_so_manutencao_e_admin(pessoas):
         None,
         (),
     )
-    assert d.acoes.pode_iniciar is False and len(d.pendencias_para_iniciar) == 5
+    assert d.acoes.pode_iniciar is False and len(d.pendencias_para_iniciar) == 4
 
 
 # --- Previsto completo, conclusão, cancelamento, desfazer ---------------------------
@@ -396,7 +393,6 @@ def test_criar_os_completa_so_manutencao_e_admin(pessoas):
         ("itens", ordens.PENDENCIA_VALOR),
         ("tipo", ordens.PENDENCIA_TIPO),
         ("prioridade", ordens.PENDENCIA_PRIORIDADE),
-        ("equipamento", ordens.PENDENCIA_EQUIPAMENTO),
     ],
 )
 def test_iniciar_exige_o_previsto_completo(pessoas, falta, pendencia):
@@ -405,14 +401,12 @@ def test_iniciar_exige_o_previsto_completo(pessoas, falta, pendencia):
         "itens_previstos": itens(1000),
         "tipo_id": tipo_id(),
         "prioridade": "media",
-        "equipamento_outro": "Bomba",
     }
     chave = {
         "tempo": "tempo_previsto_minutos",
         "itens": "itens_previstos",
         "tipo": "tipo_id",
         "prioridade": "prioridade",
-        "equipamento": "equipamento_outro",
     }[falta]
     dados.pop(chave)
     d = ordens.criar_os(pessoas["man"], "Título ok", "Descrição.", **dados)

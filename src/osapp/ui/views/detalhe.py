@@ -110,7 +110,6 @@ class Detalhe(Tela):
                         "Prioridade (definida pela manutenção)", rotulos.nivel(d.prioridade)
                     ),
                     basicos.rotulo_valor("Tipo de manutenção", d.tipo_nome or "Não definido"),
-                    basicos.rotulo_valor("Equipamento", d.equipamento or "-"),
                     *([basicos.rotulo_valor("Nº SAP", d.numero_sap)] if d.numero_sap else []),
                     basicos.rotulo_valor(
                         "Criada por",
@@ -231,7 +230,7 @@ class Detalhe(Tela):
     # --- Visão do solicitante (papel usuario) -------------------------------------------
 
     def _montar_solicitante(self, v) -> list[ft.Control]:
-        """Só o modelo reduzido: nada de custos, itens, equipamento, executor ou histórico."""
+        """Só o modelo reduzido: nada de custos, itens, executor ou histórico."""
         topo = basicos.cartao(
             basicos.coluna(
                 [

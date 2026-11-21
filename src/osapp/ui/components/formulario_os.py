@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import flet as ft
 
-from osapp.services import equipamentos, ordens
+from osapp.services import ordens
 from osapp.ui import formularios, rotulos, theme
 from osapp.ui.components import basicos
 from osapp.ui.components.campos import CampoDuracao, CampoHora
@@ -44,7 +44,6 @@ class FormularioOs:
         self,
         app,
         filiais,
-        lista_equipamentos,
         os=None,
         com_realizado: bool = False,
         tipos=(),
@@ -85,25 +84,6 @@ class FormularioOs:
             os.prioridade if os else None,
             on_select=self._ao_escolher_lista,
         )
-        lista_equipamentos = list(lista_equipamentos)
-        if os and os.equipamento_id and all(e.id != os.equipamento_id for e in lista_equipamentos):
-            # Equipamento desativado depois de escolhido: continua aparecendo nesta OS.
-            lista_equipamentos.append(_EquipamentoAtual(os.equipamento_id, os.equipamento or ""))
-        self.equipamento = lista_suspensa(
-            "Equipamento",
-            self._opcoes_equipamento(lista_equipamentos),
-            formularios.chave_do_equipamento(os.equipamento_id, os.equipamento_outro)
-            if os
-            else None,
-            on_select=self._ao_escolher_equipamento,
-        )
-        self.equipamento_outro = basicos.campo_texto(
-            "Qual equipamento?",
-            value=(os.equipamento_outro or "") if os else "",
-            max_length=ordens.EQUIPAMENTO_OUTRO_MAX,
-            on_change=limpar,
-            visible=self.equipamento.value == formularios.OPCAO_OUTRO,
-        )
         self.tempo = CampoDuracao(
             "Tempo previsto (horas:minutos)", (os.tempo_previsto_minutos or 0) if os else 0
         )
@@ -112,7 +92,6 @@ class FormularioOs:
             "Filial",
             [ft.DropdownOption(key=str(f.id), text=f"{f.codigo} - {f.nome}") for f in filiais],
             str(filial_inicial) if filial_inicial is not None else None,
-            on_select=self._ao_escolher_filial,
             disabled=not app.sessao.is_admin,  # trava visual; quem decide é o serviço
         )
         controles: list[ft.Control] = [
@@ -121,8 +100,6 @@ class FormularioOs:
             ft.Row([self.filial]),
             ft.Row([self.tipo]),
             ft.Row([self.prioridade]),
-            ft.Row([self.equipamento]),
-            self.equipamento_outro,
             self.tempo.controle,
         ]
         # Nome do campo no serviço -> controle onde a mensagem de ErroValidacao aparece.
@@ -130,8 +107,6 @@ class FormularioOs:
             "titulo": self.titulo,
             "descricao": self.descricao,
             "tempo_previsto_minutos": self.tempo.controle,
-            "equipamento_outro": self.equipamento_outro,
-            "equipamento_id": _ErroNaLista(self.equipamento),
             "filial_id": _ErroNaLista(self.filial),
             "tipo_id": _ErroNaLista(self.tipo),
             "prioridade": _ErroNaLista(self.prioridade),
@@ -187,11 +162,6 @@ class FormularioOs:
             on_change=self._limpar_erro,
         )
 
-    @staticmethod
-    def _opcoes_equipamento(lista_equipamentos) -> list[ft.DropdownOption]:
-        opcoes = [ft.DropdownOption(key=str(e.id), text=e.nome) for e in lista_equipamentos]
-        return [*opcoes, ft.DropdownOption(key=formularios.OPCAO_OUTRO, text=ROTULO_OUTRO)]
-
     # --- Eventos dos campos -----------------------------------------------------------
 
     def _limpar_erro(self, e) -> None:
@@ -204,26 +174,6 @@ class FormularioOs:
             e.control.error_text = None
             e.control.update()
 
-    def _ao_escolher_equipamento(self, _e=None) -> None:
-        self.equipamento.error_text = None
-        self.equipamento_outro.error = None
-        self.equipamento_outro.visible = self.equipamento.value == formularios.OPCAO_OUTRO
-        self.controle.update()
-
-    async def _ao_escolher_filial(self, _e=None) -> None:
-        """Outra filial (administrador): a lista de equipamentos passa a ser a dela."""
-        if not self.filial.value:
-            return
-        resultado = await self.app.chamar(
-            equipamentos.listar_equipamentos, self.app.sessao.ator_id, int(self.filial.value)
-        )
-        if not resultado.ok:
-            return
-        self.equipamento.options = self._opcoes_equipamento(resultado.valor)
-        if self.equipamento.value != formularios.OPCAO_OUTRO:
-            self.equipamento.value = None  # o equipamento escolhido era da outra filial
-        self.controle.update()
-
     # --- Leitura ----------------------------------------------------------------------
 
     def _digitado(self) -> dict[str, str]:
@@ -231,8 +181,6 @@ class FormularioOs:
         valores = {
             "titulo": self.titulo.value or "",
             "descricao": self.descricao.value or "",
-            "equipamento": self.equipamento.value or "",
-            "equipamento_outro": self.equipamento_outro.value or "",
             "tempo": self.tempo.controle.value or "",
             "filial": self.filial.value or "",
             "tipo": self.tipo.value or "",
@@ -254,7 +202,7 @@ class FormularioOs:
     def ler(self, marcar_erros: bool = True) -> dict | None:
         """Valores prontos para o serviço, ou None se algum campo não pôde ser lido.
 
-        O previsto (tempo, tipo, prioridade, equipamento) é opcional aqui: iniciar a
+        O previsto (tempo, tipo, prioridade) é opcional aqui: iniciar a
         execução é que exige tudo. Erros locais (máscara de hora, data) aparecem sob o
         campo. O serviço valida tudo de novo.
         """
@@ -266,7 +214,6 @@ class FormularioOs:
             "filial_id": int(self.filial.value) if self.filial.value else None,
             "tipo_id": int(self.tipo.value) if self.tipo.value else None,
             "prioridade": self.prioridade.value or None,
-            **formularios.ler_equipamento(self.equipamento.value, self.equipamento_outro.value),
         }
         if self.texto_editavel:
             valores["titulo"] = (self.titulo.value or "").strip()
@@ -298,15 +245,8 @@ class FormularioOs:
         return None if erros else valores
 
     def alteracoes(self, valores: dict) -> dict:
-        """Só os campos que mudaram em relação à OS carregada (para editar_os).
-
-        Equipamento vai sempre em par: o serviço troca o tipo (lista ou 'Outro') junto.
-        """
-        mudou = formularios.somente_alterados(self._original or {}, valores)
-        if "equipamento_id" in mudou or "equipamento_outro" in mudou:
-            mudou["equipamento_id"] = valores["equipamento_id"]
-            mudou["equipamento_outro"] = valores["equipamento_outro"]
-        return mudou
+        """Só os campos que mudaram em relação à OS carregada (para editar_os)."""
+        return formularios.somente_alterados(self._original or {}, valores)
 
     def marcar_como_salvo(self) -> None:
         self._inicial = self._digitado()
@@ -328,11 +268,6 @@ class _ErroNaLista:
 
     def update(self) -> None:
         self.lista.update()
-
-
-class _EquipamentoAtual:
-    def __init__(self, id_: int, nome: str) -> None:
-        self.id, self.nome = id_, nome
 
 
 def _definir_erro(controle, mensagem: str | None) -> None:

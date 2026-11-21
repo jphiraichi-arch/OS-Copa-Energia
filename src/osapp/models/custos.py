@@ -3,9 +3,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, Index, String, true
+from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, Index, String, Text, event, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from osapp.busca import normalizar_busca
 from osapp.db import Base
 from osapp.models.tipos import DataHoraUTC, Quantidade
 
@@ -45,9 +46,17 @@ class OsItemCusto(Base):
     fase: Mapped[str] = mapped_column(String(10))
     categoria_id: Mapped[int] = mapped_column(ForeignKey("categorias_custo.id"))
     descricao: Mapped[str] = mapped_column(String(200))
+    # normalizar_busca(descrição), mantida pelos eventos do ORM abaixo.
+    busca_texto: Mapped[str] = mapped_column(Text, default="", server_default="")
     quantidade: Mapped[Decimal] = mapped_column(Quantidade())
     valor_unitario_centavos: Mapped[int] = mapped_column(BigInteger)
     criado_em: Mapped[datetime] = mapped_column(DataHoraUTC(), default=_agora_utc)
     atualizado_em: Mapped[datetime] = mapped_column(DataHoraUTC(), default=_agora_utc)
 
     categoria: Mapped[CategoriaCusto] = relationship()
+
+
+@event.listens_for(OsItemCusto, "before_insert")
+@event.listens_for(OsItemCusto, "before_update")
+def _atualizar_busca_do_item(_mapper, _conexao, item: OsItemCusto) -> None:
+    item.busca_texto = normalizar_busca(item.descricao)

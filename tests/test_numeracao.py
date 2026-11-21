@@ -39,7 +39,6 @@ def criar(ator_id):
         "Descrição.",
         itens(100),
         60,
-        equipamento_outro="Equipamento de teste",
     )
 
 

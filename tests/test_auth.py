@@ -230,11 +230,11 @@ def test_duplicados_geram_conflito(usuarios):
 
 
 def test_seed_duas_vezes_nao_duplica(banco):
-    from osapp.models import CategoriaCusto, Equipamento
+    from osapp.models import CategoriaCusto
 
     # As categorias já vêm da migração 0004; o seed só completa o que faltar.
-    assert seed.executar(SENHA) == {"filiais": 1, "categorias": 0, "equipamentos": 3, "usuarios": 1}
-    assert seed.executar(SENHA) == {"filiais": 0, "categorias": 0, "equipamentos": 0, "usuarios": 0}
+    assert seed.executar(SENHA) == {"filiais": 1, "categorias": 0, "usuarios": 1}
+    assert seed.executar(SENHA) == {"filiais": 0, "categorias": 0, "usuarios": 0}
     with sessao() as s:
         assert [(f.codigo, f.nome) for f in s.query(Filial)] == [("1007", "Jardinópolis")]
         assert [c.codigo for c in s.query(CategoriaCusto).order_by(CategoriaCusto.ordem)] == [
@@ -242,11 +242,6 @@ def test_seed_duas_vezes_nao_duplica(banco):
             "PECAS_MATERIAIS",
             "SERVICOS_TERCEIROS",
             "OUTROS",
-        ]
-        assert sorted(e.nome for e in s.query(Equipamento)) == [
-            "Equipamento exemplo 1",
-            "Equipamento exemplo 2",
-            "Equipamento exemplo 3",
         ]
         usuarios = {u.login: (u.filial.codigo, u.is_admin) for u in s.query(Usuario)}
     assert usuarios == {"admin": ("1007", True)}  # sem exemplos por padrão

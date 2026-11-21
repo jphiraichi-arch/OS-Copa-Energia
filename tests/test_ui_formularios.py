@@ -174,21 +174,6 @@ def test_item_local_de_um_dto():
     assert f.itens_da_fase([dto], "PREVISTO") == []
 
 
-# --- Equipamento --------------------------------------------------------------------
-
-
-def test_equipamento_da_lista_outro_e_vazio():
-    assert f.ler_equipamento("3", "x") == {"equipamento_id": 3, "equipamento_outro": None}
-    assert f.ler_equipamento(f.OPCAO_OUTRO, "  Bomba nova ") == {
-        "equipamento_id": None,
-        "equipamento_outro": "Bomba nova",
-    }
-    assert f.ler_equipamento(None, "") == {"equipamento_id": None, "equipamento_outro": None}
-    assert f.chave_do_equipamento(3, None) == "3"
-    assert f.chave_do_equipamento(None, "Bomba") == f.OPCAO_OUTRO
-    assert f.chave_do_equipamento(None, None) is None
-
-
 # --- Conclusão: data + CampoHora --------------------------------------------------------
 
 

@@ -48,9 +48,7 @@ def test_todo_arquivo_de_texto_e_utf8_valido(pasta):
 
 
 def test_texto_acentuado_ida_e_volta_pelo_banco(cenario):
-    d = ordens.criar_os(
-        cenario["marina"], TEXTO, TEXTO, itens(100), 60, equipamento_outro="Equipamento de teste"
-    )
+    d = ordens.criar_os(cenario["marina"], TEXTO, TEXTO, itens(100), 60)
     lida = ordens.obter_os(cenario["marina"], d.id)
     assert (lida.titulo, lida.descricao) == (TEXTO, TEXTO)
     # a busca sem diferenciar maiúsculas também funciona com acentos

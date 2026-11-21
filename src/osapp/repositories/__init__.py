@@ -2,7 +2,6 @@
 
 from osapp.repositories.cadastros_repo import (
     CategoriaCustoRepo,
-    EquipamentoRepo,
     TipoManutencaoRepo,
 )
 from osapp.repositories.filial_repo import FilialRepo
@@ -14,7 +13,6 @@ from osapp.repositories.usuario_repo import UsuarioRepo
 
 __all__ = [
     "CategoriaCustoRepo",
-    "EquipamentoRepo",
     "FilialRepo",
     "OrdemServicoRepo",
     "OsEventoRepo",

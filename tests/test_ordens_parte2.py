@@ -351,7 +351,6 @@ def test_editar_dois_campos_grava_dois_eventos(cenario):
             "titulo": "  Troca do motor  ",
             "tempo_previsto_minutos": 90,
             "descricao": "Esteira com ruído.",
-            "equipamento_outro": "Equipamento de teste",
         },  # dois não mudam
     )
     assert (e.titulo, e.tempo_previsto_minutos, e.versao) == ("Troca do motor", 90, 2)

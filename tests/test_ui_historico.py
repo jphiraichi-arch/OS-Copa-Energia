@@ -166,12 +166,3 @@ def test_item_alterado_diz_qual_campo_mudou():
 def test_item_removido():
     evento = ev("ITEM_REMOVIDO", "item 12", "Peças | Rolamento | 2 x R$ 10,00", None)
     assert frase(evento) == "Item de custo removido: Peças | Rolamento | 2 x R$ 10,00"
-
-
-def test_equipamento_no_historico():
-    assert (
-        frase(ev("EDICAO", "equipamento_id", None, "Bomba 1")) == "Equipamento: (vazio) -> Bomba 1"
-    )
-    assert frase(ev("EDICAO", "equipamento_outro", "Motor", None)) == (
-        "Equipamento (outro): Motor -> (vazio)"
-    )

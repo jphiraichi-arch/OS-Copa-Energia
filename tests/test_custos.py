@@ -1,4 +1,4 @@
-"""Prompt 13: itens de custo e equipamentos nos serviços."""
+"""Prompt 13: itens de custo nos serviços."""
 
 from __future__ import annotations
 
@@ -9,10 +9,10 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import func, select
 
-from osapp import cli, formatacao
+from osapp import formatacao
 from osapp.db import sessao
-from osapp.models import CategoriaCusto, Equipamento, OrdemServico, OsEvento, OsItemCusto
-from osapp.services import custos, equipamentos, ordens, relogio, status
+from osapp.models import CategoriaCusto, OrdemServico, OsEvento
+from osapp.services import custos, ordens, relogio, status
 from osapp.services.custos import ItemEntrada, calcular_resumo, total_da_linha
 from osapp.services.erros import (
     ErroAutenticacao,
@@ -32,24 +32,12 @@ def relogio_fixo(monkeypatch):
     monkeypatch.setattr(relogio, "agora", lambda: T0)
 
 
-@pytest.fixture
-def equip(cenario):
-    with sessao() as s:
-        ativo = Equipamento(filial_id=cenario["f1"], nome="Compressor 1")
-        inativo = Equipamento(filial_id=cenario["f1"], nome="Antigo", ativo=False)
-        outra = Equipamento(filial_id=cenario["f2"], nome="Balança Sul")
-        s.add_all([ativo, inativo, outra])
-        s.flush()
-        return {"ativo": ativo.id, "inativo": inativo.id, "outra": outra.id}
-
-
 def item(valor=1000, quantidade="1", descricao="Item", codigo="OUTROS"):
     return ItemEntrada(categoria_id(codigo), descricao, Decimal(quantidade), valor)
 
 
 def criar(ator_id, itens=None, **extras):
     dados = {
-        "equipamento_outro": "Equipamento de teste",
         "tipo_id": tipo_id(),
         "prioridade": "media",
     }
@@ -380,7 +368,6 @@ def test_criacao_sem_item_vale_e_item_invalido_e_recusado(cenario):
             ordens.PENDENCIA_VALOR,
             ordens.PENDENCIA_TIPO,
             ordens.PENDENCIA_PRIORIDADE,
-            ordens.PENDENCIA_EQUIPAMENTO,
         )
 
 
@@ -476,106 +463,3 @@ def test_listar_categorias(cenario):
     ]
     with pytest.raises(ErroAutenticacao):
         custos.listar_categorias(cenario["inativa"])
-
-
-# --- Equipamentos ----------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("chave", "outro", "campo"),
-    [
-        ("outra", None, "equipamento_id"),  # de outra filial
-        ("inativo", None, "equipamento_id"),
-        ("ativo", "Bomba", "equipamento_id"),  # os dois
-        (None, "ab", "equipamento_outro"),  # 'Outro' curto demais
-        (None, "x" * 121, "equipamento_outro"),
-        ("inexistente", None, "equipamento_id"),
-    ],
-)
-def test_equipamento_invalido(cenario, equip, chave, outro, campo):
-    eq = {**equip, "inexistente": 9999}.get(chave)
-    with pytest.raises(ErroValidacao) as info:
-        ordens.criar_os(
-            cenario["marina"],
-            "Título",
-            "Descrição.",
-            [item()],
-            60,
-            equipamento_id=eq,
-            equipamento_outro=outro,
-        )
-    assert info.value.campo == campo
-
-
-def test_equipamento_valido_e_troca(cenario, equip):
-    d = ordens.criar_os(
-        cenario["marina"], "Título", "Descrição.", [item()], 60, equipamento_id=equip["ativo"]
-    )
-    assert (d.equipamento, d.equipamento_id, d.equipamento_outro) == (
-        "Compressor 1",
-        equip["ativo"],
-        None,
-    )
-    d = ordens.editar_os(
-        cenario["marina"], d.id, d.versao, {"equipamento_outro": "  Bomba d'água  "}
-    )
-    assert (d.equipamento, d.equipamento_id, d.versao) == ("Bomba d'água", None, 2)
-    assert eventos(cenario, d.id)[-2:] == [
-        ("EDICAO", "equipamento_id", "Compressor 1", None),
-        ("EDICAO", "equipamento_outro", None, "Bomba d'água"),
-    ]
-    with pytest.raises(ErroValidacao):
-        ordens.editar_os(cenario["marina"], d.id, d.versao, {"equipamento_id": equip["outra"]})
-    d = ordens.editar_os(cenario["marina"], d.id, d.versao, {"equipamento_outro": "x" * 120})
-    assert d.equipamento == "x" * 120
-
-
-def test_mudar_de_filial_exige_equipamento_da_nova_filial(cenario, equip):
-    d = ordens.criar_os(
-        cenario["admin"], "Título", "Descrição.", [item()], 60, equipamento_id=equip["ativo"]
-    )
-    with pytest.raises(ErroValidacao):
-        ordens.editar_os(cenario["admin"], d.id, d.versao, {"filial_id": cenario["f2"]})
-    d = ordens.editar_os(
-        cenario["admin"],
-        d.id,
-        d.versao,
-        {"filial_id": cenario["f2"], "equipamento_id": equip["outra"]},
-    )
-    assert (d.filial_codigo, d.equipamento) == ("F002", "Balança Sul")
-
-
-def test_listar_equipamentos(cenario, equip):
-    assert [e.nome for e in equipamentos.listar_equipamentos(cenario["marina"])] == ["Compressor 1"]
-    with pytest.raises(ErroPermissao):
-        equipamentos.listar_equipamentos(cenario["marina"], cenario["f2"])
-    assert [e.nome for e in equipamentos.listar_equipamentos(cenario["admin"], cenario["f2"])] == [
-        "Balança Sul"
-    ]
-    with pytest.raises(ErroAutenticacao):
-        equipamentos.listar_equipamentos(cenario["inativa"])
-
-
-def test_cli_de_equipamentos(cenario, capsys):
-    base = [
-        "criar-equipamento",
-        "--filial",
-        "F001",
-        "--nome",
-        "Esteira 2",
-        "--codigo-sap",
-        "10002345",
-    ]
-    assert cli.main([*base, "--responsavel", "marina.teste"]) == 1  # não é administrador
-    assert cli.main([*base, "--responsavel", "admin"]) == 0
-    with sessao() as s:
-        novo = s.scalars(select(Equipamento).where(Equipamento.nome == "Esteira 2")).one()
-        assert novo.codigo_sap == "10002345" and novo.ativo
-    assert cli.main(["desativar-equipamento", "--responsavel", "admin", "--id", str(novo.id)]) == 0
-    assert "Esteira 2" not in [e.nome for e in equipamentos.listar_equipamentos(cenario["marina"])]
-    assert cli.main(["desativar-equipamento", "--responsavel", "admin", "--id", "9999"]) == 1
-
-
-def test_itens_nunca_tem_total_gravado():
-    colunas = {c.name for c in OsItemCusto.__table__.columns}
-    assert not {c for c in colunas if "total" in c}
