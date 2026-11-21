@@ -5,6 +5,10 @@ Revises: 0009
 Create Date: 2026-11-21
 
 Upgrade:
+- preserva o equipamento (decisão de 21/11/2026): a OS com equipamento_id ou
+  equipamento_outro recebe no fim da descricao a linha "Equipamento (legado): <nome>"
+  (o nome do cadastro; sem cadastro, o texto livre). O marcador 'Não informado', que a
+  migração 0005 gravou nas OS antigas sem equipamento, não é copiado;
 - ordens_servico.busca_texto e os_itens_custo.busca_texto (texto, padrão ''), preenchidos
   aqui para as linhas existentes com a cópia congelada de normalizar_busca abaixo (o app
   pode mudar a dele depois; esta migração continua igual);
@@ -12,8 +16,10 @@ Upgrade:
   equipamento_outro, e a tabela equipamentos (com codigo_sap). numero_sap fica.
 Antes de aplicar em produção: `python -m osapp.cli exportar-equipamentos ARQUIVO.csv`.
 
-Downgrade: recria a tabela equipamentos e as duas colunas, VAZIAS. Os equipamentos não
-voltam (a fonte é o CSV exportado antes). As colunas busca_texto saem.
+Downgrade: recria a tabela equipamentos e as duas colunas, VAZIAS. O vínculo da OS com
+o equipamento NÃO volta: o cadastro e as colunas ficam vazios e a linha
+"Equipamento (legado): ..." continua na descricao (o downgrade não mexe nela). As
+colunas busca_texto saem.
 """
 
 import unicodedata
@@ -37,6 +43,20 @@ def _normalizar(texto):
     return " ".join(sem_acento.casefold().split())
 
 
+ROTULO_LEGADO = "Equipamento (legado): "
+SEM_EQUIPAMENTO_0005 = "Não informado"  # marcador da migração 0005, não é um equipamento
+
+
+def _com_equipamento(descricao, nome_cadastro, texto_livre):
+    """Descrição com a linha do equipamento no fim, ou a mesma descrição."""
+    outro = (texto_livre or "").strip()
+    nome = (nome_cadastro or "").strip() or (outro if outro != SEM_EQUIPAMENTO_0005 else "")
+    if not nome:
+        return descricao
+    base = (descricao or "").rstrip()
+    return f"{base}\n\n{ROTULO_LEGADO}{nome}" if base else f"{ROTULO_LEGADO}{nome}"
+
+
 def upgrade() -> None:
     with op.batch_alter_table("ordens_servico", schema=None) as batch_op:
         batch_op.add_column(sa.Column("busca_texto", sa.Text(), server_default="", nullable=False))
@@ -50,20 +70,29 @@ def upgrade() -> None:
         sa.column("titulo", sa.String),
         sa.column("descricao", sa.Text),
         sa.column("busca_texto", sa.Text),
+        sa.column("equipamento_id", sa.Integer),
+        sa.column("equipamento_outro", sa.String),
     )
+    cadastro = sa.table("equipamentos", sa.column("id", sa.Integer), sa.column("nome", sa.String))
     itens = sa.table(
         "os_itens_custo",
         sa.column("id", sa.Integer),
         sa.column("descricao", sa.String),
         sa.column("busca_texto", sa.Text),
     )
-    for os_id, titulo, descricao in conexao.execute(
-        sa.select(ordens.c.id, ordens.c.titulo, ordens.c.descricao)
-    ).all():
+    consulta = sa.select(
+        ordens.c.id,
+        ordens.c.titulo,
+        ordens.c.descricao,
+        cadastro.c.nome,
+        ordens.c.equipamento_outro,
+    ).select_from(ordens.outerjoin(cadastro, ordens.c.equipamento_id == cadastro.c.id))
+    for os_id, titulo, descricao, nome, outro in conexao.execute(consulta).all():
+        nova = _com_equipamento(descricao, nome, outro)
         conexao.execute(
             ordens.update()
             .where(ordens.c.id == os_id)
-            .values(busca_texto=_normalizar(f"{titulo or ''} {descricao or ''}"))
+            .values(descricao=nova, busca_texto=_normalizar(f"{titulo or ''} {nova or ''}"))
         )
     for item_id, descricao in conexao.execute(sa.select(itens.c.id, itens.c.descricao)).all():
         conexao.execute(

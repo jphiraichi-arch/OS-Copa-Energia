@@ -400,3 +400,28 @@ def test_periodo_padrao_ainda_funciona_com_termo(p, rel):
     r = relatorios.relatorio_tempos(p["man"], termo="balanca")
     assert r.data_fim - r.data_inicio == timedelta(days=relatorios.DIAS_PADRAO - 1)
     assert isinstance(r.data_inicio, date)
+
+
+# --- Decisões de 21/11/2026: escopo padrão por tela e cartão de solicitações abertas ---
+
+
+def test_escopo_padrao_por_tela():
+    from osapp.ui.views import home, relatorio_tempos
+
+    assert home.ESCOPO_PADRAO == ordens.ESCOPO_TUDO
+    assert relatorio_tempos.ESCOPO_PADRAO == ordens.ESCOPO_ITENS
+
+
+def test_abertas_respeitam_a_busca_e_ignoram_periodo_e_status(p, tempo):
+    # Duas abertas com 'balança' (uma 20 dias antes do período) e uma sem.
+    solicitacao(p, tempo, -20 * 24 * 60, "Pedido antigo", [("Balança", 10)])
+    solicitacao(p, tempo, 0, "Pedido do dia", [("Balança", 10)])
+    solicitacao(p, tempo, 1, "Pedido sem", [("Correia", 10)])
+    tempo.agora = BASE + 2 * H
+    filtrado = relatorios.relatorio_tempos(
+        p["man"], DIA, DIA, ("CONCLUIDA",), None, "balanca", ordens.ESCOPO_ITENS
+    )
+    assert (filtrado.backlog.quantidade, filtrado.backlog.filtrado_por) == (2, "balanca")
+    assert filtrado.backlog.mais_antiga_segundos == (20 * 24 + 2) * 3600
+    sem_termo = relatorios.relatorio_tempos(p["man"], DIA, DIA, ("CONCLUIDA",))
+    assert (sem_termo.backlog.quantidade, sem_termo.backlog.filtrado_por) == (3, None)

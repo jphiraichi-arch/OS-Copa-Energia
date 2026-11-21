@@ -56,8 +56,9 @@ Toda função de serviço começa por `carregar_ator`; usuário inativo é recus
 - **manutencao**: assume e executa as OS da própria filial; cria OS completas; edita os
   campos da manutenção até a conclusão; nunca muda a urgência do solicitante.
 - **admin**: tudo, em todas as filiais. Só ele muda a filial de uma OS e edita OS concluída.
-- **Gerente** (`is_gerente`, por cima do papel): vê o relatório mensal completo da própria
-  filial (valores e desempenho por pessoa).
+- **Relatório mensal** (decisão de 21/11/2026): manutenção vê o da própria filial, com
+  custos; administrador vê qualquer filial ou o consolidado, com custos; o papel usuario
+  não tem acesso (ErroPermissao). O sinalizador `is_gerente` não muda mais o acesso.
 - Status e transições ficam em `services/status.py` (dados). CONCLUIDA e CANCELADA são
   finais: só o administrador edita uma concluída; ninguém edita uma cancelada.
 - Os instantes `aberta_em`, `inicio_execucao_em`, `concluida_em` e `cancelada_em` só são
@@ -65,8 +66,10 @@ Toda função de serviço começa por `carregar_ator`; usuário inativo é recus
   nunca vêm da entrada.
 - As flags de `acoes` são calculadas pelas mesmas funções que permitem ou recusam.
 - Dados sensíveis (valores em dinheiro, desempenho por pessoa) só saem do serviço para
-  gerente (própria filial), manutenção (nas OS da filial) e administrador. A interface
-  apenas mostra o que recebe.
+  manutenção (própria filial) e administrador. A interface apenas mostra o que recebe.
+- Campos de dinheiro, duração e hora: nunca reescrever o valor do campo em `on_change`
+  (em 4G lento isso perde dígitos). Formatar ao sair do campo (`on_blur`) e validar ao
+  gravar, com as funções puras de `ui/leitura.py`.
 
 ## Idioma
 

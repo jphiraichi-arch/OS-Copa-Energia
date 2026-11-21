@@ -18,6 +18,7 @@ from osapp.ui.views.base import Tela
 TODAS_AS_FILIAIS = "todas"
 SOLICITACOES_ABERTAS = "solicitacoes_abertas"  # filtro rápido (manutenção e administrador)
 ROTULO_SOLICITACOES_ABERTAS = "Solicitações abertas"
+ESCOPO_PADRAO = ordens.ESCOPO_TUDO  # decisão de 21/11/2026
 
 
 class Home(Tela):
@@ -29,7 +30,10 @@ class Home(Tela):
         self.pagina = 1
         self.itens: list = []
 
-        self.escopo = None if app.sessao.is_usuario else SeletorEscopo(app, self._buscar)
+        # Na Home a busca começa em 'Tudo'; o relatório começa em 'Itens'.
+        self.escopo = (
+            None if app.sessao.is_usuario else SeletorEscopo(app, self._buscar, ESCOPO_PADRAO)
+        )
         self.busca = basicos.campo_texto(
             textos.HOME_BUSCA,
             hint_text=textos.HOME_BUSCA_DICA_USUARIO
@@ -187,7 +191,7 @@ class Home(Tela):
             self.filtro_filial,
             self.pagina,
             ordens.ORIGEM_SOLICITACAO if rapido else None,
-            self.escopo.valor if self.escopo else ordens.ESCOPO_ITENS,
+            self.escopo.valor if self.escopo else ESCOPO_PADRAO,
         )
         self.rodape.controls = []
         if resultado.ok:

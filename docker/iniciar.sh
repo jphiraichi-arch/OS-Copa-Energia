@@ -10,7 +10,7 @@ alembic upgrade head
 # O seed (dados iniciais e de demonstração) é opcional: uma falha nele não impede o app
 # de subir; o motivo fica no log.
 if [ -n "${OS_SEED_SENHA:-}" ]; then
-    python -m osapp.seed || echo "Aviso: o seed não foi executado (veja a mensagem acima)." >&2
+    python -m osapp.seed || echo "ERRO: o seed não foi executado; o motivo está na linha anterior do log." >&2
 fi
 # O IP do cliente é resolvido pelo próprio app (osapp/rede.py), que só aceita cabeçalhos
 # de encaminhamento vindos de OS_PROXIES_CONFIAVEIS. Por isso o uvicorn roda sem

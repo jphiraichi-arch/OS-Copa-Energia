@@ -1,11 +1,12 @@
 """Relatórios mensais de Ordens de Serviço.
 
-Níveis de acesso (decididos aqui, nunca na interface):
-- Relatório básico: contagens e tempos, sem valores em dinheiro nem dados por pessoa.
-  Todo usuário ativo vê o da própria filial; administrador vê qualquer filial ou todas.
-- Relatório completo: valores previstos e realizados (gasto do mês), desvios, as OS com
-  maior estouro e o desempenho por executor. Gerente vê o da própria filial;
-  administrador vê qualquer filial ou o consolidado. Os demais recebem ``completo=None``.
+Acesso (decidido aqui, nunca na interface; decisão de 21/11/2026):
+- manutenção: o relatório da própria filial, com custos (básico e completo);
+- administrador: qualquer filial ou o consolidado de todas, com custos;
+- papel usuario: nenhum (ErroPermissao).
+O relatório básico tem contagens e tempos; o completo, valores previstos e realizados,
+desvios, as OS com maior estouro e o desempenho por executor. O sinalizador de gerente
+não muda mais o acesso.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ from osapp.services import custos, ordens, relogio
 from osapp.services import status as _status
 from osapp.services.auth import Ator, carregar_ator
 from osapp.services.erros import ErroPermissao, ErroValidacao
-from osapp.services.permissoes import pode_ver_relatorio_completo
+from osapp.services.permissoes import pode_ver_relatorio_mensal
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ class Relatorio:
     filial_id: int | None  # None = todas as filiais
     filial_rotulo: str
     basico: RelatorioBasico
-    completo: RelatorioCompleto | None  # None quando o ator não pode ver
+    completo: RelatorioCompleto | None  # sempre preenchido desde 21/11/2026
 
 
 def _e_int(valor: object) -> bool:
@@ -144,6 +145,9 @@ def gerar_relatorio(ator_id: int, ano: int, mes: int, filial_id: int | None = No
     """Relatório do mês (no fuso OS_TZ). ``filial_id`` None: a própria filial, ou todas
     as filiais para administrador."""
     ator = carregar_ator(ator_id)
+    if ator.is_usuario:
+        logger.warning("Permissão negada: usuario_id=%s ação=relatório mensal.", ator.usuario_id)
+        raise ErroPermissao()
     if not _e_int(ano) or not ANO_MIN <= ano <= ANO_MAX:
         raise ErroValidacao("ano", "Ano inválido.")
     if not _e_int(mes) or not 1 <= mes <= 12:
@@ -170,9 +174,9 @@ def gerar_relatorio(ator_id: int, ano: int, mes: int, filial_id: int | None = No
             tempo_medio_execucao_minutos=round(sum(tempos) / len(tempos)) if tempos else None,
         )
 
-        completo = None
-        if pode_ver_relatorio_completo(ator, filial_efetiva):
-            completo = _completo(concluidas, consolidado=filial_efetiva is None)
+        if not pode_ver_relatorio_mensal(ator, filial_efetiva):  # defesa extra
+            raise ErroPermissao()
+        completo = _completo(concluidas, consolidado=filial_efetiva is None)
 
         return Relatorio(
             ano=ano,
@@ -284,10 +288,11 @@ class TemposPorUrgencia:
 
 @dataclass(frozen=True)
 class Backlog:
-    """Solicitações ainda ABERTA agora (ignora período e status)."""
+    """Solicitações ainda ABERTA agora (ignora período e status; respeita a busca)."""
 
     quantidade: int
     mais_antiga_segundos: int | None  # agora - aberta_em da mais antiga
+    filtrado_por: str | None = None  # o termo de busca aplicado, se houver
 
 
 @dataclass(frozen=True)
@@ -520,7 +525,9 @@ def relatorio_tempos(
         solucao=solucao,
         por_urgencia=por_urgencia,
         backlog=Backlog(
-            len(abertas), _segundos(mais_antiga, agora) if mais_antiga is not None else None
+            len(abertas),
+            _segundos(mais_antiga, agora) if mais_antiga is not None else None,
+            busca.termo if busca is not None else None,
         ),
         total_no_periodo=len(linhas),
         busca=busca,

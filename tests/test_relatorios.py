@@ -22,6 +22,9 @@ def dados(cenario, monkeypatch):
         cenario["gerente"] = novo_usuario(
             s, filial, "gerente.norte", "Gabriela Gerente", is_gerente=True
         ).id
+        cenario["solicitante"] = novo_usuario(
+            s, filial, "sol.norte", "Sara Solicitante", papel="usuario"
+        ).id
 
     def em(instante):
         monkeypatch.setattr(relogio, "agora", lambda: instante)
@@ -90,13 +93,20 @@ def contagem(rel):
 # --- Quem vê o quê ---------------------------------------------------------------------
 
 
-def test_operario_ve_so_o_basico_da_propria_filial(dados):
+def test_manutencao_ve_o_completo_so_da_propria_filial(dados):
+    """Decisão de 21/11/2026: manutenção vê custos, só da própria filial."""
     rel = gerar_relatorio(dados["marina"], 2026, 5)
     assert rel.filial_rotulo == "F001 - Filial Modelo Norte" and rel.filial_id == dados["f1"]
-    assert rel.completo is None
-    assert gerar_relatorio(dados["marina"], 2026, 5, dados["f1"]).completo is None
+    assert rel.completo is not None and rel.completo.valor_realizado_centavos == 38000
+    assert gerar_relatorio(dados["marina"], 2026, 5, dados["f1"]).completo is not None
     with pytest.raises(ErroPermissao):
         gerar_relatorio(dados["marina"], 2026, 5, dados["f2"])
+
+
+def test_papel_usuario_nao_tem_relatorio_mensal(dados):
+    for filial in (None, dados["f1"]):
+        with pytest.raises(ErroPermissao):
+            gerar_relatorio(dados["solicitante"], 2026, 5, filial)
 
 
 def test_relatorio_basico_nao_tem_dado_sensivel():
@@ -104,7 +114,7 @@ def test_relatorio_basico_nao_tem_dado_sensivel():
     assert not {c for c in campos if "valor" in c or "centavos" in c or "executor" in c}
 
 
-def test_gerente_ve_o_completo_da_propria_filial_e_nada_de_outra(dados):
+def test_sinalizador_de_gerente_nao_muda_o_acesso(dados):
     rel = gerar_relatorio(dados["gerente"], 2026, 5)
     assert rel.completo is not None and rel.filial_id == dados["f1"]
     with pytest.raises(ErroPermissao):
@@ -127,7 +137,7 @@ def test_admin_ve_tudo(dados):
 
 
 def test_colega_comum_e_inativo(dados):
-    assert gerar_relatorio(dados["joao"], 2026, 5).completo is None
+    assert gerar_relatorio(dados["joao"], 2026, 5).completo is not None
     assert gerar_relatorio(dados["carlos"], 2026, 5).filial_rotulo == "F002 - Filial Modelo Sul"
     with pytest.raises(ErroAutenticacao):
         gerar_relatorio(dados["inativa"], 2026, 5)

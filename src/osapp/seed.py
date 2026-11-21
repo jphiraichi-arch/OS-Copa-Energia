@@ -7,6 +7,7 @@ fictícios de exemplo só com OS_SEED_EXEMPLOS=1. A senha vem de OS_SEED_SENHA
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 
@@ -15,6 +16,18 @@ from osapp.db import obter_engine, trava_de_inicializacao
 from osapp.logs import configurar_logging
 from osapp.services import administracao, senhas
 from osapp.services.erros import ErroConflito, ErroValidacao
+
+logger = logging.getLogger("osapp.seed")
+
+
+def motivo_para_pular(senha: str) -> str | None:
+    """Por que o seed não pode rodar com esta senha, ou None. Nunca inclui a senha."""
+    if not senha:
+        return f"OS_SEED_SENHA não está definida (mínimo de {senhas.SENHA_MIN} caracteres)"
+    if len(senha) < senhas.SENHA_MIN:
+        return f"OS_SEED_SENHA tem menos de {senhas.SENHA_MIN} caracteres"
+    return None
+
 
 FILIAL = ("1007", "Jardinópolis")
 # (nome, login, perfil)
@@ -63,19 +76,21 @@ def main() -> int:
     except ConfigError as exc:
         print(f"Erro de configuração: {exc}", file=sys.stderr)
         return 1
+    senha = os.environ.get("OS_SEED_SENHA", "")
+    motivo = motivo_para_pular(senha)
+    if motivo is not None:
+        # Nunca em silêncio: a linha de ERRO fica no log de inicialização.
+        logger.error(
+            "Seed NÃO executado: %s. Nenhum usuário foi criado ou alterado; o app sobe sem o seed.",
+            motivo,
+        )
+        return 1
     try:
         # Instâncias que sobem juntas rodam o seed uma de cada vez.
         with trava_de_inicializacao(obter_engine()):
-            criados = executar(
-                os.environ.get("OS_SEED_SENHA", ""),
-                exemplos=os.environ.get("OS_SEED_EXEMPLOS", "") == "1",
-            )
-    except ErroValidacao:
-        print(
-            "Defina a variável de ambiente OS_SEED_SENHA com pelo menos "
-            f"{senhas.SENHA_MIN} caracteres.",
-            file=sys.stderr,
-        )
+            criados = executar(senha, exemplos=os.environ.get("OS_SEED_EXEMPLOS", "") == "1")
+    except ErroValidacao as exc:
+        logger.error("Seed NÃO executado: %s", exc.mensagem)
         return 1
     print(
         f"Seed concluído: {criados['filiais']} filial(is), {criados['categorias']} "

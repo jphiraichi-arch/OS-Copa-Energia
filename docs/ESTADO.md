@@ -1021,3 +1021,27 @@ varrendo). Antes disso o índice só custa espaço e tempo de gravação.
   relatório: linha de resumo, cartões de tempo, cartão de custos e lista (toque abre o
   Detalhe); sem correspondência: 'Nenhuma ordem corresponde à busca no período.'
 - Sem mudança em modelos nem migrações.
+
+## Decisões de 21/11/2026 (depois do prompt 22)
+
+1. Escopo padrão da busca: Home 'Tudo' (`home.ESCOPO_PADRAO`); relatório 'Itens'
+   (`relatorio_tempos.ESCOPO_PADRAO`). O padrão do serviço (`listar_os`) continua
+   'itens'; cada tela passa o seu.
+2. Cartão "Solicitações em aberto": aplica o termo de busca, ignora período e status;
+   `Backlog.filtrado_por` traz o termo e a tela mostra "filtrado por: <termo>".
+3. Sem máscara ao vivo: `ui/mascaras.py` saiu; `ui/leitura.py` (puro, com testes) lê e
+   formata dinheiro (regras de `formatacao.ler_brl`: '150' = R$ 150,00, '150.50'
+   recusado), duração e hora. `ui/components/campos.py` nunca atribui `.value` no
+   `on_change`; formata no `on_blur`; o valor é lido ao gravar. Teclado numérico mantido.
+   Duração/hora: 'H:MM' ou só dígitos (1–2 dígitos = horas inteiras; 3 ou mais = os dois
+   últimos são minutos). Campo de dinheiro ou duração vazio = 0; hora vazia é erro.
+4. Relatório mensal: manutenção (própria filial) e administrador (todas), ambos com
+   custos; usuario recebe ErroPermissao (`permissoes.pode_ver_relatorio_mensal`).
+5. Seed: com OS_SEED_SENHA vazia ou com menos de 10 caracteres, `osapp.seed` registra
+   uma linha ERROR "Seed NÃO executado: <motivo>" (sem a senha) e sai com 1; o
+   iniciar.sh registra outra linha de erro e o app sobe.
+6. Migração 0010: antes de remover as colunas, a OS com equipamento (cadastro ou texto
+   livre) recebe no fim da descrição "Equipamento (legado): <nome>" e o texto de busca
+   é recalculado com ela. O marcador 'Não informado' da migração 0005 não é copiado. O
+   downgrade não restaura o vínculo. Vale sempre (sem equipamento, nada muda), então a
+   exportação CSV prévia passa a ser opcional.

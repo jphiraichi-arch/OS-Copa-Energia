@@ -1,7 +1,8 @@
 """Tela Relatórios (/relatorios).
 
-Mostra o que o serviço devolver: o relatório completo só chega preenchido para quem pode
-vê-lo (gerente na própria filial, administrador). A tela não decide permissão.
+Mostra o que o serviço devolver: manutenção (própria filial) e administrador recebem o
+relatório com custos; o papel usuario recebe a recusa genérica. A tela não decide
+permissão.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import flet as ft
 
 from osapp import formatacao
 from osapp.services import ordens, relatorios, relogio
+from osapp.services.erros import ErroPermissao
 from osapp.ui import historico, rotas, textos, theme
 from osapp.ui.components import basicos
 from osapp.ui.views.base import Tela
@@ -126,9 +128,13 @@ class Relatorios(Tela):
             self.ano,
             self.mes,
             self.filial_id,
+            erros_tratados=(ErroPermissao,),
         )
         if resultado.ok:
             self.corpo.controls = self._montar(resultado.valor)
+        elif isinstance(resultado.erro, ErroPermissao):
+            # Papel usuario abrindo a rota digitada: recusa do serviço (já no log).
+            self.corpo.controls = [basicos.mensagem_central(self.app.MENSAGEM_GENERICA)]
         else:
             self.corpo.controls = [basicos.mensagem_central(textos.REL_ERRO)]
         self._atualizar()

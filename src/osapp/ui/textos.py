@@ -32,7 +32,8 @@ MENU_SAIR = "Sair"
 # --- Home ------------------------------------------------------------------------------
 HOME_TITULO = "Ordens de Serviço"
 HOME_BUSCA = "Buscar"
-HOME_BUSCA_DICA = "Número ou palavras dos itens (ou de tudo)"
+HOME_BUSCA_DICA = "Número ou palavras do título, da descrição ou dos itens"
+TEMPOS_BUSCA_DICA = "Palavras dos itens (ou de tudo)"
 HOME_BUSCA_DICA_USUARIO = "Número, ou palavras do título e da descrição"
 HOME_BUSCAR = "Buscar"
 HOME_TODAS = "Todas"
@@ -83,7 +84,7 @@ REL_DESVIOS = "Maiores estouros de custo"
 REL_EXECUTORES = "Desempenho por executor"
 REL_FILIAIS = "Por filial"
 REL_RESTRITO = (
-    "Valores em dinheiro e desempenho por pessoa são visíveis apenas para gerentes "
+    "Valores em dinheiro e desempenho por pessoa são visíveis apenas para manutenção "
     "e administradores."
 )
 REL_NENHUMA_CONCLUIDA = "Nenhuma Ordem de Serviço concluída neste mês."
@@ -131,6 +132,7 @@ TEMPOS_NOTA = (
 )
 TEMPOS_VAZIO = "Sem dados no período."
 TEMPOS_BUSCA = "Buscar no relatório"
+TEMPOS_FILTRADO_POR = "filtrado por:"
 TEMPOS_BUSCA_VAZIA = "Nenhuma ordem corresponde à busca no período."
 TEMPOS_CUSTOS = "Custos das ordens encontradas"
 TEMPOS_PREVISTO_TODAS = "Previsto (todas as encontradas)"

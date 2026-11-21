@@ -19,6 +19,7 @@ from osapp.ui.components.escopo_busca import SeletorEscopo
 from osapp.ui.views.base import Tela
 
 TODAS = "todas"
+ESCOPO_PADRAO = ordens.ESCOPO_ITENS  # decisão de 21/11/2026
 SEM_VALOR = "-"
 
 
@@ -57,10 +58,10 @@ class RelatorioTempos(Tela):
         self.pagina = 1
         self.termo = basicos.campo_texto(
             textos.TEMPOS_BUSCA,
-            hint_text=textos.HOME_BUSCA_DICA,
+            hint_text=textos.TEMPOS_BUSCA_DICA,
             on_submit=self._aplicar,
         )
-        self.escopo = SeletorEscopo(app, self._aplicar)
+        self.escopo = SeletorEscopo(app, self._aplicar, ESCOPO_PADRAO)
         self.de = basicos.campo_texto(
             textos.TEMPOS_DE,
             hint_text="dd/mm/aaaa",
@@ -462,6 +463,11 @@ class RelatorioTempos(Tela):
             basicos.coluna(
                 [
                     basicos.titulo(textos.TEMPOS_ABERTAS, theme.FONTE_CORPO + 2),
+                    *(
+                        [basicos.subtitulo(f"{textos.TEMPOS_FILTRADO_POR} {b.filtrado_por}")]
+                        if b.filtrado_por
+                        else []
+                    ),
                     ft.Row(
                         [
                             basicos.rotulo_valor(textos.TEMPOS_QUANTIDADE, str(b.quantidade)),

@@ -16,12 +16,13 @@ def pode_acessar_filial(ator: Ator, filial_id: int) -> bool:
     return ator.is_admin or ator.filial_id == filial_id
 
 
-def pode_ver_relatorio_completo(ator: Ator, filial_id: int | None) -> bool:
-    """Relatório completo (valores e desempenho por pessoa).
+def pode_ver_relatorio_mensal(ator: Ator, filial_id: int | None) -> bool:
+    """Relatório mensal, com custos (decisão de 21/11/2026).
 
     Administrador: qualquer filial e o consolidado (``filial_id`` None).
-    Gerente: só a própria filial. Demais usuários: nunca.
+    Manutenção: só a própria filial. Papel usuario: nunca. O sinalizador de gerente não
+    muda mais o acesso.
     """
     if ator.is_admin:
         return True
-    return ator.is_gerente and filial_id == ator.filial_id
+    return ator.is_manutencao and filial_id == ator.filial_id

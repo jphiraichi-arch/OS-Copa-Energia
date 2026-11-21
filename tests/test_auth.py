@@ -285,6 +285,32 @@ def test_seed_exige_senha_e_nao_a_imprime(banco, monkeypatch, capsys):
     assert SENHA not in saida.out + saida.err
 
 
+@pytest.mark.parametrize(
+    ("senha", "motivo"),
+    [
+        (None, "OS_SEED_SENHA não está definida"),
+        ("", "OS_SEED_SENHA não está definida"),
+        ("Curta-123", "OS_SEED_SENHA tem menos de 10 caracteres"),
+    ],
+)
+def test_seed_pulado_registra_erro_claro(banco, monkeypatch, caplog, senha, motivo):
+    """Decisão de 21/11/2026: o seed pulado nunca é silencioso, e o log diz por quê."""
+    if senha is None:
+        monkeypatch.delenv("OS_SEED_SENHA", raising=False)
+    else:
+        monkeypatch.setenv("OS_SEED_SENHA", senha)
+    with caplog.at_level(logging.ERROR, logger="osapp.seed"):
+        assert seed.main() == 1
+    erros = [r for r in caplog.records if r.name == "osapp.seed" and r.levelno == logging.ERROR]
+    assert len(erros) == 1
+    log = erros[0].getMessage()
+    assert log.startswith("Seed NÃO executado: ") and motivo in log
+    if senha:
+        assert senha not in log
+    with sessao() as s:
+        assert s.query(Usuario).count() == 0
+
+
 def test_cli(banco, monkeypatch, capsys):
     monkeypatch.setattr(cli.getpass, "getpass", lambda _p="": SENHA)
     assert cli.main(["criar-filial", "--codigo", "F001", "--nome", "Filial Modelo Norte"]) == 0

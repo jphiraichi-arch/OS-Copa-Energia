@@ -203,6 +203,19 @@ def test_migracao_0010_com_dados_e_exportacao(banco_vazio, tmp_path):
             .insert()
             .values(id=3, numero="1007-2026-000003", titulo="Sem nada", descricao="x", **base)
         )
+        # Marcador da migração 0005 para OS antigas sem cadastro: não é copiado.
+        c.execute(
+            t["ordens_servico"]
+            .insert()
+            .values(
+                id=4,
+                numero="1007-2026-000004",
+                titulo="Antiga",
+                descricao="y",
+                **{"equip" + "amento_outro": "Não informado"},
+                **base,
+            )
+        )
         c.execute(
             t["os_itens_custo"]
             .insert()
@@ -227,6 +240,7 @@ def test_migracao_0010_com_dados_e_exportacao(banco_vazio, tmp_path):
             ["numero", "equip" + "amento"],
             ["1007-2026-000001", "Balança rodoviária"],
             ["1007-2026-000002", "Compressor velho"],
+            ["1007-2026-000004", "Não informado"],
         ]
 
     command.upgrade(cfg, "0010")
@@ -234,12 +248,27 @@ def test_migracao_0010_com_dados_e_exportacao(banco_vazio, tmp_path):
     assert ("equip" + "amentos") not in t
     assert not any(PROIBIDAS.search(col.name) for col in t["ordens_servico"].c)
     assert "numero_sap" in t["ordens_servico"].c
+    os_ = t["ordens_servico"]
     with db.obter_engine().connect() as c:
-        buscas = dict(
-            c.execute(select(t["ordens_servico"].c.id, t["ordens_servico"].c.busca_texto)).all()
-        )
+        linhas = c.execute(select(os_.c.id, os_.c.descricao, os_.c.busca_texto)).all()
         item = c.execute(select(t["os_itens_custo"].c.busca_texto)).scalar_one()
-    assert buscas == {1: "calibracao balanca", 2: "acao valvula", 3: "sem nada x"}
+    rotulo = "Equip" + "amento (legado): "
+    descricoes = {i: d for i, d, _b in linhas}
+    buscas = {i: b for i, _d, b in linhas}
+    # O nome do cadastro e o texto livre ficam no fim da descrição, e entram na busca.
+    assert descricoes == {
+        1: f"Balança\n\n{rotulo}Balança rodoviária",
+        2: f"Válvula\n\n{rotulo}Compressor velho",
+        3: "x",
+        4: "y",
+    }
+    legado = "equip" + "amento (legado):"
+    assert buscas == {
+        1: f"calibracao balanca {legado} balanca rodoviaria",
+        2: f"acao valvula {legado} compressor velho",
+        3: "sem nada x",
+        4: "antiga y",
+    }
     assert item == "celula"
     # Depois da migração a exportação não tem o que ler.
     assert cli.main(["exportar-" + "equip" + "amentos", str(tmp_path / "de_novo.csv")]) == 1
@@ -249,7 +278,21 @@ def test_migracao_0010_com_dados_e_exportacao(banco_vazio, tmp_path):
     assert ("equip" + "amentos") in t and "busca_texto" not in t["ordens_servico"].c
     with db.obter_engine().connect() as c:
         assert c.execute(select(t["equip" + "amentos"])).all() == []  # volta vazia
-        assert c.execute(select(t["ordens_servico"].c.id)).scalars().all() == [1, 2, 3]
+        ids = select(t["ordens_servico"].c.id).order_by(t["ordens_servico"].c.id)
+        assert c.execute(ids).scalars().all() == [1, 2, 3, 4]
+        # O vínculo não volta; a linha acrescentada continua na descrição.
+        voltou = c.execute(
+            select(t["ordens_servico"].c.descricao).where(t["ordens_servico"].c.id == 1)
+        ).scalar_one()
+        assert voltou.endswith(f"{rotulo}Balança rodoviária")
+        assert (
+            c.execute(
+                select(t["ordens_servico"].c["equip" + "amento_id"]).where(
+                    t["ordens_servico"].c.id == 1
+                )
+            ).scalar_one()
+            is None
+        )
     command.upgrade(cfg, "head")
     assert "busca_texto" in {
         c["name"] for c in inspect(db.obter_engine()).get_columns("os_itens_custo")
