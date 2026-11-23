@@ -181,6 +181,7 @@ class LixeiraDetalhe(Tela):
                 basicos.rotulo_valor(
                     "Previsto",
                     formatacao.formatar_brl(d.resumo_custos.total_previsto_centavos),
+                    uma_linha=True,
                 ),
             ],
         )

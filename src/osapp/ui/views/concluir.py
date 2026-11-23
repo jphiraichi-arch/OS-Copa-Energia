@@ -185,9 +185,12 @@ class ConcluirOs(Tela):
             basicos.rotulo_valor(
                 "Total previsto",
                 formatacao.formatar_brl(d.resumo_custos.total_previsto_centavos),
+                uma_linha=True,
             ),
             basicos.rotulo_valor(
-                "Tempo previsto", formatacao.formatar_duracao(d.tempo_previsto_minutos)
+                "Tempo previsto",
+                formatacao.formatar_duracao(d.tempo_previsto_minutos),
+                uma_linha=True,
             ),
         ]
         return basicos.coluna(linhas, espaco=theme.ESPACO_P + 4)
@@ -222,9 +225,11 @@ class ConcluirOs(Tela):
             linhas.append(
                 basicos.rotulo_valor(
                     c.categoria_nome,
-                    historico.texto_diferenca_valor(c.diferenca_centavos, c.diferenca_percentual)
+                    # Categoria: só valor e percentual; as palavras ficam no Total.
+                    historico.texto_diferenca_compacta(c.diferenca_centavos, c.diferenca_percentual)
                     if com_realizado
                     else "-",
+                    uma_linha=True,
                 )
             )
         linhas.append(

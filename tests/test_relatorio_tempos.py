@@ -106,7 +106,7 @@ def test_um_caso_extremo_puxa_a_media_e_nao_a_mediana(p, tempo):
         solicitacao_com_tempos(p, tempo, BASE + n * timedelta(minutes=1), resposta=horas * H)
     r = relatorio(p, tempo)
     assert r.resposta == relatorios.Medida(5, 22 * 3600, 3 * 3600)
-    assert formatacao.formatar_tempo(r.resposta.media_segundos) == "22 h"
+    assert formatacao.formatar_tempo(r.resposta.media_segundos) == "22\u00a0h"
     assert r.solucao == relatorios.Medida(0, None, None)
 
 
@@ -115,7 +115,7 @@ def test_mediana_com_n_par(p, tempo):
         solicitacao_com_tempos(p, tempo, BASE + n * timedelta(minutes=1), resposta=horas * H)
     r = relatorio(p, tempo)
     assert r.resposta.mediana_segundos == 2 * 3600 + 30 * 60
-    assert formatacao.formatar_tempo(r.resposta.mediana_segundos) == "2 h 30 min"
+    assert formatacao.formatar_tempo(r.resposta.mediana_segundos) == "2\u00a0h\u00a030\u00a0min"
     assert r.resposta.media_segundos == 4 * 3600
 
 
@@ -251,7 +251,7 @@ def test_backlog_ignora_o_periodo(p, tempo):
     r = relatorio(p, tempo)  # gerado em BASE + 300 h
     assert r.backlog.quantidade == 2
     assert r.backlog.mais_antiga_segundos == (300 + 72) * 3600
-    assert formatacao.formatar_tempo(r.backlog.mais_antiga_segundos) == "15 d 12 h"
+    assert formatacao.formatar_tempo(r.backlog.mais_antiga_segundos) == "15\u00a0d\u00a012\u00a0h"
     vazio = relatorio(p, tempo, ator="man_f2")
     assert vazio.backlog == relatorios.Backlog(0, None)
 
@@ -283,14 +283,14 @@ def test_acesso(p, tempo):
 @pytest.mark.parametrize(
     ("segundos", "texto"),
     [
-        (0, "0 min"),
-        (29, "0 min"),
-        (30, "1 min"),
-        (45 * 60, "45 min"),
-        (3600, "1 h"),
-        (3 * 3600 + 20 * 60, "3 h 20 min"),
-        (24 * 3600, "1 d"),
-        (2 * 86400 + 4 * 3600 + 59 * 60, "2 d 4 h"),
+        (0, "0\u00a0min"),
+        (29, "0\u00a0min"),
+        (30, "1\u00a0min"),
+        (45 * 60, "45\u00a0min"),
+        (3600, "1\u00a0h"),
+        (3 * 3600 + 20 * 60, "3\u00a0h\u00a020\u00a0min"),
+        (24 * 3600, "1\u00a0d"),
+        (2 * 86400 + 4 * 3600 + 59 * 60, "2\u00a0d\u00a04\u00a0h"),
     ],
 )
 def test_formatar_tempo(segundos, texto):

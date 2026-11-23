@@ -120,7 +120,10 @@ def test_nenhuma_referencia_ao_cadastro_removido():
     """Fora das migrações, só o módulo da exportação prévia (exportacao_legada.py)."""
     achados = []
     for arquivo in _arquivos("src") + _arquivos("tests"):
-        if arquivo.name == "exportacao_legada.py":
+        # Exceções: a exportação prévia (prompt 21) e os rótulos dos eventos antigos do
+        # histórico (prompt 26: rótulo '(legado)'), que só leem o que já foi gravado, e o
+        # teste desses rótulos.
+        if arquivo.name in ("exportacao_legada.py", "rotulos_eventos.py", "test_visual.py"):
             continue
         for n, linha in enumerate(arquivo.read_text(encoding="utf-8").splitlines(), 1):
             # Texto da urgência (prompt 23) usa a palavra no sentido comum, não o cadastro.

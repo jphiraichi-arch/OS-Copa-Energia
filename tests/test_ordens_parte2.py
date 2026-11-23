@@ -201,7 +201,7 @@ def test_iniciar_define_executor_e_evento(cenario):
     assert d.inicio_execucao_em == T0 and d.versao == 2 and d.atualizado_em == T0
     assert eventos(cenario, d.id) == [
         ("CRIACAO", None, None, None),
-        ("ITEM_ADICIONADO", "item 1", None, "Outros | Valor total | 1 x R$ 100,00"),
+        ("ITEM_ADICIONADO", "item 1", None, "Outros | Valor total | 1 x R$\u00a0100,00"),
         ("STATUS", "status", "ABERTA", "EM_EXECUCAO"),
     ]
 
@@ -271,7 +271,7 @@ def test_concluir_preenche_realizado_e_eventos(cenario):
         ("REALIZADO", "fim_realizado", None, FIM.isoformat()),
         ("REALIZADO", "descricao_realizado", None, "Rolamento trocado."),
         ("REALIZADO", "nota_conclusao", None, "Serviço feito conforme o previsto."),
-        ("ITEM_ADICIONADO", "item 2", None, "Outros | Valor total | 1 x R$ 120,00"),
+        ("ITEM_ADICIONADO", "item 2", None, "Outros | Valor total | 1 x R$\u00a0120,00"),
     ]
 
 
@@ -377,7 +377,7 @@ def test_edicao_sem_mudanca_nao_grava_evento_nem_muda_versao(cenario):
         assert e == d
     assert eventos(cenario, d.id) == [
         ("CRIACAO", None, None, None),
-        ("ITEM_ADICIONADO", "item 1", None, "Outros | Valor total | 1 x R$ 100,00"),
+        ("ITEM_ADICIONADO", "item 1", None, "Outros | Valor total | 1 x R$\u00a0100,00"),
     ]
 
 

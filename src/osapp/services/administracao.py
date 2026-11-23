@@ -361,6 +361,18 @@ def aplicar_consolidacao(login_responsavel: str, codigo_destino: str = "1007") -
         return plano
 
 
+# --- Campos de evento sem rótulo (prompt 26) -------------------------------------------
+
+
+def campos_de_eventos() -> list[str]:
+    """Valores distintos de os_eventos.campo (só leitura; sem os vazios)."""
+    from osapp.models import OsEvento
+
+    with sessao() as s:
+        consulta = select(OsEvento.campo).where(OsEvento.campo.is_not(None)).distinct()
+        return sorted(s.scalars(consulta))
+
+
 # --- Conferência do histórico de status (prompt 25) ----------------------------------
 
 TOLERANCIA_SEGUNDOS = 60  # coluna e evento gravados na mesma transação, com o mesmo relógio

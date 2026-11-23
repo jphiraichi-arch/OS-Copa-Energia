@@ -15,14 +15,14 @@ from osapp.formatacao import (
 @pytest.mark.parametrize(
     ("centavos", "esperado"),
     [
-        (123456, "R$ 1.234,56"),
-        (0, "R$ 0,00"),
-        (5, "R$ 0,05"),
-        (100, "R$ 1,00"),
-        (99999, "R$ 999,99"),
-        (100000, "R$ 1.000,00"),
-        (123456789012, "R$ 1.234.567.890,12"),
-        (-123456, "-R$ 1.234,56"),
+        (123456, "R$\u00a01.234,56"),
+        (0, "R$\u00a00,00"),
+        (5, "R$\u00a00,05"),
+        (100, "R$\u00a01,00"),
+        (99999, "R$\u00a0999,99"),
+        (100000, "R$\u00a01.000,00"),
+        (123456789012, "R$\u00a01.234.567.890,12"),
+        (-123456, "-R$\u00a01.234,56"),
     ],
 )
 def test_formatar_brl(centavos, esperado):
@@ -40,8 +40,9 @@ def test_formatar_brl_rejeita_nao_inteiro(invalido):
     [
         ("1234,56", 123456),
         ("1.234,56", 123456),
-        ("R$ 1.234,56", 123456),
+        ("R$\u00a01.234,56", 123456),
         ("R$1.234,56", 123456),
+        ("R$ 1.234,56", 123456),  # espaço comum (digitado) também vale
         ("R$ 1.234,56", 123456),
         ("  0,00 ", 0),
         ("0,05", 5),
@@ -82,7 +83,7 @@ def test_ler_brl_sem_centavos_e_em_reais():
     assert ler_brl("150") == 15000
     assert ler_brl("150,50") == 15050
     assert ler_brl("1.234") == 123400
-    assert ler_brl("R$ 1234") == 123400
+    assert ler_brl("R$\u00a01234") == 123400
     with pytest.raises(ValueError):
         ler_brl("150.50")
 
@@ -105,28 +106,28 @@ def test_formatar_data_de_datetime_usa_o_fuso():
 
 def test_formatar_data_hora_converte_fuso():
     dt = datetime(2026, 1, 15, 15, 30, tzinfo=UTC)
-    assert formatar_data_hora(dt, tz="America/Sao_Paulo") == "15/01/2026 12:30"
-    assert formatar_data_hora(dt, tz="Asia/Tokyo") == "16/01/2026 00:30"
+    assert formatar_data_hora(dt, tz="America/Sao_Paulo") == "15/01/2026\u00a012:30"
+    assert formatar_data_hora(dt, tz="Asia/Tokyo") == "16/01/2026\u00a000:30"
 
 
 def test_formatar_data_hora_vira_o_dia():
     dt = datetime(2026, 1, 1, 1, 5, tzinfo=UTC)
-    assert formatar_data_hora(dt, tz="America/Sao_Paulo") == "31/12/2025 22:05"
+    assert formatar_data_hora(dt, tz="America/Sao_Paulo") == "31/12/2025\u00a022:05"
 
 
 def test_formatar_data_hora_aceita_outro_fuso_de_origem_e_naive():
     origem = datetime(2026, 1, 15, 20, 0, tzinfo=timezone(timedelta(hours=2)))
-    assert formatar_data_hora(origem, tz="America/Sao_Paulo") == "15/01/2026 15:00"
+    assert formatar_data_hora(origem, tz="America/Sao_Paulo") == "15/01/2026\u00a015:00"
     naive = datetime(2026, 1, 15, 15, 30)  # sem fuso = UTC
-    assert formatar_data_hora(naive, tz="America/Sao_Paulo") == "15/01/2026 12:30"
+    assert formatar_data_hora(naive, tz="America/Sao_Paulo") == "15/01/2026\u00a012:30"
 
 
 def test_formatar_data_hora_le_os_tz_do_ambiente(monkeypatch):
     dt = datetime(2026, 1, 15, 15, 30, tzinfo=UTC)
     monkeypatch.setenv("OS_TZ", "America/Manaus")
-    assert formatar_data_hora(dt) == "15/01/2026 11:30"
+    assert formatar_data_hora(dt) == "15/01/2026\u00a011:30"
     monkeypatch.delenv("OS_TZ")
-    assert formatar_data_hora(dt) == "15/01/2026 12:30"
+    assert formatar_data_hora(dt) == "15/01/2026\u00a012:30"
 
 
 @pytest.mark.parametrize(

@@ -139,6 +139,21 @@ Toda função de serviço começa por `carregar_ator`; usuário inativo é recus
   texto/fundo fica em `theme.PARES_TEXTO`, verificado com `theme.contraste()` em teste. Laranja
   (`COR_DESTAQUE`) nunca é cor de texto pequeno; nada de cinza ou azul claro em texto
   pequeno sobre branco.
+- Valores numa linha só (prompt 26): os formatadores de `formatacao.py` unem as partes
+  de um valor com espaço que não quebra (U+00A0): 'R$ 1.234,56', '23/11/2026 15:05',
+  '3 h 20 min'; duração '2h58' sem espaço; percentual '12,5%' (sem espaço, uma casa, sem
+  ',0'). Todo Text que mostra só um valor usa `no_wrap` (`basicos.rotulo_valor(...,
+  uma_linha=True)`); faltando espaço, quebra o rótulo, nunca o valor.
+- Números alinhados à direita, com o cabeçalho alinhado igual. Tabela de custos com
+  proporções fixas 40/20/20/20 (`ui/tabela_custos.py`); abaixo de 600 px, um cartão por
+  categoria e o Total por último, destacado.
+- Textos de diferença numa só função (`ui/historico.py`): 'R$ 120,00 acima do previsto
+  (+12%)', 'R$ 120,00 abaixo do previsto (−12%)', '2h58 abaixo do previsto', 'Igual ao
+  previsto'. O percentual leva o sinal; o valor, não; nunca sinal de menos junto das
+  palavras; sem previsto, sem percentual. Nas linhas de categoria só valor e percentual,
+  com a etiqueta 'acima'/'abaixo'; as palavras ficam no Total.
+- Histórico: todo `campo` de os_eventos tem rótulo em `ui/rotulos_eventos.py` (inclusive
+  os legados); campo desconhecido aparece como 'Campo alterado' e gera aviso no log.
 - Números da faixa e do selo vêm de `services.ordens.contadores` (mesmo escopo de filial de
   `listar_os`); atualizados em 'Atualizar' e depois de cada mudança de status na sessão.
 

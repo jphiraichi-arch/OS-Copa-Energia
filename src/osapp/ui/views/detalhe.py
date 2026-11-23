@@ -10,6 +10,7 @@ from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao
 from osapp.ui import historico, rotas, rotulos, secoes, textos, theme
 from osapp.ui import urgencia as urgencia_ui
 from osapp.ui.components import basicos
+from osapp.ui.components.custos_tabela import tabela_custos
 from osapp.ui.components.opcoes import opcao_card
 from osapp.ui.components.secao import secao, status_pill
 from osapp.ui.views.base import Tela
@@ -476,10 +477,16 @@ class Detalhe(Tela):
         if not status.encerrado(d.status) or d.inicio_realizado is None:
             return [basicos.subtitulo("Sem realizado registrado.")]
         return [
-            basicos.rotulo_valor("Início", formatacao.formatar_data_hora(d.inicio_realizado)),
-            basicos.rotulo_valor("Fim", formatacao.formatar_data_hora(d.fim_realizado)),
             basicos.rotulo_valor(
-                "Tempo realizado", formatacao.formatar_duracao(d.tempo_realizado_minutos)
+                "Início", formatacao.formatar_data_hora(d.inicio_realizado), uma_linha=True
+            ),
+            basicos.rotulo_valor(
+                "Fim", formatacao.formatar_data_hora(d.fim_realizado), uma_linha=True
+            ),
+            basicos.rotulo_valor(
+                "Tempo realizado",
+                formatacao.formatar_duracao(d.tempo_realizado_minutos),
+                uma_linha=True,
             ),
             basicos.rotulo_valor("Descrição do que foi feito", d.descricao_realizado),
             basicos.rotulo_valor(
@@ -493,82 +500,10 @@ class Detalhe(Tela):
     def _custos(self, d) -> ft.Control:
         """Previsto, Realizado e Diferença por categoria e no total (números do serviço).
 
-        Tela larga: uma tabela. Celular: um cartão pequeno por categoria.
+        Tabela a partir de 600 px; abaixo, um cartão por categoria (ui/tabela_custos.py).
         """
-        resumo = d.resumo_custos
-        com_realizado = _tem_fase(d, custos.FASE_REALIZADO)
-        linhas = [
-            (
-                c.categoria_nome,
-                c.previsto_centavos,
-                c.realizado_centavos,
-                c.diferenca_centavos,
-                c.diferenca_percentual,
-            )
-            for c in resumo.por_categoria
-        ]
-        total = (
-            "Total",
-            resumo.total_previsto_centavos,
-            resumo.total_realizado_centavos,
-            resumo.diferenca_centavos,
-            resumo.diferenca_percentual,
-        )
-
-        def textos(linha) -> tuple[str, str, str]:
-            _nome, previsto, realizado, diferenca, pct = linha
-            if not com_realizado:
-                return formatacao.formatar_brl(previsto), "-", "-"
-            return (
-                formatacao.formatar_brl(previsto),
-                formatacao.formatar_brl(realizado),
-                historico.texto_diferenca_valor(diferenca, pct),
-            )
-
-        if self.app._e_largo():
-            corpo = [self._linha_tabela(("Categoria", "Previsto", "Realizado", "Diferença"), True)]
-            for linha in [*linhas, total]:
-                corpo.append(ft.Divider(height=1, thickness=1, color=theme.COR_CONTORNO))
-                corpo.append(self._linha_tabela((linha[0], *textos(linha)), linha is total))
-            return basicos.coluna(corpo, espaco=theme.ESPACO_P)
-        pequenos = []
-        for linha in [*linhas, total]:
-            previsto, realizado, diferenca = textos(linha)
-            pequenos.append(
-                ft.Container(
-                    bgcolor=theme.COR_CAMPO_FUNDO,
-                    border_radius=theme.RAIO_BOTAO,
-                    padding=theme.ESPACO_P + 4,
-                    content=basicos.coluna(
-                        [
-                            basicos.titulo(linha[0], theme.FONTE_CORPO),
-                            basicos.rotulo_valor("Previsto", previsto),
-                            basicos.rotulo_valor("Realizado", realizado),
-                            basicos.rotulo_valor("Diferença", diferenca),
-                        ],
-                        espaco=theme.ESPACO_P,
-                    ),
-                )
-            )
-        return basicos.coluna(pequenos, espaco=theme.ESPACO_P)
-
-    @staticmethod
-    def _linha_tabela(celulas: tuple[str, str, str, str], destaque: bool) -> ft.Control:
-        peso = ft.FontWeight.BOLD if destaque else ft.FontWeight.NORMAL
-        larguras = (3, 2, 2, 4)
-        return ft.Row(
-            [
-                ft.Text(
-                    texto,
-                    color=theme.COR_TITULO,
-                    size=theme.FONTE_SUBTITULO,
-                    weight=peso,
-                    expand=largura,
-                    text_align=ft.TextAlign.LEFT if n == 0 else ft.TextAlign.RIGHT,
-                )
-                for n, (texto, largura) in enumerate(zip(celulas, larguras, strict=True))
-            ],
-            vertical_alignment=ft.CrossAxisAlignment.START,
+        return tabela_custos(
+            d.resumo_custos, _tem_fase(d, custos.FASE_REALIZADO), self.app.page.width
         )
 
     def _itens(self, d, fase: str) -> ft.Control:
@@ -598,6 +533,7 @@ class Detalhe(Tela):
                         formatacao.formatar_brl(i.total_centavos),
                         color=theme.COR_TITULO,
                         size=theme.FONTE_SUBTITULO,
+                        no_wrap=True,
                     ),
                 ]
             )
@@ -662,7 +598,9 @@ def _linha_do_tempo(d) -> list[ft.Control]:
         linhas.append(("Concluída em", d.concluida_em))
     return [
         basicos.rotulo_valor(
-            rotulo, formatacao.formatar_data_hora(instante) if instante else "Ainda não"
+            rotulo,
+            formatacao.formatar_data_hora(instante) if instante else "Ainda não",
+            uma_linha=True,
         )
         for rotulo, instante in linhas
     ]

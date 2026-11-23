@@ -53,7 +53,7 @@ def test_usuario_comum_cria_os_na_propria_filial(cenario, monkeypatch):
 
     eventos = ordens.listar_eventos(cenario["marina"], d.id)
     assert [x.tipo for x in eventos] == ["CRIACAO", "ITEM_ADICIONADO"]
-    assert eventos[1].valor_novo == "Outros | Valor total | 1 x R$ 150,00"
+    assert eventos[1].valor_novo == "Outros | Valor total | 1 x R$\u00a0150,00"
     e = eventos[0]
     assert (e.tipo, e.campo, e.nome_usuario, e.data_hora) == ("CRIACAO", None, "Marina Teste", T0)
     assert (e.valor_antigo, e.valor_novo) == (None, None)

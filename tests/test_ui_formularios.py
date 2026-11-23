@@ -187,9 +187,9 @@ def test_instante_converte_do_fuso_local_para_utc():
 
 def test_previa_tempo():
     inicio, fim = ("04/05/2026", time(13, 50)), ("04/05/2026", time(14, 30))
-    assert f.previa_tempo(60, inicio, fim, SP) == "-0h20 - Abaixo do previsto"
-    assert f.previa_tempo(40, inicio, fim, SP) == "0h00 - Igual ao previsto"
+    assert f.previa_tempo(60, inicio, fim, SP) == "0h20 abaixo do previsto"
+    assert f.previa_tempo(40, inicio, fim, SP) == "Igual ao previsto"
     meia_noite = (("04/05/2026", time(23, 30)), ("05/05/2026", time(0, 45)))
-    assert f.previa_tempo(60, *meia_noite, SP) == "+0h15 - Acima do previsto"
+    assert f.previa_tempo(60, *meia_noite, SP) == "0h15 acima do previsto"
     assert f.previa_tempo(60, inicio, ("04/05/2026", None), SP) is None
     assert f.previa_tempo(60, fim, inicio, SP) is None  # fim antes do início

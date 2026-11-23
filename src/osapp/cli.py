@@ -83,6 +83,16 @@ def _consolidar_1007(args) -> str:
     return "\n".join(linhas)
 
 
+def _verificar_rotulos_eventos(_args) -> str:
+    """Só leitura: campos distintos de os_eventos sem rótulo em ui/rotulos_eventos.py."""
+    from osapp.ui import rotulos_eventos
+
+    sem = [c for c in administracao.campos_de_eventos() if not rotulos_eventos.tem_rotulo(c)]
+    if not sem:
+        return "Todos os campos do histórico têm rótulo."
+    return "\n".join([*sem, f"{len(sem)} campo(s) sem rótulo."])
+
+
 def _verificar_eventos_status(_args) -> str:
     """Só leitura: lista as ordens cujo histórico de status não bate com as colunas."""
     achados = administracao.verificar_eventos_status()
@@ -188,6 +198,12 @@ def criar_parser() -> argparse.ArgumentParser:
         help="Recalcula o texto de busca de todas as ordens e itens (pode repetir)",
     )
     p.set_defaults(func=_recalcular_busca)
+
+    p = sub.add_parser(
+        "verificar-rotulos-eventos",
+        help="Lista os campos do histórico que não têm rótulo na tela (só leitura)",
+    )
+    p.set_defaults(func=_verificar_rotulos_eventos)
 
     p = sub.add_parser(
         "verificar-eventos-status",

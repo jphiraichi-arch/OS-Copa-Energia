@@ -274,8 +274,8 @@ def test_eventos_de_cada_operacao(cenario):
         [item(1000, descricao="Rolamento"), item(2000, codigo="MAO_DE_OBRA", descricao="Hora")],
     )
     assert eventos(cenario, d.id)[1:] == [
-        ("ITEM_ADICIONADO", "item 1", None, "Outros | Rolamento | 1 x R$ 10,00"),
-        ("ITEM_ADICIONADO", "item 2", None, "Mão de obra | Hora | 1 x R$ 20,00"),
+        ("ITEM_ADICIONADO", "item 1", None, "Outros | Rolamento | 1 x R$\u00a010,00"),
+        ("ITEM_ADICIONADO", "item 2", None, "Mão de obra | Hora | 1 x R$\u00a020,00"),
     ]
     d = custos.adicionar_item(
         cenario["marina"],
@@ -292,7 +292,7 @@ def test_eventos_de_cada_operacao(cenario):
         "ITEM_ADICIONADO",
         "item 3",
         None,
-        "Peças/materiais | Correia | 1,5 x R$ 33,33",
+        "Peças/materiais | Correia | 1,5 x R$\u00a033,33",
     )
     d = custos.editar_item(
         cenario["marina"],
@@ -304,7 +304,7 @@ def test_eventos_de_cada_operacao(cenario):
     assert d.versao == 3
     assert eventos(cenario, d.id)[-2:] == [
         ("ITEM_ALTERADO", "item 3 - quantidade", "1,5", "2"),
-        ("ITEM_ALTERADO", "item 3 - valor unitário", "R$ 33,33", "R$ 40,00"),
+        ("ITEM_ALTERADO", "item 3 - valor unitário", "R$\u00a033,33", "R$\u00a040,00"),
     ]
     d = custos.editar_item(
         cenario["marina"], d.id, 3, d.versao, {"categoria_id": categoria_id("OUTROS")}
@@ -323,7 +323,7 @@ def test_eventos_de_cada_operacao(cenario):
     assert eventos(cenario, d.id)[-1] == (
         "ITEM_REMOVIDO",
         "item 3",
-        "Outros | Correia | 2 x R$ 40,00",
+        "Outros | Correia | 2 x R$\u00a040,00",
         None,
     )
     assert d.resumo_custos.total_previsto_centavos == 3000

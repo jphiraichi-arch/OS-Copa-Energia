@@ -53,7 +53,9 @@ def _limpo(texto: object) -> str:
 
 def texto_dinheiro(centavos: int) -> str:
     """Texto do campo (o 'R$' é o prefixo do campo): 15000 -> '150,00'; 0 -> ''."""
-    return formatacao.formatar_brl(centavos).removeprefix("R$ ") if centavos else ""
+    return (
+        formatacao.formatar_brl(centavos).removeprefix(f"R${formatacao.NBSP}") if centavos else ""
+    )
 
 
 def ler_dinheiro(texto: object) -> Lido:

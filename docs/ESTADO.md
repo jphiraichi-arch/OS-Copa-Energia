@@ -1131,3 +1131,28 @@ linha 'por urgência'); mudança de um texto que afeta a busca (título, descri�
 descrição de item); e — além das previstas no prompt — mudança de itens de custo depois
 do período (o administrador pode alterar itens de ordem concluída: os custos do mês
 passado mudam) e o cartão 'Solicitações em aberto', que é sempre a situação de agora.
+
+## Prompt 26 — valores numa linha, tabela de custos, histórico legível (23/11/2026)
+
+- `formatacao.py`: `NBSP` (U+00A0) entre as partes de `formatar_brl`, `formatar_tempo` e
+  `formatar_data_hora`; `formatar_percentual(valor, sinal=False)` ('12,5%', '+12%',
+  '−12%' com U+2212). A fonte embutida (Roboto) tem U+00A0, U+2212 e U+2014 (conferido com
+  fontTools). `ler_brl` aceita os dois espaços.
+- `basicos.rotulo_valor(..., uma_linha=True)` em todo valor de dinheiro, tempo, data,
+  percentual e contagem (Detalhe, Concluir, relatório, Lixeira); células numéricas com
+  `no_wrap` e alinhadas à direita.
+- `ui/tabela_custos.py` (puro: `modo(largura)`, `linhas(resumo, com_realizado)`) e
+  `components/custos_tabela.py`: tabela 40/20/20/20 a partir de 600 px; cartões abaixo,
+  Total por último e destacado. Na categoria, valor e percentual em linhas próprias (cada
+  um numa linha só) e etiqueta 'acima'/'abaixo'; palavras só no Total.
+- `historico.texto_diferenca_valor/texto_diferenca_tempo/texto_diferenca_compacta/
+  etiqueta_diferenca`: uma função para Detalhe, relatório e prévia da conclusão.
+- `ui/rotulos_eventos.py`: rótulo e formatação por tipo de todo campo já gravado (atuais e
+  legados: Equipamento (legado), Valor previsto/realizado (legado), Executor (legado)...);
+  desconhecido -> 'Campo alterado' + aviso no log. CLI só leitura
+  `verificar-rotulos-eventos`. Para conferir em produção (só leitura):
+  `select campo, count(*) from os_eventos group by campo order by campo;`
+- Conferido à mão (Playwright, banco local com R$ 99.999.999,99 e 999h59): Home, Detalhe
+  (todas as seções, tabela e cartões de custo, histórico) e relatório (mês e acumulado) a
+  360, 390, 800 e 1280 px. Sem testes de captura de tela: as ferramentas de teste do Flet
+  não rodam aqui.

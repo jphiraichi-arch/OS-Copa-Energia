@@ -32,10 +32,8 @@ def _tempo(segundos: int | None) -> str:
 
 
 def _percentual(valor: float) -> str:
-    """30.0 -> '30'; 33.33 -> '33,3'."""
-    if valor == int(valor):
-        return str(int(valor))
-    return f"{valor:.1f}".replace(".", ",")
+    """O percentual sem o '%' (o '%' é posto por quem chama)."""
+    return formatacao.formatar_percentual(valor).removesuffix("%")
 
 
 SEM_TAXA = "—"
@@ -289,7 +287,10 @@ class RelatorioTempos(Tela):
         linhas += [
             ft.ResponsiveRow(
                 [
-                    ft.Container(col={"xs": 4}, content=basicos.rotulo_valor(rotulo, str(valor)))
+                    ft.Container(
+                        col={"xs": 4},
+                        content=basicos.rotulo_valor(rotulo, str(valor), uma_linha=True),
+                    )
                     for rotulo, valor in (
                         (textos.MENSAL_ABERTAS, f.abertas),
                         (textos.MENSAL_CONCLUIDAS, f.concluidas),
@@ -298,7 +299,7 @@ class RelatorioTempos(Tela):
                 ],
                 spacing=theme.ESPACO_M,
             ),
-            basicos.rotulo_valor(textos.MENSAL_TAXA, texto_taxa(b.taxa)),
+            basicos.rotulo_valor(textos.MENSAL_TAXA, texto_taxa(b.taxa), uma_linha=True),
             basicos.subtitulo(textos.MENSAL_TAXA_NOTA),
         ]
         if b.resposta.n or b.solucao.n:
@@ -336,11 +337,15 @@ class RelatorioTempos(Tela):
                         basicos.subtitulo(ajuda),
                         ft.Row(
                             [
-                                basicos.rotulo_valor(textos.TEMPOS_MEDIA, _tempo(m.media_segundos)),
                                 basicos.rotulo_valor(
-                                    textos.TEMPOS_MEDIANA, _tempo(m.mediana_segundos)
+                                    textos.TEMPOS_MEDIA, _tempo(m.media_segundos), uma_linha=True
                                 ),
-                                basicos.rotulo_valor("n", str(m.n)),
+                                basicos.rotulo_valor(
+                                    textos.TEMPOS_MEDIANA,
+                                    _tempo(m.mediana_segundos),
+                                    uma_linha=True,
+                                ),
+                                basicos.rotulo_valor("n", str(m.n), uma_linha=True),
                             ],
                             spacing=theme.ESPACO_G,
                             wrap=True,
@@ -421,6 +426,7 @@ class RelatorioTempos(Tela):
                     basicos.rotulo_valor(
                         textos.TEMPOS_PREVISTO_TODAS,
                         formatacao.formatar_brl(c.previsto_total_centavos),
+                        uma_linha=True,
                     ),
                     basicos.subtitulo(textos.TEMPOS_CUSTOS_NOTA.format(n=c.concluidas)),
                     ft.Row(
@@ -428,10 +434,12 @@ class RelatorioTempos(Tela):
                             basicos.rotulo_valor(
                                 textos.TEMPOS_PREVISTO,
                                 formatacao.formatar_brl(c.previsto_concluidas_centavos),
+                                uma_linha=True,
                             ),
                             basicos.rotulo_valor(
                                 textos.TEMPOS_REALIZADO,
                                 formatacao.formatar_brl(c.realizado_concluidas_centavos),
+                                uma_linha=True,
                             ),
                         ],
                         spacing=theme.ESPACO_G,
@@ -535,7 +543,9 @@ def _backlog(b) -> ft.Control:
                 ),
                 ft.Row(
                     [
-                        basicos.rotulo_valor(textos.TEMPOS_QUANTIDADE, str(b.quantidade)),
+                        basicos.rotulo_valor(
+                            textos.TEMPOS_QUANTIDADE, str(b.quantidade), uma_linha=True
+                        ),
                         basicos.rotulo_valor("Mais antiga", texto),
                     ],
                     spacing=theme.ESPACO_G,
@@ -558,6 +568,7 @@ def _linha_tabela(celulas: tuple[str, ...], destaque: bool) -> ft.Control:
                 size=theme.FONTE_SUBTITULO,
                 weight=peso,
                 expand=largura,
+                no_wrap=n > 0,  # valores numa linha só; o rótulo da linha é que quebra
                 text_align=ft.TextAlign.LEFT if n == 0 else ft.TextAlign.RIGHT,
             )
             for n, (texto, largura) in enumerate(zip(celulas, larguras, strict=True))

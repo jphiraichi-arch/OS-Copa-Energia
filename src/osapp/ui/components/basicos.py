@@ -141,12 +141,23 @@ def selo_origem(origem: str) -> ft.Container:
     return selo(rotulos.origem(origem), fundo, cor)
 
 
-def rotulo_valor(rotulo: str, valor: str) -> ft.Column:
-    """Um par 'rótulo pequeno em cima, valor embaixo'."""
+def rotulo_valor(rotulo: str, valor: str, uma_linha: bool = False) -> ft.Column:
+    """Um par 'rótulo pequeno em cima, valor embaixo'.
+
+    ``uma_linha`` (dinheiro, tempo, percentual, data): o valor nunca quebra; quem quebra
+    é o rótulo (prompt 26). Textos livres (descrição, motivo) continuam quebrando.
+    """
     return ft.Column(
         controls=[
             ft.Text(rotulo, color=theme.COR_SUBTITULO, size=theme.FONTE_PEQUENA),
-            ft.Text(valor, color=theme.COR_TITULO, size=theme.FONTE_CORPO, selectable=True),
+            ft.Text(
+                valor,
+                color=theme.COR_TITULO,
+                size=theme.FONTE_CORPO,
+                selectable=True,
+                no_wrap=uma_linha,
+                max_lines=1 if uma_linha else None,
+            ),
         ],
         spacing=2,
         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,

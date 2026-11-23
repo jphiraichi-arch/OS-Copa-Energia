@@ -14,6 +14,9 @@ from zoneinfo import ZoneInfo
 
 from osapp.config import TZ_PADRAO
 
+NBSP = "\u00a0"  # espaço que não quebra: une as partes de um valor
+MENOS = "\u2212"  # sinal de menos tipográfico (percentuais com sinal)
+
 _RE_BRL = re.compile(r"^(?:R\$\s*)?(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d{2}))?$")
 _RE_QUANTIDADE = re.compile(r"^(\d{1,5})(?:,(\d{1,2}))?$")
 _RE_DURACAO = re.compile(r"^(\d{1,4}):([0-5]\d)$")
@@ -37,12 +40,30 @@ def _no_fuso(dt: datetime, tz: str | None) -> datetime:
 
 
 def formatar_brl(centavos: int) -> str:
-    """123456 -> 'R$ 1.234,56'. Negativos: '-R$ 1.234,56'."""
+    """123456 -> 'R$\u00a01.234,56'. Negativos: '-R$\u00a01.234,56'.
+
+    As partes de um valor são unidas por espaço que não quebra (U+00A0, ``NBSP``): na
+    tela, o valor nunca se parte no meio (prompt 26).
+    """
     _exigir_int(centavos, "centavos")
     reais, resto = divmod(abs(centavos), 100)
     inteiro = f"{reais:,}".replace(",", ".")
     sinal = "-" if centavos < 0 else ""
-    return f"{sinal}R$ {inteiro},{resto:02d}"
+    return f"{sinal}R${NBSP}{inteiro},{resto:02d}"
+
+
+def formatar_percentual(valor: float, sinal: bool = False) -> str:
+    """12.5 -> '12,5%'; 30.0 -> '30%'; 33.333 -> '33,3%' (uma casa, sem ',0'; sem espaço).
+
+    ``sinal``: '+12%' ou '\u221212%' (sinal de menos tipográfico). Zero nunca leva sinal.
+    """
+    arredondado = round(float(valor), 1)
+    texto = f"{abs(arredondado):.1f}".replace(".", ",").removesuffix(",0")
+    if sinal and arredondado > 0:
+        return f"+{texto}%"
+    if arredondado < 0:
+        return f"{MENOS}{texto}%"
+    return f"{texto}%"
 
 
 def ler_brl(texto: str) -> int:
@@ -85,7 +106,10 @@ def formatar_data(dt: date | datetime, tz: str | None = None) -> str:
 def formatar_data_hora(dt: datetime, tz: str | None = None) -> str:
     """'dd/mm/aaaa HH:MM' no fuso OS_TZ (ou ``tz``). Datetime sem fuso é tratado como UTC."""
     local = _no_fuso(dt, tz)
-    return f"{local.day:02d}/{local.month:02d}/{local.year:04d} {local.hour:02d}:{local.minute:02d}"
+    return (
+        f"{local.day:02d}/{local.month:02d}/{local.year:04d}{NBSP}"
+        f"{local.hour:02d}:{local.minute:02d}"
+    )
 
 
 def formatar_duracao(minutos: int) -> str:
@@ -108,13 +132,13 @@ def formatar_tempo(segundos: int) -> str:
         raise ValueError("Duração não pode ser negativa.")
     minutos = (segundos + 30) // 60
     if minutos < 60:
-        return f"{minutos} min"
+        return f"{minutos}{NBSP}min"
     if minutos < 24 * 60:
         horas, resto = divmod(minutos, 60)
-        return f"{horas} h {resto} min" if resto else f"{horas} h"
+        return f"{horas}{NBSP}h{NBSP}{resto}{NBSP}min" if resto else f"{horas}{NBSP}h"
     dias, resto = divmod(minutos, 24 * 60)
     horas = resto // 60
-    return f"{dias} d {horas} h" if horas else f"{dias} d"
+    return f"{dias}{NBSP}d{NBSP}{horas}{NBSP}h" if horas else f"{dias}{NBSP}d"
 
 
 def ler_duracao(texto: str) -> int:
