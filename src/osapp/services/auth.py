@@ -44,7 +44,7 @@ class Ator:
     deve_trocar_senha: bool = False  # senha temporária: trocar antes de qualquer tela
 
     @property
-    def is_admin(self) -> bool:
+    def e_admin(self) -> bool:
         """Atalho de leitura: o papel é 'admin'."""
         return self.papel == PAPEL_ADMIN
 

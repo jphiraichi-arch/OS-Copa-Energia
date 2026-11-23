@@ -35,8 +35,8 @@ class Usuario(Base):
     filial: Mapped[Filial] = relationship()
 
     @property
-    def is_admin(self) -> bool:
-        """Só leitura, derivado do papel (a coluna is_admin saiu na migração 0008)."""
+    def e_admin(self) -> bool:
+        """Só leitura, derivado do papel (a antiga coluna booleana saiu na migração 0008)."""
         return self.papel == "admin"
 
     @validates("login")

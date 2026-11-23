@@ -1156,3 +1156,16 @@ passado mudam) e o cartão 'Solicitações em aberto', que é sempre a situaçã
   (todas as seções, tabela e cartões de custo, histórico) e relatório (mês e acumulado) a
   360, 390, 800 e 1280 px. Sem testes de captura de tela: as ferramentas de teste do Flet
   não rodam aqui.
+
+## Prompt 29 — reconciliação das correções dos prompts 10 a 19 (23/11/2026)
+
+- Prompts recebidos e feitos: 10 a 26 e 29 (Alembic: 0001 a 0011). Os prompts 27 e 28 não
+  chegaram nesta sessão; a regra que cita 'filiais permitidas' (prompt 28) foi conferida
+  com a regra atual (só a própria filial) e o resto dela fica como 'ainda não se aplica'.
+- Mudanças: a propriedade derivada `is_admin` passou a se chamar `e_admin` (src e testes;
+  só os testes de migração escrevem na coluna antiga, que existe nos esquemas anteriores à
+  0008); saiu o comando `exportar-equipamentos` (`osapp/exportacao_legada.py`), que só
+  servia antes da migração 0010 (já aplicada; os nomes ficaram na descrição). REGRAS.md
+  ganhou a seção 'Itens de custo'.
+- Testes: `tests/test_reconciliacao.py`, um por regra ainda sem teste próprio, inclusive a
+  matriz de itens com usuario (solicitante e outro) e ordem cancelada (56 casos).

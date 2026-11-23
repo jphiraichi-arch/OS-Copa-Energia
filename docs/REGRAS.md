@@ -50,7 +50,7 @@ Toda função de serviço começa por `carregar_ator`; usuário inativo é recus
 
 - **usuario** (outras áreas): abre solicitações (título, descrição, urgência) e acompanha
   as OS da própria filial pelo modelo reduzido (`OsVisaoSolicitante`, `ResumoSolicitante`).
-  Nunca recebe previsto, realizado, custos, equipamento, tipo, prioridade, executor nem o
+  Nunca recebe previsto, realizado, custos, tipo, prioridade, executor nem o
   histórico: a consulta nem lê essas colunas. Edita e cancela só a própria solicitação,
   enquanto ABERTA.
 - **manutencao**: assume e executa as OS da própria filial; cria OS completas; edita os
@@ -92,6 +92,23 @@ Toda função de serviço começa por `carregar_ator`; usuário inativo é recus
 - O único logotipo permitido é o arquivo oficial da Copa Energia fornecido pelo responsável,
   `src/osapp/assets/logo.png`: sem redesenhar, recolorir nem distorcer. Nenhum outro
   logotipo real de empresa.
+
+## Itens de custo (prompt 13, regras finais conferidas no prompt 29)
+
+- Papéis só pelo campo `papel` (usuario, manutencao, admin); não existe coluna booleana
+  de administrador (a propriedade derivada chama-se `e_admin`).
+- PREVISTO: manutenção da filial da ordem ou administrador incluem, alteram e removem
+  enquanto a ordem não está concluída; depois da conclusão, só o administrador. Opcional
+  enquanto ABERTA; iniciar exige pelo menos 1 e, daí em diante, pelo menos 1 fica.
+- REALIZADO: chega com a conclusão (pelo menos 1), pelo executor ou administrador; depois,
+  só o administrador altera; antes da conclusão ninguém grava. Ordem cancelada: ninguém.
+- `criar_os` (manutenção e administrador) aceita lista vazia de itens previstos e tempo
+  vazio; `criar_solicitacao` não tem itens. `concluir_os` exige itens realizados e a nota.
+- `previsto_completo()` é a única verificação para iniciar: tempo previsto, pelo menos 1
+  item previsto, tipo e prioridade (numa solicitação, a prioridade vazia é preenchida
+  com a urgência ao iniciar — prompt 24). Não existe equipamento em lugar nenhum.
+- O papel usuario nunca recebe itens, totais ou nada derivado deles: nem na lista, no
+  detalhe, na busca (não busca nos itens), nas sugestões ou nos relatórios.
 
 ## Exclusão lógica e Lixeira (prompt 24)
 

@@ -66,7 +66,7 @@ def test_login_correto_devolve_o_ator(usuarios):
     with sessao() as s:
         f1 = s.query(Filial).filter_by(codigo="F001").one().id
     assert ator == Ator(usuarios["marina"], "Marina Teste", f1, "F001", "manutencao")
-    assert autenticar("admin", SENHA).is_admin is True
+    assert autenticar("admin", SENHA).e_admin is True
     assert autenticar("carlos.exemplo", SENHA).filial_codigo == "F002"
 
 
@@ -169,7 +169,7 @@ def test_logs_nao_contem_senha_hash_nem_login_digitado(usuarios, caplog):
 
 def test_carregar_ator(usuarios):
     ator = carregar_ator(usuarios["marina"])
-    assert (ator.nome, ator.filial_codigo, ator.is_admin) == ("Marina Teste", "F001", False)
+    assert (ator.nome, ator.filial_codigo, ator.e_admin) == ("Marina Teste", "F001", False)
 
 
 def test_carregar_ator_recusa_inativo_ausente_e_tipo_errado(usuarios):
@@ -243,7 +243,7 @@ def test_seed_duas_vezes_nao_duplica(banco):
             "SERVICOS_TERCEIROS",
             "OUTROS",
         ]
-        usuarios = {u.login: (u.filial.codigo, u.is_admin) for u in s.query(Usuario)}
+        usuarios = {u.login: (u.filial.codigo, u.e_admin) for u in s.query(Usuario)}
     assert usuarios == {"admin": ("1007", True)}  # sem exemplos por padrão
 
 
@@ -388,7 +388,7 @@ def test_cli_nao_aceita_senha_por_argumento():
 def test_perfil_gerente_e_definir_perfil(banco, monkeypatch, capsys):
     seed.executar(SENHA, exemplos=True)
     gerente = autenticar("gerente.norte", SENHA)
-    assert (gerente.is_gerente, gerente.is_admin) == (True, False)
+    assert (gerente.is_gerente, gerente.e_admin) == (True, False)
     assert autenticar("marina.teste", SENHA).is_gerente is False
     assert autenticar("admin", SENHA).is_gerente is False  # administrador prevalece
 
@@ -396,10 +396,10 @@ def test_perfil_gerente_e_definir_perfil(banco, monkeypatch, capsys):
     assert carregar_ator(_usuario().id).is_gerente is True
     administracao.definir_perfil("marina.teste", "administrador")
     ator = carregar_ator(_usuario().id)
-    assert (ator.is_admin, ator.is_gerente) == (True, False)
+    assert (ator.e_admin, ator.is_gerente) == (True, False)
     administracao.definir_perfil("marina.teste", "usuario")
     ator = carregar_ator(_usuario().id)
-    assert (ator.is_admin, ator.is_gerente) == (False, False)
+    assert (ator.e_admin, ator.is_gerente) == (False, False)
 
     with pytest.raises(ErroValidacao):
         administracao.definir_perfil("marina.teste", "chefe")

@@ -51,7 +51,7 @@ def test_padroes_do_usuario(banco):
         uid = u.id
     with sessao() as s:
         u = s.get(Usuario, uid)
-        assert (u.is_admin, u.ativo) == (False, True)
+        assert (u.e_admin, u.ativo) == (False, True)
 
 
 @pytest.mark.parametrize("extras", [{"tempo_previsto_minutos": 0}, {"tempo_previsto_minutos": -1}])

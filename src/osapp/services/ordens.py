@@ -413,7 +413,7 @@ def _pode_editar(ator: Ator, ordem) -> bool:
     OS cancelada: ninguém."""
     if ordem.status == _status.CANCELADA:
         return False
-    if ator.is_admin:
+    if ator.e_admin:
         return True
     return _manutencao_da_filial(ator, ordem) and ordem.status != _status.CONCLUIDA
 
@@ -422,13 +422,13 @@ def _pode_editar_solicitacao(ator: Ator, ordem) -> bool:
     """editar_solicitacao: o solicitante enquanto ABERTA; administrador (exceto cancelada)."""
     if ordem.origem != ORIGEM_SOLICITACAO or ordem.status == _status.CANCELADA:
         return False
-    if ator.is_admin:
+    if ator.e_admin:
         return True
     return _solicitante(ator, ordem) and ordem.status == _status.ABERTA
 
 
 def _pode_editar_realizado(ator: Ator, ordem) -> bool:
-    return ator.is_admin and _status.encerrado(ordem.status)
+    return ator.e_admin and _status.encerrado(ordem.status)
 
 
 def _pode_editar_itens(ator: Ator, ordem, fase: str) -> bool:
@@ -444,7 +444,7 @@ def _pode(acao: str, ator: Ator, ordem) -> bool:
     origem, _destino, quem = _status.transicao(acao)
     if ordem.status != origem:
         return False
-    if ator.is_admin:
+    if ator.e_admin:
         return True
     if quem == _status.MANUTENCAO_DA_FILIAL:
         return _manutencao_da_filial(ator, ordem)
@@ -712,7 +712,7 @@ def _filial_de_destino(ator: Ator, filial_id: object, acao: str) -> int:
     """Filial travada na do ator; só o administrador escolhe outra."""
     if filial_id is not None and not _e_int(filial_id):
         raise ErroValidacao("filial_id", "Filial inválida.")
-    if not ator.is_admin and filial_id is not None and filial_id != ator.filial_id:
+    if not ator.e_admin and filial_id is not None and filial_id != ator.filial_id:
         raise _negar(ator, f"{acao} em outra filial")
     return ator.filial_id if filial_id is None else filial_id
 
@@ -933,7 +933,7 @@ def _filial_da_lista(ator: Ator, filial_id: object, acao: str) -> int | None:
     demais, só a própria (pedir outra é ErroPermissao)."""
     if filial_id is not None and not _e_int(filial_id):
         raise ErroValidacao("filial_id", "Filial inválida.")
-    if ator.is_admin:
+    if ator.e_admin:
         return filial_id
     if filial_id is None or filial_id == ator.filial_id:
         return ator.filial_id
@@ -976,7 +976,7 @@ def listar_filiais(ator_id: int) -> list[FilialDTO]:
     ator = carregar_ator(ator_id)
     with sessao() as s:
         repo = FilialRepo(s)
-        filiais = repo.listar() if ator.is_admin else [repo.obter(ator.filial_id)]
+        filiais = repo.listar() if ator.e_admin else [repo.obter(ator.filial_id)]
         return [FilialDTO(f.id, f.codigo, f.nome) for f in filiais if f is not None]
 
 
@@ -1052,7 +1052,7 @@ def editar_os(ator_id: int, os_id: int, versao: int, alteracoes: dict) -> OsDeta
             permitidos = set(CAMPOS_MANUTENCAO)
             if ordem.origem == ORIGEM_MANUTENCAO:
                 permitidos.update(CAMPOS_TEXTO)
-            if ator.is_admin:
+            if ator.e_admin:
                 permitidos.add(CAMPO_FILIAL)
             if _pode_editar_realizado(ator, ordem):
                 permitidos.update(CAMPOS_REALIZADO)

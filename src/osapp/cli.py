@@ -9,7 +9,6 @@ import argparse
 import getpass
 import sys
 
-from osapp import exportacao_legada
 from osapp.config import ConfigError
 from osapp.logs import configurar_logging
 from osapp.services import administracao, ordens
@@ -124,10 +123,10 @@ def _limpar_tentativas(_args) -> str:
 def _previa_papeis(_args) -> str:
     linhas = administracao.previa_papeis()
     largura = max([len("login"), *(len(p.login) for p in linhas)])
-    saida = [f"{'login':<{largura}}  filial  is_admin  papel"]
+    saida = [f"{'login':<{largura}}  filial  e_admin  papel"]
     for p in linhas:
         saida.append(
-            f"{p.login:<{largura}}  {p.filial_codigo:<6}  {'sim' if p.is_admin else 'não':<8}  "
+            f"{p.login:<{largura}}  {p.filial_codigo:<6}  {'sim' if p.e_admin else 'não':<8}  "
             f"{p.papel_proposto}"
         )
     saida.append(f"{len(linhas)} usuário(s). Nada foi alterado.")
@@ -210,8 +209,6 @@ def criar_parser() -> argparse.ArgumentParser:
         help="Confere o histórico de status com as colunas de instante (só leitura)",
     )
     p.set_defaults(func=_verificar_eventos_status)
-
-    exportacao_legada.registrar_comando(sub)  # exportação antes da migração 0010
 
     p = sub.add_parser(
         "previa-papeis",

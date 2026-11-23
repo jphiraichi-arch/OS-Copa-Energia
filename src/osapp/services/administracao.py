@@ -44,7 +44,7 @@ class UsuarioCriado:
     nome: str
     login: str
     filial_codigo: str
-    is_admin: bool
+    e_admin: bool
     is_gerente: bool = False
     papel: str = "manutencao"
 
@@ -53,16 +53,16 @@ PERFIS = ("usuario", "gerente", "administrador")
 PAPEIS = PAPEIS_DO_ATOR
 
 
-def papel_de(is_admin: bool) -> str:
+def papel_de(e_admin: bool) -> str:
     """Papel a partir do perfil antigo (regra da migração 0007)."""
-    return "admin" if is_admin else "manutencao"
+    return "admin" if e_admin else "manutencao"
 
 
 @dataclass(frozen=True)
 class PreviaPapel:
     login: str
     filial_codigo: str
-    is_admin: bool
+    e_admin: bool
     papel_proposto: str
 
 
@@ -109,7 +109,7 @@ def criar_usuario(
     login: str,
     senha: str,
     filial_codigo: str,
-    is_admin: bool = False,
+    e_admin: bool = False,
     is_gerente: bool = False,
     *,
     papel: str | None = None,
@@ -117,15 +117,15 @@ def criar_usuario(
 ) -> UsuarioCriado:
     """Cria um usuário pela linha de comando ou pelo seed (sem administrador logado).
 
-    ``papel`` (usuario, manutencao, admin); sem ele, ``is_admin`` decide entre admin e
+    ``papel`` (usuario, manutencao, admin); sem ele, ``e_admin`` decide entre admin e
     manutencao. ``temporaria``: o usuário troca a senha no próximo login. As regras e o
     histórico são os de services/usuarios.py.
     """
-    if not isinstance(is_admin, bool):
-        raise ErroValidacao("is_admin", "Valor inválido.")
+    if not isinstance(e_admin, bool):
+        raise ErroValidacao("e_admin", "Valor inválido.")
     if papel is None:
-        papel = papel_de(is_admin)
-    if papel not in PAPEIS or (is_admin and papel != "admin"):
+        papel = papel_de(e_admin)
+    if papel not in PAPEIS or (e_admin and papel != "admin"):
         raise ErroValidacao("papel", "Papel inválido. Use usuario, manutencao ou admin.")
     if not isinstance(filial_codigo, str):
         raise ErroValidacao("filial", "Filial inválida.")
@@ -187,9 +187,9 @@ def definir_perfil(login: str, perfil: str) -> None:
 
 
 def previa_papeis() -> list[PreviaPapel]:
-    """Login, filial, is_admin (derivado) e o papel atual. Não altera nada.
+    """Login, filial, e_admin (derivado) e o papel atual. Não altera nada.
 
-    Desde a migração 0008 não há mais coluna is_admin: a prévia antes da 0007 deve ser
+    Desde a migração 0008 não há mais coluna e_admin: a prévia antes da 0007 deve ser
     feita com o código do prompt 16 (commit 3c66de8).
     """
     with sessao() as s:

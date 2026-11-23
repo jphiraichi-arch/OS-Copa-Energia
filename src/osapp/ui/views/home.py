@@ -30,7 +30,7 @@ class Home(Tela):
         self.filtro_status: str | None = None
         # Para administrador, o filtro começa na própria filial (ou na última escolhida
         # nesta sessão); os demais não escolhem. A faixa usa o mesmo filtro.
-        self.filtro_filial: int | None = app.filtro_filial if app.sessao.is_admin else None
+        self.filtro_filial: int | None = app.filtro_filial if app.sessao.e_admin else None
         self.pagina = 1
         self.itens: list = []
 
@@ -146,7 +146,7 @@ class Home(Tela):
     # --- Carga ------------------------------------------------------------------------
 
     async def carregar(self) -> None:
-        if self.app.sessao.is_admin:
+        if self.app.sessao.e_admin:
             resultado = await self.app.chamar(ordens.listar_filiais, self.app.sessao.ator_id)
             if resultado.ok:
                 self.filial.options = [
@@ -227,7 +227,7 @@ class Home(Tela):
                 formatacao.formatar_brl(item.total_previsto_centavos),
                 formatacao.formatar_data(item.aberta_em or item.criado_em),
             ]
-            if self.app.sessao.is_admin:
+            if self.app.sessao.e_admin:
                 detalhes.append(item.filial_codigo)
         return basicos.cartao(
             ft.Row(

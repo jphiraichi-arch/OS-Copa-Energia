@@ -197,7 +197,7 @@ class RelatorioTempos(Tela):
     # --- Carga ------------------------------------------------------------------------
 
     async def carregar(self) -> None:
-        if self.app.sessao.is_admin:
+        if self.app.sessao.e_admin:
             resultado = await self.app.chamar(ordens.listar_filiais, self.app.sessao.ator_id)
             if resultado.ok:
                 self.filial.options = [

@@ -126,7 +126,7 @@ def _filial_permitida(s, ator: Ator, filial_id: object) -> tuple[int | None, str
     """Filial efetiva e seu rótulo, aplicando a regra de visibilidade."""
     if filial_id is not None and not _e_int(filial_id):
         raise ErroValidacao("filial_id", "Filial inválida.")
-    if not ator.is_admin:
+    if not ator.e_admin:
         if filial_id is not None and filial_id != ator.filial_id:
             logger.warning(
                 "Permissão negada: usuario_id=%s ação=relatório de outra filial.", ator.usuario_id

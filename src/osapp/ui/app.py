@@ -234,7 +234,7 @@ class App:
         sessao_ui.iniciar(self.sessao, ator, relogio.agora(), login)
         self.sessao.rota_pendente = None
         self.contadores = None
-        self.filtro_filial = ator.filial_id if self.sessao.is_admin else None
+        self.filtro_filial = ator.filial_id if self.sessao.e_admin else None
         await self.ir(rotas.normalizar(pendente) if pendente else rotas.HOME)
 
     async def _ao_mudar_rota(self, e: ft.RouteChangeEvent) -> None:

@@ -7,18 +7,18 @@ from osapp.services.erros import ErroPermissao
 
 
 def exigir_admin(ator: Ator) -> None:
-    if not ator.is_admin:
+    if not ator.e_admin:
         raise ErroPermissao()
 
 
 def pode_acessar_filial(ator: Ator, filial_id: int) -> bool:
     """Administrador acessa qualquer filial; os demais, apenas a própria."""
-    return ator.is_admin or ator.filial_id == filial_id
+    return ator.e_admin or ator.filial_id == filial_id
 
 
 def pode_usar_lixeira(ator: Ator) -> bool:
     """Excluir, restaurar e ver as ordens excluídas: só o administrador (prompt 24)."""
-    return ator.is_admin
+    return ator.e_admin
 
 
 def pode_ver_relatorio_mensal(ator: Ator, filial_id: int | None) -> bool:
@@ -28,6 +28,6 @@ def pode_ver_relatorio_mensal(ator: Ator, filial_id: int | None) -> bool:
     Manutenção: só a própria filial. Papel usuario: nunca. O sinalizador de gerente não
     muda mais o acesso.
     """
-    if ator.is_admin:
+    if ator.e_admin:
         return True
     return ator.is_manutencao and filial_id == ator.filial_id

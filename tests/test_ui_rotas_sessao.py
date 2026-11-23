@@ -171,7 +171,7 @@ def test_atividade_renova_o_prazo():
 def test_expiracao_encerra_a_sessao_e_deixa_a_mensagem():
     s = logada()
     assert aplicar_navegacao("/os/3", s, T0 + timedelta(minutes=31)) == "/login"
-    assert s.ator_id is None and s.nome == "" and s.filial_codigo == "" and not s.is_admin
+    assert s.ator_id is None and s.nome == "" and s.filial_codigo == "" and not s.e_admin
     assert s.mensagem_login == MENSAGEM_SESSAO_EXPIRADA == "Sessão expirada. Entre novamente."
     assert s.rota_pendente == "/os/3"
 
@@ -185,7 +185,7 @@ def test_tempo_limite_configuravel():
 
 def test_iniciar_e_encerrar():
     s = logada()
-    assert (s.ator_id, s.nome, s.filial_id, s.filial_codigo, s.is_admin) == (
+    assert (s.ator_id, s.nome, s.filial_id, s.filial_codigo, s.e_admin) == (
         7,
         "Marina Teste",
         1,

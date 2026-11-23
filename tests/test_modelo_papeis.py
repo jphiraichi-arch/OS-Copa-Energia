@@ -48,7 +48,7 @@ def _povoar_0006():
                 login="admin",
                 senha_hash="x",
                 filial_id=1,
-                is_admin=True,
+                is_admin=True,  # coluna do esquema antigo (antes da 0008)
             ),
             dict(id=2, nome="Marina Teste", login="marina.teste", senha_hash="x", filial_id=1),
             dict(
@@ -113,7 +113,8 @@ def test_migracao_0007_com_dados_ida_e_volta(banco_vazio):
         "marina.teste": "manutencao",
         "gerente.norte": "manutencao",
     }
-    assert all((u["papel"] == "admin") == u["is_admin"] for u in usuarios.values())
+    coluna = "is_admin"  # esquema antigo (antes da 0008)
+    assert all((u["papel"] == "admin") == u[coluna] for u in usuarios.values())
     for ordem in _linhas("ordens_servico"):
         assert ordem["origem"] == "manutencao"
         assert ordem["aberta_em"].replace(tzinfo=UTC) == T0  # = criado_em
@@ -252,7 +253,7 @@ def test_previa_papeis_nao_altera_nada(banco_vazio, capsys):
     assert "3 usuário(s). Nada foi alterado." in saida
 
 
-def test_definir_papel_mantem_is_admin_coerente(banco, capsys):
+def test_definir_papel_mantem_e_admin_coerente(banco, capsys):
     administracao.criar_filial("1007", "Jardinópolis")
     administracao.criar_usuario("Admin", "admin", "senha-ficticia-123", "1007", True)
     administracao.criar_usuario("Marina", "marina.teste", "senha-ficticia-123", "1007")
@@ -260,7 +261,7 @@ def test_definir_papel_mantem_is_admin_coerente(banco, capsys):
     def estado(login):
         with sessao() as s:
             u = s.scalars(select(Usuario).where(Usuario.login == login)).one()
-            return u.papel, u.is_admin
+            return u.papel, u.e_admin
 
     assert estado("admin") == ("admin", True)
     assert estado("marina.teste") == ("manutencao", False)

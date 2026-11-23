@@ -23,8 +23,8 @@ def versao_do_app() -> str:
         return "desconhecida"
 
 
-def rotulo_do_perfil(is_admin: bool, is_gerente: bool = False) -> str:
-    if is_admin:
+def rotulo_do_perfil(e_admin: bool, is_gerente: bool = False) -> str:
+    if e_admin:
         return textos.PERFIL_ADMINISTRADOR
     return textos.PERFIL_GERENTE if is_gerente else textos.PERFIL_USUARIO
 

@@ -611,17 +611,17 @@ def test_migracao_0008_com_dados_ida_e_volta(banco_vazio):
                 login="admin",
                 senha_hash="x",
                 filial_id=1,
-                is_admin=True,
+                is_admin=True,  # coluna do esquema antigo (antes da 0008)
                 papel="admin",
             ),
-            # gravado pelo código antigo depois da 0007: is_admin sem papel
+            # gravado pelo código antigo depois da 0007: is_admin sem papel (esquema antigo)
             dict(
                 id=2,
                 nome="Novo Admin",
                 login="novo.admin",
                 senha_hash="x",
                 filial_id=1,
-                is_admin=True,
+                is_admin=True,  # coluna do esquema antigo (antes da 0008)
                 papel="manutencao",
             ),
             dict(
@@ -667,7 +667,8 @@ def test_migracao_0008_com_dados_ida_e_volta(banco_vazio):
 
     command.upgrade(cfg, "0008")
     t = _tabelas()
-    assert "is_admin" not in t["usuarios"].c and "iniciado_em" not in t["ordens_servico"].c
+    assert "is_admin" not in t["usuarios"].c  # esquema antigo: a coluna saiu na 0008
+    assert "iniciado_em" not in t["ordens_servico"].c
     with db.obter_engine().connect() as conexao:
         papeis = dict(conexao.execute(select(t["usuarios"].c.login, t["usuarios"].c.papel)).all())
         os_ = {linha.id: linha for linha in conexao.execute(select(t["ordens_servico"])).all()}
@@ -686,9 +687,8 @@ def test_migracao_0008_com_dados_ida_e_volta(banco_vazio):
     command.downgrade(cfg, "0007")
     t = _tabelas()
     with db.obter_engine().connect() as conexao:
-        admins = dict(
-            conexao.execute(select(t["usuarios"].c.login, t["usuarios"].c.is_admin)).all()
-        )
+        antiga = t["usuarios"].c["is_admin"]  # esquema antigo (a coluna volta no downgrade)
+        admins = dict(conexao.execute(select(t["usuarios"].c.login, antiga)).all())
         tempos = dict(
             conexao.execute(
                 select(t["ordens_servico"].c.id, t["ordens_servico"].c.concluido_em)

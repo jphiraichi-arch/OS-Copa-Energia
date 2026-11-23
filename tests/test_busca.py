@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import re
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -117,13 +116,13 @@ def _arquivos(pasta: str):
 
 
 def test_nenhuma_referencia_ao_cadastro_removido():
-    """Fora das migrações, só o módulo da exportação prévia (exportacao_legada.py)."""
+    """Fora das migrações, só os rótulos dos eventos antigos (prompt 26) e o teste deles."""
     achados = []
     for arquivo in _arquivos("src") + _arquivos("tests"):
-        # Exceções: a exportação prévia (prompt 21) e os rótulos dos eventos antigos do
-        # histórico (prompt 26: rótulo '(legado)'), que só leem o que já foi gravado, e o
-        # teste desses rótulos.
-        if arquivo.name in ("exportacao_legada.py", "rotulos_eventos.py", "test_visual.py"):
+        # Exceções: os rótulos dos eventos antigos do histórico (prompt 26: rótulo
+        # '(legado)'), que só leem o que já foi gravado, e o teste desses rótulos.
+        # A exportação prévia do prompt 21 saiu no prompt 29 (regra 12).
+        if arquivo.name in ("rotulos_eventos.py", "test_visual.py"):
             continue
         for n, linha in enumerate(arquivo.read_text(encoding="utf-8").splitlines(), 1):
             # Texto da urgência (prompt 23) usa a palavra no sentido comum, não o cadastro.
@@ -237,17 +236,6 @@ def test_migracao_0010_com_dados_e_exportacao(banco_vazio, tmp_path):
         )
     db.reiniciar()
 
-    # Exportação antes da migração: numero;nome do cadastro ou texto livre.
-    arquivo = tmp_path / "export.csv"
-    assert cli.main(["exportar-" + "equip" + "amentos", str(arquivo)]) == 0
-    with open(arquivo, encoding="utf-8") as f:
-        assert list(csv.reader(f, delimiter=";")) == [
-            ["numero", "equip" + "amento"],
-            ["1007-2026-000001", "Balança rodoviária"],
-            ["1007-2026-000002", "Compressor velho"],
-            ["1007-2026-000004", "Não informado"],
-        ]
-
     command.upgrade(cfg, "0010")
     t = _tabelas()
     assert ("equip" + "amentos") not in t
@@ -275,8 +263,6 @@ def test_migracao_0010_com_dados_e_exportacao(banco_vazio, tmp_path):
         4: "antiga y",
     }
     assert item == "celula"
-    # Depois da migração a exportação não tem o que ler.
-    assert cli.main(["exportar-" + "equip" + "amentos", str(tmp_path / "de_novo.csv")]) == 1
 
     command.downgrade(cfg, "0009")
     t = _tabelas()

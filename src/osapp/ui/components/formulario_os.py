@@ -105,7 +105,7 @@ class FormularioOs:
             "Filial",
             [ft.DropdownOption(key=str(f.id), text=f"{f.codigo} - {f.nome}") for f in filiais],
             str(filial_inicial) if filial_inicial is not None else None,
-            disabled=not app.sessao.is_admin,  # trava visual; quem decide é o serviço
+            disabled=not app.sessao.e_admin,  # trava visual; quem decide é o serviço
         )
         # Controles de cada seção (a tela decide quais seções desenhar).
         self.partes: dict[str, list[ft.Control]] = {

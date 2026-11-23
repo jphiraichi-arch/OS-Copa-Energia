@@ -128,7 +128,7 @@ def _proibir_exclusao_fisica(_mapper, _conexao, ordem: OrdemServico) -> None:
 # Toda consulta ORM (select, Session.get, contagens, subconsultas, junções e carga de
 # relacionamentos) recebe "excluida_em IS NULL" para OrdemServico. Só as funções da
 # lixeira pedem as excluídas, com a opção de execução INCLUIR_EXCLUIDAS.
-# Consultas Core sobre tabelas refletidas (migrações, exportacao_legada) não passam por
+# Consultas Core sobre tabelas refletidas (migrações) não passam por
 # aqui; nenhuma delas é usada pelas telas.
 
 INCLUIR_EXCLUIDAS = "incluir_excluidas"
