@@ -14,11 +14,12 @@ from typing import Any
 import flet as ft
 
 from osapp.config import Config
-from osapp.services import relogio
+from osapp.services import ordens, relogio
 from osapp.services.erros import ErroAutenticacao, ErroValidacao
 from osapp.ui import navegacao, rotas, textos, theme
 from osapp.ui import sessao as sessao_ui
 from osapp.ui.components import cabecalho
+from osapp.ui.components.banner import banner
 from osapp.ui.views.base import Tela
 from osapp.ui.views.concluir import ConcluirOs
 from osapp.ui.views.configuracoes import Configuracoes
@@ -26,6 +27,7 @@ from osapp.ui.views.detalhe import Detalhe
 from osapp.ui.views.home import Home
 from osapp.ui.views.login import Login
 from osapp.ui.views.os_formulario import AssumirOs, CriarOs, EditarOs
+from osapp.ui.views.perfil import AlterarSenha, Perfil
 from osapp.ui.views.relatorio_tempos import RelatorioTempos
 from osapp.ui.views.relatorios import Relatorios
 from osapp.ui.views.senha import TrocarSenha
@@ -36,12 +38,12 @@ logger = logging.getLogger(__name__)
 
 MENSAGEM_GENERICA = "Não foi possível concluir a operação. Tente novamente."
 
-# Ícones de cada destino da navegação (os destinos por papel vêm de ui/navegacao.py).
+# Ícones de cada destino da barra inferior (os destinos por papel vêm de ui/navegacao.py).
 ICONES = {
+    "nova_os": (ft.Icons.ADD_CIRCLE_OUTLINE, ft.Icons.ADD_CIRCLE),
     "ordens": (ft.Icons.ASSIGNMENT_OUTLINED, ft.Icons.ASSIGNMENT),
-    "nova_ordem": (ft.Icons.ADD_CIRCLE_OUTLINE, ft.Icons.ADD_CIRCLE),
-    "nova_solicitacao": (ft.Icons.ADD_COMMENT_OUTLINED, ft.Icons.ADD_COMMENT),
     "relatorios": (ft.Icons.INSERT_CHART_OUTLINED, ft.Icons.INSERT_CHART),
+    "perfil": (ft.Icons.PERSON_OUTLINE, ft.Icons.PERSON),
 }
 
 
@@ -49,6 +51,8 @@ ICONES = {
 TELAS = {
     "login": Login,
     "home": Home,
+    "perfil": Perfil,
+    "alterar_senha": AlterarSenha,
     "configuracoes": Configuracoes,
     "trocar_senha": TrocarSenha,
     "usuarios": ListaUsuarios,
@@ -90,6 +94,11 @@ class App:
         self._largo: bool | None = None
         self._mensagem_ao_chegar: str | None = None
         self._rota_a_ignorar: str | None = None
+        # Faixa e selo de 'Ordens' (services.ordens.contadores).
+        self.contadores: ordens.Contadores | None = None
+        self.filtro_filial: int | None = None  # filial escolhida no filtro (administrador)
+        self._lugar_banner = ft.Container()
+        self._barra_inferior: ft.NavigationBar | None = None
 
     # --- Inicialização ----------------------------------------------------------------
 
@@ -196,17 +205,33 @@ class App:
         self._tela = None
         await self.ir(rotas.LOGIN, forcar=True)
 
-    async def abrir_configuracoes(self, _e=None) -> None:
-        await self.ir(rotas.CONFIGURACOES)
-
-    async def abrir_relatorios(self, _e=None) -> None:
-        await self.ir(rotas.RELATORIOS)
+    async def atualizar_contadores(self) -> None:
+        """Busca os números da faixa e do selo; chamado no login, em 'Atualizar' e
+        depois de cada mudança de status feita nesta sessão."""
+        if self.sessao.ator_id is None:
+            return
+        resultado = await self.chamar(ordens.contadores, self.sessao.ator_id, self.filtro_filial)
+        if not resultado.ok:
+            return
+        self.contadores = resultado.valor
+        self._desenhar_banner()
+        if self._barra_inferior is not None:
+            for destino, novo in zip(
+                self._barra_inferior.destinations, self._destinos_da_barra(), strict=True
+            ):
+                destino.icon, destino.selected_icon = novo.icon, novo.selected_icon
+            try:
+                self._barra_inferior.update()
+            except RuntimeError:
+                pass  # a tela já foi trocada
 
     async def entrar(self, ator, login: str = "") -> None:
         """Chamado pela tela de login depois de o serviço autenticar o usuário."""
         pendente = self.sessao.rota_pendente
         sessao_ui.iniciar(self.sessao, ator, relogio.agora(), login)
         self.sessao.rota_pendente = None
+        self.contadores = None
+        self.filtro_filial = ator.filial_id if self.sessao.is_admin else None
         await self.ir(rotas.normalizar(pendente) if pendente else rotas.HOME)
 
     async def _ao_mudar_rota(self, e: ft.RouteChangeEvent) -> None:
@@ -235,6 +260,8 @@ class App:
         nome, params = rotas.resolver(rota) or ("home", {})
         self._rota_mostrada = rota
         self._tela = TELAS[nome](self, **params)
+        if self.contadores is None and rota not in (rotas.LOGIN, rotas.TROCAR_SENHA):
+            await self.atualizar_contadores()  # antes de montar: faixa e selo já prontos
         self._montar()
         mensagem, self._mensagem_ao_chegar = self._mensagem_ao_chegar, None
         if mensagem:
@@ -244,19 +271,68 @@ class App:
     # --- Layout -----------------------------------------------------------------------
 
     def _e_largo(self) -> bool:
-        return (self.page.width or 0) >= theme.LARGURA_TRILHO_MIN
+        """Tela larga (tablet ou PC): a partir de theme.LARGURA_CELULAR_MAX."""
+        return (self.page.width or 0) >= theme.LARGURA_CELULAR_MAX
 
     def _destinos(self):
         return navegacao.destinos(self.sessao.papel)
 
-    def _indice_destino(self) -> int:
-        for indice, destino in enumerate(self._destinos()):
-            if destino.rota == self._rota_mostrada:
-                return indice
-        return 0
-
     async def _ao_escolher_destino(self, e) -> None:
         await self.ir(self._destinos()[int(e.control.selected_index)].rota)
+
+    def _selo_ordens(self) -> ft.Badge | None:
+        """Selo com o número de ordens abertas (nem concluídas nem canceladas)."""
+        abertas = self.contadores.abertas if self.contadores else 0
+        if not abertas:
+            return None
+        return ft.Badge(
+            label=str(abertas), bgcolor=theme.COR_CARTAO, text_color=theme.COR_TITULO
+        )  # branco: aparece sobre a barra escura e sobre o indicador laranja
+
+    def _destinos_da_barra(self) -> list[ft.NavigationBarDestination]:
+        """O selo vai no ícone do destino 'Ordens' (como no exemplo de ft.Badge)."""
+        destinos = []
+        for d in self._destinos():
+            selo = self._selo_ordens() if d.chave == "ordens" else None
+            destinos.append(
+                ft.NavigationBarDestination(
+                    icon=ft.Icon(ICONES[d.chave][0], color=theme.COR_ICONE_BARRA, badge=selo),
+                    selected_icon=ft.Icon(
+                        ICONES[d.chave][1], color=theme.COR_SOBRE_DESTAQUE, badge=selo
+                    ),
+                    label=d.rotulo,
+                )
+            )
+        return destinos
+
+    def _desenhar_banner(self) -> None:
+        """Faixa da tela atual (se ela tiver uma), com a filial e os contadores."""
+        tela = self._tela
+        dados = getattr(tela, "banner", None) if tela is not None else None
+        if not dados:
+            self._lugar_banner.content = None
+        else:
+            icone, titulo = dados
+            c = self.contadores
+            indicadores = (
+                [
+                    (textos.BANNER_ABERTAS, str(c.abertas)),
+                    (textos.BANNER_AGUARDANDO, str(c.aguardando_inicio)),
+                ]
+                if c
+                else []
+            )
+            self._lugar_banner.content = banner(
+                icone,
+                titulo,
+                c.filial_rotulo if c else self.sessao.filial_codigo,
+                indicadores,
+                celular=not self._e_largo(),
+            )
+        try:
+            self._lugar_banner.update()
+        except RuntimeError:
+            pass  # ainda não está na página
 
     def _montar(self) -> None:
         """Monta a View da rota atual em volta do conteúdo da tela."""
@@ -264,7 +340,8 @@ class App:
             return
         page, rota = self.page, self._rota_mostrada
         self._largo = self._e_largo()
-        if rota in (rotas.LOGIN, rotas.TROCAR_SENHA):  # sem navegação nem menu
+        if rota in (rotas.LOGIN, rotas.TROCAR_SENHA):  # sem navegação
+            self._barra_inferior = None
             view = ft.View(
                 route=rota,
                 padding=0,
@@ -279,18 +356,26 @@ class App:
         page.update()
 
     def _view_com_casca(self, rota: str) -> ft.View:
+        """Barra superior fina (logo e filial), conteúdo centralizado com no máximo
+        theme.LARGURA_MAX_CONTEUDO e a barra inferior em todos os tamanhos de tela."""
+        self._lugar_banner = ft.Container()
+        self._desenhar_banner()
         area = ft.Column(
             expand=True,
             scroll=ft.ScrollMode.AUTO,
             spacing=0,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             controls=[
-                cabecalho.saudacao(self.sessao.nome),
                 ft.Container(
                     alignment=ft.Alignment.TOP_CENTER,
                     padding=theme.ESPACO_M,
                     content=ft.Container(
-                        max_width=theme.LARGURA_MAX_CONTEUDO, content=self._tela.conteudo
+                        max_width=theme.LARGURA_MAX_CONTEUDO,
+                        content=ft.Column(
+                            [self._lugar_banner, self._tela.conteudo],
+                            spacing=theme.ESPACO_M,
+                            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                        ),
                     ),
                 ),
             ],
@@ -299,78 +384,21 @@ class App:
             codigo_filial=self.sessao.filial_codigo,
             on_voltar=self.voltar,
             mostrar_voltar=rotas.rota_anterior(rota) is not None,
-            itens_menu=[
-                (textos.MENU_CONFIGURACOES, ft.Icons.SETTINGS, self.abrir_configuracoes),
-                *(
-                    [
-                        (
-                            textos.MENU_RELATORIOS,
-                            ft.Icons.INSERT_CHART_OUTLINED,
-                            self.abrir_relatorios,
-                        )
-                    ]
-                    if navegacao.ve_relatorios(self.sessao.papel)
-                    else []
-                ),
-                (textos.MENU_SAIR, ft.Icons.LOGOUT, self.sair),
-            ],
-            recuo_esquerda=theme.LARGURA_TRILHO + 1 if self._largo else 0,
         )
-        barra_inferior = None
-        if self._largo:
-            trilho = ft.NavigationRail(
-                selected_index=self._indice_destino(),
-                label_type=ft.NavigationRailLabelType.ALL,
-                bgcolor=theme.COR_NAVEGACAO,
-                indicator_color=theme.COR_INDICADOR_NAVEGACAO,
-                min_width=theme.LARGURA_TRILHO,
-                destinations=[
-                    ft.NavigationRailDestination(
-                        icon=ft.Icon(ICONES[d.chave][0], color=theme.COR_SUBTITULO),
-                        selected_icon=ft.Icon(ICONES[d.chave][1], color=theme.COR_TITULO),
-                        label=ft.Text(
-                            d.rotulo_trilho,
-                            color=theme.COR_TITULO,
-                            size=theme.FONTE_PEQUENA,
-                            text_align=ft.TextAlign.CENTER,
-                        ),
-                    )
-                    for d in self._destinos()
-                ],
-                on_change=self._ao_escolher_destino,
-            )
-            corpo: ft.Control = ft.Row(
-                expand=True,
-                spacing=0,
-                vertical_alignment=ft.CrossAxisAlignment.STRETCH,
-                controls=[
-                    trilho,
-                    ft.VerticalDivider(width=1, thickness=1, color=theme.COR_CONTORNO),
-                    area,
-                ],
-            )
-        else:
-            corpo = area
-            barra_inferior = ft.NavigationBar(
-                selected_index=self._indice_destino(),
-                bgcolor=theme.COR_NAVEGACAO,
-                indicator_color=theme.COR_INDICADOR_NAVEGACAO,
-                destinations=[
-                    ft.NavigationBarDestination(
-                        icon=ft.Icon(ICONES[d.chave][0], color=theme.COR_SUBTITULO),
-                        selected_icon=ft.Icon(ICONES[d.chave][1], color=theme.COR_TITULO),
-                        label=d.rotulo,
-                    )
-                    for d in self._destinos()
-                ],
-                on_change=self._ao_escolher_destino,
-            )
+        ativo = navegacao.destino_ativo(self.sessao.papel, rota)
+        self._barra_inferior = ft.NavigationBar(
+            selected_index=ativo if ativo is not None else 0,
+            bgcolor=theme.COR_BARRA,
+            indicator_color=theme.COR_DESTAQUE if ativo is not None else theme.COR_BARRA,
+            destinations=self._destinos_da_barra(),
+            on_change=self._ao_escolher_destino,
+        )
         return ft.View(
             route=rota,
             padding=0,
             spacing=0,
             bgcolor=theme.COR_FUNDO_PAGINA,
-            navigation_bar=barra_inferior,
+            navigation_bar=self._barra_inferior,
             controls=[
                 ft.SafeArea(
                     expand=True,
@@ -378,14 +406,14 @@ class App:
                         expand=True,
                         spacing=0,
                         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-                        controls=[barra, corpo],
+                        controls=[barra, area],
                     ),
                 )
             ],
         )
 
     def _ao_redimensionar(self, _e) -> None:
-        # Troca entre barra inferior e trilho lateral ao cruzar os 600 px.
+        # Faixa e grades mudam entre celular e tela larga ao cruzar theme.LARGURA_CELULAR_MAX.
         if self._largo is not None and self._e_largo() != self._largo:
             self._montar()
 

@@ -15,6 +15,7 @@ from osapp.services import ordens, relatorios
 from osapp.services.erros import ErroPermissao
 from osapp.ui import formularios, historico, rotas, rotulos, textos, theme
 from osapp.ui.components import basicos
+from osapp.ui.components.chips import GrupoChips
 from osapp.ui.components.escopo_busca import SeletorEscopo
 from osapp.ui.views.base import Tela
 
@@ -49,6 +50,8 @@ def linha_resumo_busca(b) -> str:
 
 
 class RelatorioTempos(Tela):
+    banner = (ft.Icons.INSERT_CHART, textos.NAVEGACAO_RELATORIOS)
+
     def __init__(self, app, **_params) -> None:
         self.app = app
         self.status = set(relatorios.STATUS_DO_RELATORIO)
@@ -74,7 +77,13 @@ class RelatorioTempos(Tela):
             keyboard_type=ft.KeyboardType.DATETIME,
             expand=True,
         )
-        self.chips = ft.Row(wrap=True, spacing=theme.ESPACO_P, run_spacing=theme.ESPACO_P)
+        self.chips = GrupoChips(
+            [(v, rotulos.status(v)) for v in relatorios.STATUS_DO_RELATORIO],
+            self.status,
+            multipla=True,
+            minimo=1,  # pelo menos um status fica marcado
+            ao_mudar=self._ao_mudar_status,
+        )
         self.filial = ft.Dropdown(
             label=textos.REL_FILIAL,
             visible=False,
@@ -89,7 +98,6 @@ class RelatorioTempos(Tela):
             on_select=self._ao_escolher_filial,
         )
         self.corpo = basicos.coluna([basicos.carregando()])
-        self._montar_chips()
         self.conteudo = basicos.coluna(
             [
                 basicos.titulo(textos.TEMPOS_TITULO, theme.FONTE_SAUDACAO),
@@ -100,7 +108,7 @@ class RelatorioTempos(Tela):
                             self.escopo.controle,
                             basicos.subtitulo(textos.TEMPOS_PERIODO),
                             ft.Row([self.de, self.ate], spacing=theme.ESPACO_P),
-                            self.chips,
+                            self.chips.controle,
                             ft.Row([self.filial]),
                             basicos.botao_secundario(
                                 textos.TEMPOS_APLICAR, ft.Icons.FILTER_ALT_OUTLINED, self._aplicar
@@ -115,29 +123,8 @@ class RelatorioTempos(Tela):
 
     # --- Filtros ----------------------------------------------------------------------
 
-    def _montar_chips(self) -> None:
-        self.chips.controls = [
-            ft.Chip(
-                label=ft.Text(
-                    rotulos.status(valor), color=theme.COR_TITULO, size=theme.FONTE_SUBTITULO
-                ),
-                selected=valor in self.status,
-                show_checkmark=True,
-                check_color=theme.COR_TITULO,
-                bgcolor=theme.COR_CARTAO,
-                selected_color=theme.COR_INDICADOR_NAVEGACAO,
-                on_select=lambda _e, v=valor: self._alternar_status(v),
-            )
-            for valor in relatorios.STATUS_DO_RELATORIO
-        ]
-
-    def _alternar_status(self, valor: str) -> None:
-        if valor in self.status and len(self.status) > 1:  # pelo menos um fica marcado
-            self.status.discard(valor)
-        else:
-            self.status.add(valor)
-        self._montar_chips()
-        self.chips.update()
+    def _ao_mudar_status(self) -> None:
+        self.status = set(self.chips.valor)
 
     async def _ao_escolher_filial(self, e) -> None:
         valor = e.control.value

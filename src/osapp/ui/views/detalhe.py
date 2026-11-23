@@ -7,8 +7,11 @@ import flet as ft
 from osapp import formatacao
 from osapp.services import custos, ordens, status
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao
-from osapp.ui import historico, rotas, rotulos, theme
+from osapp.ui import historico, rotas, rotulos, secoes, theme
+from osapp.ui import urgencia as urgencia_ui
 from osapp.ui.components import basicos
+from osapp.ui.components.opcoes import opcao_card
+from osapp.ui.components.secao import secao, status_pill
 from osapp.ui.views.base import Tela
 
 MENSAGEM_CONFLITO = (
@@ -65,101 +68,149 @@ class Detalhe(Tela):
 
     # --- Montagem ---------------------------------------------------------------------
 
-    def _montar(self, d, eventos) -> list[ft.Control]:
-        topo = basicos.cartao(
+    def _cabeca(self, numero: str, status_os: str, titulo: str, selos) -> ft.Control:
+        return basicos.cartao(
             basicos.coluna(
                 [
                     ft.Row(
                         [
                             ft.Text(
-                                d.numero,
+                                numero,
                                 color=theme.COR_SUBTITULO,
                                 size=theme.FONTE_CORPO,
                                 weight=ft.FontWeight.BOLD,
                             ),
-                            basicos.selo_status(d.status),
+                            basicos.selo_status(status_os),
                         ],
                         alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                     ),
-                    basicos.titulo(d.titulo, theme.FONTE_SAUDACAO),
-                    ft.Row(
-                        [
-                            basicos.selo_origem(d.origem),
-                            *(
-                                [basicos.selo_nivel(d.urgencia, "Urgência: ")]
-                                if d.origem == ordens.ORIGEM_SOLICITACAO
-                                else []
-                            ),
-                            basicos.selo_nivel(d.prioridade, "Prioridade: "),
-                        ],
-                        wrap=True,
-                        spacing=6,
-                        run_spacing=6,
-                    ),
-                    basicos.rotulo_valor("Filial", f"{d.filial_codigo} - {d.filial_nome}"),
-                    *(
-                        [
-                            basicos.rotulo_valor(
-                                "Urgência (informada pelo solicitante)", rotulos.nivel(d.urgencia)
-                            )
-                        ]
-                        if d.origem == ordens.ORIGEM_SOLICITACAO
-                        else []
-                    ),
-                    basicos.rotulo_valor(
-                        "Prioridade (definida pela manutenção)", rotulos.nivel(d.prioridade)
-                    ),
-                    basicos.rotulo_valor("Tipo de manutenção", d.tipo_nome or "Não definido"),
-                    *([basicos.rotulo_valor("Nº SAP", d.numero_sap)] if d.numero_sap else []),
-                    basicos.rotulo_valor(
-                        "Criada por",
-                        f"{d.criado_por_nome}, em {formatacao.formatar_data_hora(d.criado_em)}",
-                    ),
-                    *self._em_execucao(d),
+                    basicos.titulo(titulo, theme.FONTE_SAUDACAO),
+                    ft.Row(selos, wrap=True, spacing=6, run_spacing=6),
                 ],
                 espaco=theme.ESPACO_P + 4,
             )
         )
-        previsto = self._secao(
-            "Previsto",
+
+    @staticmethod
+    def _secao_urgencia(numero: int, nivel: str | None) -> ft.Control:
+        return secao(
+            numero,
+            ft.Icons.PRIORITY_HIGH,
+            secoes.TITULOS[secoes.URGENCIA],
             [
-                basicos.rotulo_valor("Descrição", d.descricao),
-                basicos.rotulo_valor(
-                    "Tempo previsto",
-                    formatacao.formatar_duracao(d.tempo_previsto_minutos)
-                    if d.tempo_previsto_minutos is not None
-                    else "Não definido",
-                ),
-                *(
-                    [
-                        basicos.rotulo_valor(
-                            "Falta para iniciar", ", ".join(d.pendencias_para_iniciar)
-                        )
-                    ]
-                    if d.status == status.ABERTA and d.pendencias_para_iniciar
-                    else []
+                basicos.subtitulo("Informada pelo solicitante."),
+                opcao_card(
+                    theme.cor_ponto_urgencia(nivel),
+                    rotulos.nivel(nivel),
+                    urgencia_ui.SIGNIFICADO.get(nivel, ""),
+                    True,
                 ),
             ],
+            pill=status_pill(urgencia_ui.pill(nivel), nivel or "neutro"),
         )
-        cartoes = [topo, *self._acoes(d)]
+
+    def _montar(self, d, eventos) -> list[ft.Control]:
+        """Cabeçalho, ações e as seções numeradas (ui/secoes.py); depois Datas e Histórico.
+        Na Ordem de Serviço só a conclusão já feita aparece (não há o que mostrar antes)."""
+        solicitacao = d.origem == ordens.ORIGEM_SOLICITACAO
+        lista = tuple(
+            c
+            for c in secoes.secoes(self.app.sessao.papel, d.status, solicitacao=solicitacao)
+            if c != secoes.CONCLUSAO or status.encerrado(d.status)
+        )
+        selos = [
+            basicos.selo_origem(d.origem),
+            *([basicos.selo_nivel(d.urgencia, "Urgência: ")] if solicitacao else []),
+            basicos.selo_nivel(d.prioridade, "Prioridade: "),
+        ]
+        cartoes: list[ft.Control] = [self._cabeca(d.numero, d.status, d.titulo, selos)]
+        cartoes += self._acoes(d)
+        for chave in lista:
+            n, titulo = secoes.numero(lista, chave), secoes.TITULOS[chave]
+            if chave == secoes.SOLICITACAO:
+                cartoes.append(
+                    secao(
+                        n,
+                        ft.Icons.DESCRIPTION_OUTLINED,
+                        titulo,
+                        [
+                            basicos.rotulo_valor("Descrição", d.descricao),
+                            basicos.rotulo_valor("Filial", f"{d.filial_codigo} - {d.filial_nome}"),
+                            basicos.rotulo_valor(
+                                "Criada por",
+                                f"{d.criado_por_nome}, em "
+                                f"{formatacao.formatar_data_hora(d.criado_em)}",
+                            ),
+                        ],
+                    )
+                )
+            elif chave == secoes.URGENCIA:
+                cartoes.append(self._secao_urgencia(n, d.urgencia))
+            elif chave == secoes.PLANEJAMENTO:
+                cartoes.append(self._planejamento(n, d))
+            elif chave == secoes.ITENS:
+                cartoes.append(
+                    secao(
+                        n,
+                        ft.Icons.RECEIPT_LONG,
+                        titulo,
+                        [
+                            self._custos(d),
+                            *[self._itens(d, fase) for fase in custos.FASES if _tem_fase(d, fase)],
+                        ],
+                        pill=status_pill(
+                            "PREVISTO: "
+                            + formatacao.formatar_brl(d.resumo_custos.total_previsto_centavos),
+                            "info",
+                        ),
+                    )
+                )
+            elif chave == secoes.CONCLUSAO:
+                cartoes.append(self._conclusao(n, d))
+        cartoes += [self._datas(d), self._historico(eventos)]
+        return cartoes
+
+    def _planejamento(self, numero: int, d) -> ft.Control:
+        tempo = (
+            formatacao.formatar_duracao(d.tempo_previsto_minutos)
+            if d.tempo_previsto_minutos is not None
+            else "Não definido"
+        )
+        linhas = [
+            basicos.rotulo_valor("Tipo de manutenção", d.tipo_nome or "Não definido"),
+            basicos.rotulo_valor(
+                "Prioridade (definida pela manutenção)", rotulos.nivel(d.prioridade)
+            ),
+            basicos.rotulo_valor("Tempo previsto", tempo),
+            *([basicos.rotulo_valor("Nº SAP", d.numero_sap)] if d.numero_sap else []),
+            *(
+                [basicos.rotulo_valor("Falta para iniciar", ", ".join(d.pendencias_para_iniciar))]
+                if d.status == status.ABERTA and d.pendencias_para_iniciar
+                else []
+            ),
+            *self._em_execucao(d),
+        ]
+        return secao(
+            numero,
+            ft.Icons.EVENT_NOTE,
+            secoes.TITULOS[secoes.PLANEJAMENTO],
+            linhas,
+            pill=status_pill(f"PREVISTO: {tempo}", "info"),
+        )
+
+    def _conclusao(self, numero: int, d) -> ft.Control:
+        linhas: list[ft.Control] = []
         if d.nota_conclusao:
-            cartoes.append(_cartao_nota(d.nota_conclusao, "Nota para o solicitante"))
-        cartoes += [self._datas(d), previsto, self._realizado(d), self._custos(d)]
+            linhas.append(_cartao_nota(d.nota_conclusao, "Nota para o solicitante"))
+        linhas += self._linhas_realizado(d)
         if d.diferenca_tempo_minutos is not None:
-            cartoes.append(
-                self._secao(
-                    "Diferença de tempo",
-                    [
-                        basicos.rotulo_valor(
-                            "Tempo (realizado - previsto)",
-                            historico.texto_diferenca_tempo(d.diferenca_tempo_minutos),
-                        )
-                    ],
+            linhas.append(
+                basicos.rotulo_valor(
+                    "Diferença de tempo (realizado - previsto)",
+                    historico.texto_diferenca_tempo(d.diferenca_tempo_minutos),
                 )
             )
-        cartoes += [self._itens(d, fase) for fase in custos.FASES if _tem_fase(d, fase)]
-        cartoes.append(self._historico(eventos))
-        return cartoes
+        return secao(numero, ft.Icons.TASK_ALT, secoes.TITULOS[secoes.CONCLUSAO], linhas)
 
     def _em_execucao(self, d) -> list[ft.Control]:
         """Quem iniciou e quando, enquanto a OS está em execução."""
@@ -230,34 +281,35 @@ class Detalhe(Tela):
     # --- Visão do solicitante (papel usuario) -------------------------------------------
 
     def _montar_solicitante(self, v) -> list[ft.Control]:
-        """Só o modelo reduzido: nada de custos, itens, executor ou histórico."""
-        topo = basicos.cartao(
-            basicos.coluna(
+        """Só o modelo reduzido: nada de custos, itens, executor ou histórico.
+        Seções do usuario: SOLICITAÇÃO, URGÊNCIA e, depois de concluída, CONCLUSÃO (a nota)."""
+        lista = secoes.secoes(self.app.sessao.papel, v.status, solicitacao=True)
+        topo = self._cabeca(
+            v.numero, v.status, v.titulo, [basicos.selo_nivel(v.urgencia, "Urgência: ")]
+        )
+        cartoes: list[ft.Control] = [topo]
+        cartoes.append(
+            secao(
+                secoes.numero(lista, secoes.SOLICITACAO),
+                ft.Icons.DESCRIPTION_OUTLINED,
+                secoes.TITULOS[secoes.SOLICITACAO],
                 [
-                    ft.Row(
-                        [
-                            ft.Text(
-                                v.numero,
-                                color=theme.COR_SUBTITULO,
-                                size=theme.FONTE_CORPO,
-                                weight=ft.FontWeight.BOLD,
-                            ),
-                            basicos.selo_status(v.status),
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    ),
-                    basicos.titulo(v.titulo, theme.FONTE_SAUDACAO),
-                    ft.Row([basicos.selo_nivel(v.urgencia, "Urgência: ")], wrap=True),
                     basicos.rotulo_valor("Descrição", v.descricao),
                     basicos.rotulo_valor("Solicitante", v.solicitante),
                     basicos.rotulo_valor("Filial", v.filial_codigo),
                 ],
-                espaco=theme.ESPACO_P + 4,
             )
         )
-        cartoes: list[ft.Control] = [topo]
-        if v.nota_conclusao:
-            cartoes.append(_cartao_nota(v.nota_conclusao, "Nota da manutenção"))
+        cartoes.append(self._secao_urgencia(secoes.numero(lista, secoes.URGENCIA), v.urgencia))
+        if secoes.CONCLUSAO in lista and v.nota_conclusao:
+            cartoes.append(
+                secao(
+                    secoes.numero(lista, secoes.CONCLUSAO),
+                    ft.Icons.TASK_ALT,
+                    secoes.TITULOS[secoes.CONCLUSAO],
+                    [_cartao_nota(v.nota_conclusao, "Nota da manutenção")],
+                )
+            )
         cartoes.append(self._secao("Andamento", _linha_do_tempo(v)))
         if v.acoes.pode_editar:
             cartoes.append(
@@ -320,6 +372,7 @@ class Detalhe(Tela):
         )
         if resultado.ok:
             self.app.avisar(mensagem_de_sucesso)
+            await self.app.atualizar_contadores()
         elif isinstance(resultado.erro, ErroConflito):
             self.app.avisar(MENSAGEM_CONFLITO)
         elif isinstance(resultado.erro, ErroPermissao | ErroNaoEncontrado):
@@ -333,24 +386,22 @@ class Detalhe(Tela):
             basicos.coluna([basicos.titulo(nome), *linhas], espaco=theme.ESPACO_P + 4)
         )
 
-    def _realizado(self, d) -> ft.Control:
+    @staticmethod
+    def _linhas_realizado(d) -> list[ft.Control]:
         if not status.encerrado(d.status) or d.inicio_realizado is None:
-            return self._secao("Realizado", [basicos.subtitulo("Preenchido na conclusão.")])
-        return self._secao(
-            "Realizado",
-            [
-                basicos.rotulo_valor("Início", formatacao.formatar_data_hora(d.inicio_realizado)),
-                basicos.rotulo_valor("Fim", formatacao.formatar_data_hora(d.fim_realizado)),
-                basicos.rotulo_valor(
-                    "Tempo realizado", formatacao.formatar_duracao(d.tempo_realizado_minutos)
-                ),
-                basicos.rotulo_valor("Descrição do que foi feito", d.descricao_realizado),
-                basicos.rotulo_valor(
-                    "Concluída por",
-                    f"{d.concluido_por_nome}, em {formatacao.formatar_data_hora(d.concluida_em)}",
-                ),
-            ],
-        )
+            return [basicos.subtitulo("Sem realizado registrado.")]
+        return [
+            basicos.rotulo_valor("Início", formatacao.formatar_data_hora(d.inicio_realizado)),
+            basicos.rotulo_valor("Fim", formatacao.formatar_data_hora(d.fim_realizado)),
+            basicos.rotulo_valor(
+                "Tempo realizado", formatacao.formatar_duracao(d.tempo_realizado_minutos)
+            ),
+            basicos.rotulo_valor("Descrição do que foi feito", d.descricao_realizado),
+            basicos.rotulo_valor(
+                "Concluída por",
+                f"{d.concluido_por_nome}, em {formatacao.formatar_data_hora(d.concluida_em)}",
+            ),
+        ]
 
     # --- Custos -----------------------------------------------------------------------
 
@@ -394,7 +445,7 @@ class Detalhe(Tela):
             for linha in [*linhas, total]:
                 corpo.append(ft.Divider(height=1, thickness=1, color=theme.COR_CONTORNO))
                 corpo.append(self._linha_tabela((linha[0], *textos(linha)), linha is total))
-            return self._secao("Custos", corpo)
+            return basicos.coluna(corpo, espaco=theme.ESPACO_P)
         pequenos = []
         for linha in [*linhas, total]:
             previsto, realizado, diferenca = textos(linha)
@@ -414,7 +465,7 @@ class Detalhe(Tela):
                     ),
                 )
             )
-        return self._secao("Custos", pequenos)
+        return basicos.coluna(pequenos, espaco=theme.ESPACO_P)
 
     @staticmethod
     def _linha_tabela(celulas: tuple[str, str, str, str], destaque: bool) -> ft.Control:
@@ -467,8 +518,10 @@ class Detalhe(Tela):
             )
             for i in itens
         ]
-        return basicos.cartao(
-            ft.ExpansionTile(
+        return ft.Container(
+            border=ft.Border.all(1, theme.COR_CONTORNO),
+            border_radius=theme.RAIO_BOTAO,
+            content=ft.ExpansionTile(
                 title=ft.Text(
                     f"{nome} ({len(itens)})",
                     color=theme.COR_TITULO,
@@ -481,7 +534,7 @@ class Detalhe(Tela):
                 collapsed_text_color=theme.COR_TITULO,
                 icon_color=theme.COR_SUBTITULO,
                 collapsed_icon_color=theme.COR_SUBTITULO,
-            )
+            ),
         )
 
     def _historico(self, eventos) -> ft.Control:

@@ -7,10 +7,11 @@ import flet as ft
 from osapp import formatacao
 from osapp.services import custos, ordens, relogio
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao
-from osapp.ui import formularios, historico, rotas, theme
+from osapp.ui import formularios, historico, rotas, secoes, theme
 from osapp.ui.components import basicos
 from osapp.ui.components.campos import CampoHora
 from osapp.ui.components.editor_itens import EditorItens
+from osapp.ui.components.secao import secao
 from osapp.ui.views.base import Tela
 from osapp.ui.views.detalhe import MENSAGEM_CONFLITO
 from osapp.ui.views.os_formulario import TITULO_REALIZADOS, AlvoDeErro
@@ -125,29 +126,31 @@ class ConcluirOs(Tela):
             "descricao_realizado": self.descricao,
             "nota_conclusao": self.nota,
         }
+        lista = secoes.secoes(
+            self.app.sessao.papel,
+            d.status,
+            solicitacao=d.origem == ordens.ORIGEM_SOLICITACAO,
+            pode_concluir=d.acoes.pode_concluir,
+        )
         self.conteudo.controls = [
+            basicos.titulo("Concluir Ordem de Serviço", theme.FONTE_SAUDACAO),
             basicos.cartao(self._resumo_previsto(d)),
-            basicos.cartao(
-                basicos.coluna(
-                    [
-                        self.realizados.controle,
-                        basicos.botao_secundario(ROTULO_COPIAR, ft.Icons.COPY, self._copiar),
-                    ]
-                )
-            ),
-            basicos.cartao(
-                basicos.coluna(
-                    [
-                        basicos.titulo("Realizado"),
-                        self.inicio_data,
-                        self.inicio_hora.controle,
-                        self.fim_data,
-                        self.fim_hora.controle,
-                        self.descricao,
-                        self.nota,
-                        self.aviso,
-                    ]
-                )
+            secao(
+                secoes.numero(lista, secoes.CONCLUSAO),
+                ft.Icons.TASK_ALT,
+                secoes.TITULOS[secoes.CONCLUSAO],
+                [
+                    self.realizados.controle,
+                    basicos.botao_secundario(ROTULO_COPIAR, ft.Icons.COPY, self._copiar),
+                    self.inicio_data,
+                    self.inicio_hora.controle,
+                    self.fim_data,
+                    self.fim_hora.controle,
+                    self.descricao,
+                    self.nota,
+                    self.aviso,
+                ],
+                obrigatoria=True,
             ),
             basicos.cartao(
                 basicos.coluna(
@@ -307,6 +310,7 @@ class ConcluirOs(Tela):
             )
             if resultado.ok:
                 self._inicial = None  # nada mais a perder ao sair
+                await self.app.atualizar_contadores()
                 await self.app.ir(rotas.rota_os(self.os_id), mensagem="Ordem de Serviço concluída.")
             elif isinstance(resultado.erro, ErroConflito):
                 self.aviso.value = MENSAGEM_CONFLITO

@@ -10,24 +10,27 @@ TITULO_DO_APP = "Sistema de Ordens de Serviço"
 MARCA_ROTULO = "Copa Energia"
 
 # --- Navegação principal ---------------------------------------------------------------
-# Barra inferior (celular): três destinos em 390 px, por isso a forma curta por extenso.
+# Barra inferior em todos os tamanhos de tela (decisão de 21/11/2026). 'Nova OS' é a única
+# forma abreviada permitida, e só na barra inferior (o teste de rótulos tem a exceção).
+NAVEGACAO_NOVA_OS = "Nova OS"
 NAVEGACAO_ORDENS = "Ordens"
-NAVEGACAO_NOVA_ORDEM = "Nova Ordem"
-NAVEGACAO_NOVA_SOLICITACAO = "Nova Solicitação"
 NAVEGACAO_RELATORIOS = "Relatórios"
-# Trilho lateral (telas largas): o nome completo, em duas linhas.
-TRILHO_ORDENS = "Ordens de\nServiço"
-TRILHO_NOVA_ORDEM = "Nova Ordem\nde Serviço"
-TRILHO_NOVA_SOLICITACAO = "Nova\nSolicitação"
-TRILHO_RELATORIOS = "Relatórios"
+NAVEGACAO_PERFIL = "Perfil"
 
 # --- Login -----------------------------------------------------------------------------
 LOGIN_MARCA = "Ordens de Serviço"
 
-# --- Menu do cabeçalho -----------------------------------------------------------------
+# --- Perfil -------------------------------------------------------------------------------
+PERFIL_TITULO = "Perfil"
 MENU_CONFIGURACOES = "Configurações"
-MENU_RELATORIOS = "Relatórios"
+MENU_ALTERAR_SENHA = "Alterar senha"
+MENU_USUARIOS = "Usuários"
+MENU_NOVA_SOLICITACAO = "Nova Solicitação"
 MENU_SAIR = "Sair"
+
+# --- Faixa (banner) ------------------------------------------------------------------------
+BANNER_ABERTAS = "Abertas"
+BANNER_AGUARDANDO = "Aguardando início"
 
 # --- Home ------------------------------------------------------------------------------
 HOME_TITULO = "Ordens de Serviço"
@@ -52,9 +55,6 @@ CONFIG_LOGIN = "Usuário (login)"
 CONFIG_FILIAL = "Filial"
 CONFIG_PERFIL = "Perfil"
 CONFIG_PAPEL = "Papel"
-CONFIG_CARTAO_USUARIOS = "Usuários"
-CONFIG_USUARIOS_AJUDA = "Criar, alterar, desativar e redefinir a senha de usuários."
-CONFIG_USUARIOS_ABRIR = "Gerenciar usuários"
 CONFIG_VERSAO = "Versão"
 PERFIL_ADMINISTRADOR = "Administrador"
 PERFIL_GERENTE = "Gerente"

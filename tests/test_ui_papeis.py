@@ -17,17 +17,18 @@ def rotas_de(papel):
 
 
 def test_navegacao_por_papel():
-    assert rotas_de("usuario") == [rotas.HOME, rotas.SOLICITACAO_NOVA]
-    # Relatórios (prompt 18): primeiro nível para manutenção e administrador.
-    assert rotas_de("manutencao") == [rotas.HOME, rotas.OS_NOVA, rotas.RELATORIOS]
-    assert rotas_de("admin") == [
-        rotas.HOME,
-        rotas.OS_NOVA,
-        rotas.SOLICITACAO_NOVA,
-        rotas.RELATORIOS,
+    """Prompt 23: barra inferior Nova OS · Ordens · Relatórios · Perfil."""
+    assert rotas_de("usuario") == [rotas.SOLICITACAO_NOVA, rotas.HOME, rotas.PERFIL]
+    assert rotas_de("manutencao") == [rotas.OS_NOVA, rotas.HOME, rotas.RELATORIOS, rotas.PERFIL]
+    assert rotas_de("admin") == [rotas.OS_NOVA, rotas.HOME, rotas.RELATORIOS, rotas.PERFIL]
+    assert rotas_de("desconhecido") == [rotas.HOME, rotas.PERFIL]
+    assert [d.rotulo for d in navegacao.destinos("usuario")] == ["Nova OS", "Ordens", "Perfil"]
+    assert [d.rotulo for d in navegacao.destinos("manutencao")] == [
+        "Nova OS",
+        "Ordens",
+        "Relatórios",
+        "Perfil",
     ]
-    assert rotas_de("desconhecido") == [rotas.HOME]
-    assert [d.rotulo for d in navegacao.destinos("usuario")] == ["Ordens", "Nova Solicitação"]
     # Relatórios: nunca para o usuario.
     assert not navegacao.ve_relatorios("usuario")
     assert navegacao.ve_relatorios("manutencao") and navegacao.ve_relatorios("admin")

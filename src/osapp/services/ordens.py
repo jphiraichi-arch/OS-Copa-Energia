@@ -66,6 +66,7 @@ ESCOPOS = (ESCOPO_ITENS, ESCOPO_TUDO)
 # Termo que parece número de OS: dígitos e traços, com ou sem o prefixo 'OS-'.
 _RE_NUMERO = re.compile(r"^(os-)?[0-9][0-9-]*$", re.IGNORECASE)
 
+TODAS_AS_FILIAIS = "Todas as filiais"
 ORIGEM_SOLICITACAO = "solicitacao"
 ORIGEM_MANUTENCAO = "manutencao"
 ORIGENS = (ORIGEM_SOLICITACAO, ORIGEM_MANUTENCAO)
@@ -845,14 +846,7 @@ def listar_os(
     ``busca`` e ``escopo``: ver condicao_busca (o usuario busca só em título e descrição).
     """
     ator = carregar_ator(ator_id)
-    if filial_id is not None and not _e_int(filial_id):
-        raise ErroValidacao("filial_id", "Filial inválida.")
-    if ator.is_admin:
-        filtro_filial = filial_id  # None = todas as filiais
-    elif filial_id is None or filial_id == ator.filial_id:
-        filtro_filial = ator.filial_id
-    else:
-        raise _negar(ator, "listar OS de outra filial")
+    filtro_filial = _filial_da_lista(ator, filial_id, "listar OS de outra filial")
 
     condicao = condicao_busca(busca, validar_escopo(escopo), ator)
     if status is not None and not _status.status_conhecido(status):
@@ -921,6 +915,49 @@ def listar_eventos(ator_id: int, os_id: int) -> list[EventoDTO]:
             )
             for e in OsEventoRepo(s).listar_por_os(ordem.id)
         ]
+
+
+def _filial_da_lista(ator: Ator, filial_id: object, acao: str) -> int | None:
+    """Filial efetiva de listas e contagens: administrador escolhe (None = todas); os
+    demais, só a própria (pedir outra é ErroPermissao)."""
+    if filial_id is not None and not _e_int(filial_id):
+        raise ErroValidacao("filial_id", "Filial inválida.")
+    if ator.is_admin:
+        return filial_id
+    if filial_id is None or filial_id == ator.filial_id:
+        return ator.filial_id
+    raise _negar(ator, acao)
+
+
+@dataclass(frozen=True)
+class Contadores:
+    """Números da faixa e do selo de 'Ordens' (não revelam campo restrito)."""
+
+    abertas: int  # ABERTA + EM_EXECUCAO (nem concluídas nem canceladas)
+    aguardando_inicio: int  # ainda ABERTA
+    filial_rotulo: str  # 'código - nome' da filial considerada, ou 'Todas as filiais'
+
+
+def contadores(ator_id: int, filial_id: int | None = None) -> Contadores:
+    """Contagens com o mesmo escopo de filial de listar_os (administrador: todas, ou a
+    filial escolhida no filtro). Qualquer papel pode receber."""
+    ator = carregar_ator(ator_id)
+    filtro = _filial_da_lista(ator, filial_id, "contar OS de outra filial")
+    with sessao() as s:
+        por_status = OrdemServicoRepo(s).contar_por_status(filtro)
+        if filtro is None:
+            rotulo = TODAS_AS_FILIAIS
+        else:
+            filial = FilialRepo(s).obter(filtro)
+            if filial is None:
+                raise ErroValidacao("filial_id", "Filial não encontrada.")
+            rotulo = f"{filial.codigo} - {filial.nome}"
+    aguardando = por_status.get(_status.ABERTA, 0)
+    return Contadores(
+        abertas=aguardando + por_status.get(_status.EM_EXECUCAO, 0),
+        aguardando_inicio=aguardando,
+        filial_rotulo=rotulo,
+    )
 
 
 def listar_filiais(ator_id: int) -> list[FilialDTO]:

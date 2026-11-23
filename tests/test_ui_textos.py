@@ -49,10 +49,11 @@ def textos_visiveis(caminho: Path) -> list[tuple[int, str]]:
 
 @pytest.mark.parametrize("arquivo", ARQUIVOS_DA_TELA_PRINCIPAL)
 def test_tela_principal_e_navegacao_nao_usam_a_sigla(arquivo):
+    # Única exceção (prompt 23): 'Nova OS', o rótulo curto da barra inferior.
     infratores = [
         f"{arquivo}:{linha}: {texto!r}"
         for linha, texto in textos_visiveis(RAIZ_UI / arquivo)
-        if SIGLA.search(texto)
+        if SIGLA.search(texto) and texto != textos.NAVEGACAO_NOVA_OS
     ]
     assert not infratores, "Rótulo com a sigla em vez de 'Ordem de Serviço':\n" + "\n".join(
         infratores
@@ -69,12 +70,21 @@ def test_o_detector_da_sigla_funciona():
 def test_rotulos_por_extenso():
     assert textos.HOME_TITULO == "Ordens de Serviço"
     assert textos.HOME_VAZIA == "Nenhuma Ordem de Serviço encontrada."
-    # Barra inferior: forma curta por extenso (três destinos em 390 px); trilho: nome inteiro.
-    assert (textos.NAVEGACAO_ORDENS, textos.NAVEGACAO_NOVA_ORDEM) == ("Ordens", "Nova Ordem")
-    assert textos.NAVEGACAO_RELATORIOS == textos.TRILHO_RELATORIOS == "Relatórios"
-    assert textos.TRILHO_ORDENS.replace("\n", " ") == "Ordens de Serviço"
-    assert textos.TRILHO_NOVA_ORDEM.replace("\n", " ") == "Nova Ordem de Serviço"
+    assert (textos.NAVEGACAO_ORDENS, textos.NAVEGACAO_RELATORIOS) == ("Ordens", "Relatórios")
+    assert textos.NAVEGACAO_PERFIL == "Perfil"
     assert textos.LOGIN_MARCA == "Ordens de Serviço"
+
+
+def test_nova_os_so_na_barra_inferior():
+    """'Nova OS' é a única abreviação, e só a barra inferior (navegacao.py) a usa."""
+    assert textos.NAVEGACAO_NOVA_OS == "Nova OS"
+    usos = [
+        p.relative_to(RAIZ_UI).as_posix()
+        for p in RAIZ_UI.rglob("*.py")
+        if "__pycache__" not in p.parts
+        and "NAVEGACAO_NOVA_OS" in p.read_text(encoding="utf-8")
+    ]
+    assert sorted(usos) == ["navegacao.py", "textos.py"]
 
 
 def test_a_tela_principal_usa_o_modulo_de_rotulos():
@@ -82,8 +92,9 @@ def test_a_tela_principal_usa_o_modulo_de_rotulos():
     app = (RAIZ_UI / "app.py").read_text(encoding="utf-8")
     assert "textos.HOME_TITULO" in home and "textos.HOME_VAZIA" in home
     navegacao = (RAIZ_UI / "navegacao.py").read_text(encoding="utf-8")
-    assert "textos.NAVEGACAO_ORDENS" in navegacao and "textos.MENU_CONFIGURACOES" in app
-    assert app.index("textos.MENU_CONFIGURACOES") < app.index("textos.MENU_SAIR")  # acima de Sair
+    perfil = (RAIZ_UI / "views" / "perfil.py").read_text(encoding="utf-8")
+    assert "textos.NAVEGACAO_ORDENS" in navegacao and "textos.MENU_CONFIGURACOES" in perfil
+    assert "navegacao.destinos" in app
 
 
 # --- Rota /configuracoes ---------------------------------------------------------------
@@ -92,7 +103,7 @@ def test_a_tela_principal_usa_o_modulo_de_rotulos():
 def test_configuracoes_esta_na_tabela_de_rotas():
     assert rotas.resolver("/configuracoes") == ("configuracoes", {})
     assert rotas.normalizar("/configuracoes/") == "/configuracoes"
-    assert rotas.rota_anterior("/configuracoes") == "/"
+    assert rotas.rota_anterior("/configuracoes") == rotas.PERFIL  # prompt 23: está em Perfil
     assert rotas.CONFIGURACOES == "/configuracoes"
 
 
@@ -142,10 +153,11 @@ def test_relatorios_na_tabela_de_rotas_e_atras_da_guarda():
     assert decidir_rota("/relatorios", logada, T0) == "/relatorios"
 
 
-def test_relatorios_e_destino_de_primeiro_nivel_e_item_do_menu():
-    app = (RAIZ_UI / "app.py").read_text(encoding="utf-8")
-    assert "rotas.RELATORIOS" in app and "textos.MENU_RELATORIOS" in app
-    assert app.index("textos.MENU_RELATORIOS") < app.index("textos.MENU_SAIR")
+def test_relatorios_e_destino_de_primeiro_nivel():
+    from osapp.ui import navegacao
+
+    assert rotas.RELATORIOS in [d.rota for d in navegacao.destinos("manutencao")]
+    assert rotas.RELATORIOS not in [d.rota for d in navegacao.destinos("usuario")]
 
 
 def test_sessao_guarda_o_perfil_de_gerente_so_para_exibicao():

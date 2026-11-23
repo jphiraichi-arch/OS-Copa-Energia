@@ -93,6 +93,34 @@ Toda função de serviço começa por `carregar_ator`; usuário inativo é recus
   `src/osapp/assets/logo.png`: sem redesenhar, recolorir nem distorcer. Nenhum outro
   logotipo real de empresa.
 
+## Layout (prompt 23; leia antes de mexer em qualquer tela)
+
+- Toda tela usa os componentes de `src/osapp/ui/components/`: `banner` (faixa no topo das
+  telas principais, com a filial e os contadores), `SecaoCard`/`secao` (seções numeradas),
+  `status_pill`, `opcao_card`/`OpcaoGrupo` (escolhas importantes), `GrupoChips` (escolhas
+  pequenas), `basicos` (campos, botões, cartões). Tela nova não monta cabeçalho, navegação,
+  cartão nem formulário próprios.
+- Formulários são seções numeradas (`SecaoCard`): '1. SOLICITAÇÃO', '2. URGÊNCIA'... As
+  seções de cada papel e status vêm de `ui/secoes.py` (função pura, testada). Seção que o
+  papel não usa não é desenhada e o dado dela não é pedido ao serviço. Esconder uma seção
+  nunca é controle de segurança: o serviço decide.
+- Escolha única importante (urgência): `OpcaoGrupo` de cartões com ponto colorido, rótulo,
+  significado e a etiqueta 'SELECIONADO'. Escolhas pequenas (tipo, prioridade, filtros de
+  status, escopo da busca): chips.
+- Navegação: barra inferior em todos os tamanhos de tela ('Nova OS' · 'Ordens' com selo ·
+  'Relatórios' para manutenção e administrador · 'Perfil'), definida por
+  `ui/navegacao.destinos(papel)`. 'Nova OS' é a única abreviação permitida, só na barra.
+  Barra superior fina com voltar, logotipo e filial; sem menu de três barras nem trilho.
+- Conteúdo centralizado com no máximo `theme.LARGURA_MAX_CONTEUDO` (1100 px); abaixo de
+  `theme.LARGURA_CELULAR_MAX` (600 px), uma coluna.
+- A cor nunca é o único sinal: todo selo, pill, ponto e cartão selecionado tem texto.
+- Nenhuma cor fora de `theme.py`. Contraste de texto de no mínimo 4,5:1 (WCAG AA): todo par
+  texto/fundo fica em `theme.PARES_TEXTO`, verificado com `theme.contraste()` em teste. Laranja
+  (`COR_DESTAQUE`) nunca é cor de texto pequeno; nada de cinza ou azul claro em texto
+  pequeno sobre branco.
+- Números da faixa e do selo vêm de `services.ordens.contadores` (mesmo escopo de filial de
+  `listar_os`); atualizados em 'Atualizar' e depois de cada mudança de status na sessão.
+
 ## Fora do escopo do MVP (o desenho não pode bloqueá-los)
 
 Status cancelada, triagem, aceite pela operação, KPIs, fotos, notificações, planos preventivos,

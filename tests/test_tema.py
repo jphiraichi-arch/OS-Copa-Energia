@@ -33,15 +33,18 @@ def test_tokens_do_tema():
     assert theme.COR_BOTAO_PRIMARIO == "#2F4A54"
     assert theme.COR_FUNDO_PAGINA == "#F1F2F4"
     assert theme.COR_TITULO == "#1F2A44"
-    assert theme.COR_SUBTITULO == "#6B7280"
+    # Prompt 23: #6B7280 reprova sobre #F1F2F4 (4,3:1); o secundário ficou mais escuro.
+    assert theme.COR_SUBTITULO == "#5F6673"
+    assert theme.COR_BARRA == "#3A3A3A" and theme.COR_PRIMARIO == "#2F4A54"
+    assert theme.COR_CARTAO == "#FFFFFF" and theme.LARGURA_MAX_CONTEUDO == 1100
     assert theme.RAIO_CARTAO == 16
     assert theme.ALVO_TOQUE_MIN == 48
 
 
-def test_cabecalho_monta_com_padroes_e_parametros():
+def test_barra_superior_fina_com_filial_e_sem_menu():
     import flet as ft
 
-    from osapp.ui.components.cabecalho import cabecalho
+    from osapp.ui.components.cabecalho import barra
 
     def textos(controle):
         achados = []
@@ -54,10 +57,19 @@ def test_cabecalho_monta_com_padroes_e_parametros():
             achados += textos(conteudo)
         return achados
 
-    padrao = textos(cabecalho())
-    assert "F000" in padrao and "Olá, Visitante" in padrao
-    outro = textos(cabecalho(nome="Marina Teste", codigo_filial="F001"))
-    assert "F001" in outro and "Olá, Marina Teste" in outro
+    def tipos(controle):
+        achados = [type(controle).__name__]
+        for filho in getattr(controle, "controls", None) or []:
+            achados += tipos(filho)
+        conteudo = getattr(controle, "content", None)
+        if isinstance(conteudo, ft.Control):
+            achados += tipos(conteudo)
+        return achados
+
+    assert "F000" in textos(barra())
+    assert "F001" in textos(barra(codigo_filial="F001"))
+    # Prompt 23: o menu de três barras saiu (a navegação é a barra inferior).
+    assert "PopupMenuButton" not in tipos(barra())
 
 
 def test_logotipo_da_empresa():

@@ -14,6 +14,8 @@ USUARIOS = "/usuarios"
 USUARIO_NOVO = "/usuarios/novo"
 RELATORIOS = "/relatorios"
 RELATORIO_MENSAL = "/relatorios/mensal"
+PERFIL = "/perfil"
+ALTERAR_SENHA = "/perfil/senha"
 
 # nome da tela -> padrão do caminho. A ordem importa: /os/nova antes de /os/{id}.
 TABELA: dict[str, re.Pattern[str]] = {
@@ -24,6 +26,8 @@ TABELA: dict[str, re.Pattern[str]] = {
     "usuarios": re.compile(r"^/usuarios$"),
     "usuario_novo": re.compile(r"^/usuarios/novo$"),
     "usuario": re.compile(r"^/usuarios/(?P<usuario_id>[1-9]\d{0,17})$"),
+    "perfil": re.compile(r"^/perfil$"),
+    "alterar_senha": re.compile(r"^/perfil/senha$"),
     "relatorios": re.compile(r"^/relatorios$"),
     "relatorios_mensal": re.compile(r"^/relatorios/mensal$"),
     "os_nova": re.compile(r"^/os/nova$"),
@@ -88,14 +92,29 @@ def rota_anterior(rota: str) -> str | None:
     if resolvida is None:
         return None
     nome, params = resolvida
-    if nome in ("os_nova", "solicitacao_nova", "os_detalhe", "configuracoes", "relatorios"):
+    if nome in ("os_nova", "solicitacao_nova", "os_detalhe", "relatorios", "perfil"):
         return HOME
     if nome == "relatorios_mensal":
         return RELATORIOS
-    if nome == "usuarios":
-        return CONFIGURACOES
+    if nome in ("configuracoes", "alterar_senha", "usuarios"):
+        return PERFIL
     if nome in ("usuario_novo", "usuario"):
         return USUARIOS
     if nome in ("os_editar", "os_concluir", "os_assumir", "os_solicitacao"):
         return rota_os(params["os_id"])
     return None
+
+
+def secao_da_rota(rota: str | None) -> str:
+    """Destino da barra inferior a que a rota pertence (para marcá-lo como ativo)."""
+    resolvida = resolver(rota)
+    if resolvida is None:
+        return HOME
+    nome = resolvida[0]
+    if nome in ("relatorios", "relatorios_mensal"):
+        return RELATORIOS
+    if nome in ("perfil", "configuracoes", "alterar_senha", "usuarios", "usuario_novo", "usuario"):
+        return PERFIL
+    if nome in ("os_nova", "solicitacao_nova"):
+        return _caminho(rota)
+    return HOME

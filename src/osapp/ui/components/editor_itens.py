@@ -102,6 +102,17 @@ class EditorItens:
         self._proxima_chave -= 1
         return chave
 
+    def observar(self, ao_mudar: Callable[[], None]) -> None:
+        """Avisa ``ao_mudar`` depois de cada mudança (além do aviso dado na criação)."""
+        anterior = self._ao_mudar
+
+        def ambos() -> None:
+            if anterior:
+                anterior()
+            ao_mudar()
+
+        self._ao_mudar = ambos
+
     def _avisar_mudanca(self) -> None:
         if self._ao_mudar:
             self._ao_mudar()
@@ -328,7 +339,7 @@ class DialogoItem:
     # --- Exibição ---------------------------------------------------------------------
 
     def _e_celular(self) -> bool:
-        return (self.app.page.width or 0) < theme.LARGURA_TRILHO_MIN
+        return (self.app.page.width or 0) < theme.LARGURA_CELULAR_MAX
 
     def mostrar(self) -> None:
         titulo = TITULO_EDITAR if self.item else TITULO_NOVO

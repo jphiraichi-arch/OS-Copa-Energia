@@ -12,6 +12,7 @@ from osapp import formatacao
 from osapp.services import ordens, status
 from osapp.ui import navegacao, rotas, rotulos, textos, theme
 from osapp.ui.components import basicos
+from osapp.ui.components.chips import GrupoChips
 from osapp.ui.components.escopo_busca import SeletorEscopo
 from osapp.ui.views.base import Tela
 
@@ -22,11 +23,14 @@ ESCOPO_PADRAO = ordens.ESCOPO_TUDO  # decisão de 21/11/2026
 
 
 class Home(Tela):
+    banner = (ft.Icons.ASSIGNMENT, textos.HOME_TITULO)
+
     def __init__(self, app, **_params) -> None:
         self.app = app
         self.filtro_status: str | None = None
-        # Para administrador, o filtro começa na própria filial; os demais não escolhem.
-        self.filtro_filial: int | None = app.sessao.filial_id if app.sessao.is_admin else None
+        # Para administrador, o filtro começa na própria filial (ou na última escolhida
+        # nesta sessão); os demais não escolhem. A faixa usa o mesmo filtro.
+        self.filtro_filial: int | None = app.filtro_filial if app.sessao.is_admin else None
         self.pagina = 1
         self.itens: list = []
 
@@ -49,8 +53,15 @@ class Home(Tela):
                 on_click=self._buscar,
             ),
         )
-        self.chips = ft.Row(wrap=True, spacing=theme.ESPACO_P, run_spacing=theme.ESPACO_P)
-        self._montar_chips()
+        opcoes = [(None, textos.HOME_TODAS), *status.ROTULOS.items()]
+        if not app.sessao.is_usuario:
+            opcoes.insert(1, (SOLICITACOES_ABERTAS, ROTULO_SOLICITACOES_ABERTAS))
+        self.chips = GrupoChips(
+            opcoes,
+            None,
+            opcional=False,
+            ao_mudar=lambda: app.page.run_task(self._escolher_status),
+        )
         self.filial = ft.Dropdown(
             label=textos.HOME_FILIAL,
             visible=False,
@@ -69,12 +80,12 @@ class Home(Tela):
             icon=ft.Icons.REFRESH,
             style=theme.estilo_botao_texto(),
             height=theme.ALVO_TOQUE_MIN,
-            on_click=self._recarregar,
+            on_click=self._atualizar_tudo,
         )
         self.lista = basicos.coluna([], espaco=theme.ESPACO_M)
         self.rodape = basicos.coluna([])
         atalhos: list[ft.Control] = []
-        if navegacao.ve_relatorios(app.sessao.papel):  # cartão de opção (prompt 18)
+        if navegacao.ve_relatorios(app.sessao.papel):  # atalho (prompt 18)
             atalhos.append(
                 basicos.cartao(
                     ft.Row(
@@ -102,11 +113,10 @@ class Home(Tela):
             )
         self.conteudo = basicos.coluna(
             [
-                basicos.titulo(textos.HOME_TITULO, theme.FONTE_SAUDACAO),
                 *atalhos,
                 self.busca,
                 *([self.escopo.controle] if self.escopo else []),
-                self.chips,
+                self.chips.controle,
                 ft.Row(
                     [self.filial, self.atualizar],
                     alignment=ft.MainAxisAlignment.END,
@@ -119,32 +129,15 @@ class Home(Tela):
 
     # --- Filtros ----------------------------------------------------------------------
 
-    def _montar_chips(self) -> None:
-        opcoes = [(None, textos.HOME_TODAS), *status.ROTULOS.items()]
-        if not self.app.sessao.is_usuario:
-            opcoes.insert(1, (SOLICITACOES_ABERTAS, ROTULO_SOLICITACOES_ABERTAS))
-        self.chips.controls = [
-            ft.Chip(
-                label=ft.Text(rotulo, color=theme.COR_TITULO, size=theme.FONTE_SUBTITULO),
-                selected=self.filtro_status == valor,
-                show_checkmark=True,
-                check_color=theme.COR_TITULO,
-                bgcolor=theme.COR_CARTAO,
-                selected_color=theme.COR_INDICADOR_NAVEGACAO,
-                on_select=lambda _e, v=valor: self.app.page.run_task(self._escolher_status, v),
-            )
-            for valor, rotulo in opcoes
-        ]
-
-    async def _escolher_status(self, valor: str | None) -> None:
-        self.filtro_status = valor
-        self._montar_chips()
-        self.chips.update()
+    async def _escolher_status(self) -> None:
+        self.filtro_status = self.chips.valor
         await self._recarregar()
 
     async def _ao_escolher_filial(self, e) -> None:
         valor = e.control.value
         self.filtro_filial = None if valor in (None, TODAS_AS_FILIAIS) else int(valor)
+        self.app.filtro_filial = self.filtro_filial
+        await self.app.atualizar_contadores()
         await self._recarregar()
 
     async def _buscar(self, _e=None) -> None:
@@ -166,6 +159,11 @@ class Home(Tela):
                 self.filial.value = str(self.filtro_filial)
                 self.filial.visible = True
                 self.conteudo.update()
+        await self._recarregar()
+
+    async def _atualizar_tudo(self, _e=None) -> None:
+        """'Atualizar': a lista e os números da faixa e do selo."""
+        await self.app.atualizar_contadores()
         await self._recarregar()
 
     async def _recarregar(self, _e=None) -> None:

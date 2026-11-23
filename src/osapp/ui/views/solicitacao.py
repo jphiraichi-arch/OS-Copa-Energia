@@ -10,8 +10,11 @@ import flet as ft
 
 from osapp.services import ordens
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao
-from osapp.ui import rotas, rotulos, theme
+from osapp.ui import rotas, secoes, theme
+from osapp.ui import urgencia as urgencia_ui
 from osapp.ui.components import basicos
+from osapp.ui.components.opcoes import OpcaoGrupo
+from osapp.ui.components.secao import SecaoCard, secao, status_pill
 from osapp.ui.views.base import Tela
 from osapp.ui.views.detalhe import MENSAGEM_CONFLITO
 
@@ -19,87 +22,20 @@ TITULO_NOVA = "Nova Solicitação"
 TITULO_EDITAR = "Editar solicitação"
 ROTULO_ENVIAR = "Enviar solicitação"
 ROTULO_SALVAR = "Salvar alterações"
-ROTULO_URGENCIA = "Urgência"
 MSG_ESCOLHA_URGENCIA = "Escolha a urgência."
-ALTURA_OPCAO = 56  # acima do alvo mínimo de 48 px
 
 
-class SeletorUrgencia:
-    """Quatro opções grandes; uma é obrigatória. A palavra aparece sempre (não só cor)."""
+def grupo_urgencia(valor: str | None = None, ao_mudar=None) -> OpcaoGrupo:
+    """Urgência como cartões de opção (ponto colorido, rótulo e significado)."""
+    return OpcaoGrupo(urgencia_ui.opcoes(theme.COR_PONTO_URGENCIA), valor, ao_mudar)
 
-    def __init__(self, valor: str | None = None, ao_mudar=None) -> None:
-        self.valor = valor
-        self._ao_mudar = ao_mudar
-        self.erro = ft.Text("", color=theme.COR_ERRO, size=theme.FONTE_PEQUENA, visible=False)
-        self.opcoes = ft.ResponsiveRow(spacing=theme.ESPACO_P, run_spacing=theme.ESPACO_P)
-        self.controle = ft.Column(
-            [
-                ft.Text(ROTULO_URGENCIA, color=theme.COR_SUBTITULO, size=theme.FONTE_SUBTITULO),
-                self.opcoes,
-                self.erro,
-            ],
-            spacing=theme.ESPACO_P,
-            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-        )
-        self._montar()
 
-    def _montar(self) -> None:
-        self.opcoes.controls = [self._opcao(nivel) for nivel in ordens.NIVEIS]
-
-    def _opcao(self, nivel: str) -> ft.Control:
-        escolhida = nivel == self.valor
-        fundo, cor = theme.cores_nivel(nivel)
-        icone = ft.Icons.CHECK_CIRCLE if escolhida else ft.Icons.RADIO_BUTTON_UNCHECKED
-        return ft.Container(
-            col={"xs": 6, "sm": 3},
-            height=ALTURA_OPCAO,
-            bgcolor=fundo if escolhida else theme.COR_CAMPO_FUNDO,
-            border=ft.Border.all(2 if escolhida else 1, cor if escolhida else theme.COR_CONTORNO),
-            border_radius=theme.RAIO_BOTAO,
-            ink=True,
-            on_click=lambda _e, n=nivel: self._escolher(n),
-            alignment=ft.Alignment.CENTER,
-            content=ft.Row(
-                [
-                    ft.Icon(icone, color=cor if escolhida else theme.COR_SUBTITULO, size=20),
-                    ft.Text(
-                        rotulos.nivel(nivel),
-                        color=cor if escolhida else theme.COR_TITULO,
-                        size=theme.FONTE_CORPO,
-                        weight=ft.FontWeight.BOLD if escolhida else ft.FontWeight.NORMAL,
-                    ),
-                ],
-                alignment=ft.MainAxisAlignment.CENTER,
-                spacing=6,
-            ),
-        )
-
-    def _escolher(self, nivel: str) -> None:
-        self.valor = nivel
-        self.marcar_erro(None)
-        self._montar()
-        self.controle.update()
-        if self._ao_mudar:
-            self._ao_mudar()
-
-    def marcar_erro(self, mensagem: str | None) -> None:
-        self.erro.value = mensagem or ""
-        self.erro.visible = bool(mensagem)
-
-    # Para App.chamar marcar o ErroValidacao do serviço como num campo.
-    @property
-    def error(self) -> str | None:
-        return self.erro.value or None
-
-    @error.setter
-    def error(self, mensagem: str | None) -> None:
-        self.marcar_erro(mensagem)
-
-    def update(self) -> None:
-        self.controle.update()
+def tom_urgencia(nivel: str | None) -> str:
+    return nivel or "neutro"
 
 
 class _FormularioSolicitacao(Tela):
+    banner = None
     titulo_da_tela = ""
     rotulo_do_botao = ""
 
@@ -124,28 +60,41 @@ class _FormularioSolicitacao(Tela):
             max_length=ordens.DESCRICAO_MAX,
             on_change=limpar,
         )
-        self.urgencia = SeletorUrgencia(urgencia)
+        self.urgencia = grupo_urgencia(urgencia, self._ao_mudar_urgencia)
         self.campos = {
             "titulo": self.titulo,
             "descricao": self.descricao,
             "urgencia": self.urgencia,
         }
+        lista = secoes.secoes(self.app.sessao.papel, solicitacao=True)
+        self.secao_urgencia = SecaoCard(
+            secoes.numero(lista, secoes.URGENCIA),
+            ft.Icons.PRIORITY_HIGH,
+            secoes.TITULOS[secoes.URGENCIA],
+            [self.urgencia.controle],
+            obrigatoria=True,
+            pill=status_pill(urgencia_ui.pill(urgencia), tom_urgencia(urgencia)),
+        )
         self.conteudo.controls = [
-            basicos.cartao(
-                basicos.coluna(
-                    [
-                        basicos.titulo(self.titulo_da_tela),
-                        basicos.rotulo_valor("Filial", filial),
-                        self.titulo,
-                        self.descricao,
-                        self.urgencia.controle,
-                        self.aviso,
-                    ]
-                )
+            basicos.titulo(self.titulo_da_tela, theme.FONTE_SAUDACAO)
+            if self.banner is None
+            else ft.Container(),
+            secao(
+                secoes.numero(lista, secoes.SOLICITACAO),
+                ft.Icons.DESCRIPTION_OUTLINED,
+                secoes.TITULOS[secoes.SOLICITACAO],
+                [basicos.rotulo_valor("Filial", filial), self.titulo, self.descricao],
+                obrigatoria=True,
             ),
+            self.secao_urgencia.controle,
+            self.aviso,
             self.botao,
         ]
         self._inicial = self._digitado()
+
+    def _ao_mudar_urgencia(self) -> None:
+        v = self.urgencia.valor
+        self.secao_urgencia.definir_pill(status_pill(urgencia_ui.pill(v), tom_urgencia(v)))
 
     def _digitado(self) -> tuple:
         return (self.titulo.value or "", self.descricao.value or "", self.urgencia.valor)
@@ -194,6 +143,7 @@ class _FormularioSolicitacao(Tela):
 
 
 class NovaSolicitacao(_FormularioSolicitacao):
+    banner = (ft.Icons.ADD_COMMENT, TITULO_NOVA)
     titulo_da_tela = TITULO_NOVA
     rotulo_do_botao = ROTULO_ENVIAR
 
@@ -216,6 +166,7 @@ class NovaSolicitacao(_FormularioSolicitacao):
         )
         if resultado.ok:
             self._inicial = self._digitado()  # nada a perder ao sair
+            await self.app.atualizar_contadores()
             await self.app.ir(
                 rotas.rota_os(resultado.valor.id),
                 mensagem=f"Solicitação {resultado.valor.numero} enviada.",

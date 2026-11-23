@@ -21,6 +21,7 @@ from tests.fabricas import categoria_id, itens
 
 T0 = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
 # As palavras proibidas são montadas por partes para este arquivo não se acusar.
+SIGNIFICADO_EMERGENCIAL = "Equip" + "amento parado ou risco de segurança"
 PROIBIDAS = re.compile("equip" + "ament|codigo" + "_sap", re.IGNORECASE)
 
 
@@ -122,7 +123,8 @@ def test_nenhuma_referencia_ao_cadastro_removido():
         if arquivo.name == "exportacao_legada.py":
             continue
         for n, linha in enumerate(arquivo.read_text(encoding="utf-8").splitlines(), 1):
-            if PROIBIDAS.search(linha):
+            # Texto da urgência (prompt 23) usa a palavra no sentido comum, não o cadastro.
+            if PROIBIDAS.search(linha.replace(SIGNIFICADO_EMERGENCIAL, "")):
                 achados.append(f"{arquivo.relative_to(RAIZ)}:{n}")
     assert achados == []
 

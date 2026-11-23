@@ -1,18 +1,19 @@
-"""Campos do cabeçalho da Ordem de Serviço, usados por Criar e Alterar.
+"""Campos da Ordem de Serviço, usados por Criar, Alterar e Assumir.
 
-Os itens de custo ficam no editor de itens (components/editor_itens.py).
+Os campos ficam agrupados por seção (ui/secoes.py) em ``partes``; a tela monta os
+SecaoCards. Os itens de custo ficam no editor de itens (components/editor_itens.py).
 """
 
 from __future__ import annotations
 
 import flet as ft
 
+from osapp import formatacao
 from osapp.services import ordens
-from osapp.ui import formularios, rotulos, theme
+from osapp.ui import formularios, rotulos, secoes, theme
 from osapp.ui.components import basicos
 from osapp.ui.components.campos import CampoDuracao, CampoHora
-
-ROTULO_OUTRO = "Outro"
+from osapp.ui.components.chips import GrupoChips
 
 
 def lista_suspensa(rotulo: str, opcoes, valor, on_select=None, disabled=False) -> ft.Dropdown:
@@ -47,8 +48,10 @@ class FormularioOs:
         os=None,
         com_realizado: bool = False,
         tipos=(),
+        ao_mudar_planejamento=None,
     ) -> None:
         self.app = app
+        self._ao_mudar_planejamento = ao_mudar_planejamento
         self.tz = app.config.tz
         self.com_realizado = com_realizado and os is not None
         # Título e descrição de uma solicitação são do solicitante: só leitura aqui.
@@ -72,20 +75,21 @@ class FormularioOs:
             on_change=limpar,
             read_only=not self.texto_editavel,
         )
-        self.tipo = lista_suspensa(
-            "Tipo de manutenção",
-            [ft.DropdownOption(key=str(t.id), text=t.nome) for t in tipos],
-            str(os.tipo_id) if os and os.tipo_id else None,
-            on_select=self._ao_escolher_lista,
+        # Escolhas pequenas: chips (tipo e prioridade).
+        self.tipo = GrupoChips(
+            [(t.id, t.nome) for t in tipos],
+            os.tipo_id if os else None,
+            ao_mudar=self._avisar_planejamento,
         )
-        self.prioridade = lista_suspensa(
-            "Prioridade",
-            [ft.DropdownOption(key=n, text=rotulos.nivel(n)) for n in ordens.NIVEIS],
+        self.prioridade = GrupoChips(
+            [(n, rotulos.nivel(n)) for n in ordens.NIVEIS],
             os.prioridade if os else None,
-            on_select=self._ao_escolher_lista,
+            ao_mudar=self._avisar_planejamento,
         )
         self.tempo = CampoDuracao(
-            "Tempo previsto (horas:minutos)", (os.tempo_previsto_minutos or 0) if os else 0
+            "Tempo previsto (horas:minutos)",
+            (os.tempo_previsto_minutos or 0) if os else 0,
+            ao_mudar=self._avisar_planejamento,
         )
         filial_inicial = os.filial_id if os else app.sessao.filial_id
         self.filial = lista_suspensa(
@@ -94,22 +98,25 @@ class FormularioOs:
             str(filial_inicial) if filial_inicial is not None else None,
             disabled=not app.sessao.is_admin,  # trava visual; quem decide é o serviço
         )
-        controles: list[ft.Control] = [
-            self.titulo,
-            self.descricao,
-            ft.Row([self.filial]),
-            ft.Row([self.tipo]),
-            ft.Row([self.prioridade]),
-            self.tempo.controle,
-        ]
+        # Controles de cada seção (a tela decide quais seções desenhar).
+        self.partes: dict[str, list[ft.Control]] = {
+            secoes.SOLICITACAO: [self.titulo, self.descricao, ft.Row([self.filial])],
+            secoes.PLANEJAMENTO: [
+                _rotulo_de_grupo("Tipo de manutenção"),
+                self.tipo.controle,
+                _rotulo_de_grupo("Prioridade"),
+                self.prioridade.controle,
+                self.tempo.controle,
+            ],
+        }
         # Nome do campo no serviço -> controle onde a mensagem de ErroValidacao aparece.
         self.campos: dict[str, ft.Control] = {
             "titulo": self.titulo,
             "descricao": self.descricao,
             "tempo_previsto_minutos": self.tempo.controle,
             "filial_id": _ErroNaLista(self.filial),
-            "tipo_id": _ErroNaLista(self.tipo),
-            "prioridade": _ErroNaLista(self.prioridade),
+            "tipo_id": self.tipo,
+            "prioridade": self.prioridade,
         }
 
         if self.com_realizado:
@@ -128,8 +135,7 @@ class FormularioOs:
                 max_length=ordens.DESCRICAO_MAX,
                 on_change=limpar,
             )
-            controles += [
-                basicos.titulo("Realizado"),
+            self.partes[secoes.CONCLUSAO] = [
                 self.inicio_data,
                 self.inicio_hora.controle,
                 self.fim_data,
@@ -144,7 +150,6 @@ class FormularioOs:
                 }
             )
 
-        self.controle = basicos.coluna(controles)
         self._inicial = self._digitado()
         self._original = self.ler(marcar_erros=False) if os else None
 
@@ -169,10 +174,19 @@ class FormularioOs:
             e.control.error = None
             e.control.update()
 
-    def _ao_escolher_lista(self, e) -> None:
-        if e.control.error_text:
-            e.control.error_text = None
-            e.control.update()
+    def observar_planejamento(self, ao_mudar) -> None:
+        self._ao_mudar_planejamento = ao_mudar
+
+    def _avisar_planejamento(self) -> None:
+        if self._ao_mudar_planejamento:
+            self._ao_mudar_planejamento()
+
+    def resumo_planejamento(self) -> str:
+        """Texto do StatusPill da seção de planejamento: 'PREVISTO: 1:30' ou 'A DEFINIR'."""
+        minutos = self.tempo.valor
+        if not minutos:
+            return "PREVISTO: A DEFINIR"
+        return f"PREVISTO: {formatacao.formatar_duracao(minutos)}"
 
     # --- Leitura ----------------------------------------------------------------------
 
@@ -183,8 +197,8 @@ class FormularioOs:
             "descricao": self.descricao.value or "",
             "tempo": self.tempo.controle.value or "",
             "filial": self.filial.value or "",
-            "tipo": self.tipo.value or "",
-            "prioridade": self.prioridade.value or "",
+            "tipo": str(self.tipo.valor or ""),
+            "prioridade": self.prioridade.valor or "",
         }
         if self.com_realizado:
             valores.update(
@@ -212,8 +226,8 @@ class FormularioOs:
         valores: dict = {
             "tempo_previsto_minutos": self.tempo.valor or None,  # 0:00 = não informado
             "filial_id": int(self.filial.value) if self.filial.value else None,
-            "tipo_id": int(self.tipo.value) if self.tipo.value else None,
-            "prioridade": self.prioridade.value or None,
+            "tipo_id": self.tipo.valor,
+            "prioridade": self.prioridade.valor,
         }
         if self.texto_editavel:
             valores["titulo"] = (self.titulo.value or "").strip()
@@ -241,7 +255,9 @@ class FormularioOs:
                 _definir_erro(self.fim_data, None)
             for campo, mensagem in erros:
                 _definir_erro(campo, mensagem)
-            self.controle.update()
+            for controles in self.partes.values():
+                for controle in controles:
+                    _atualizar(controle)
         return None if erros else valores
 
     def alteracoes(self, valores: dict) -> dict:
@@ -272,3 +288,14 @@ class _ErroNaLista:
 
 def _definir_erro(controle, mensagem: str | None) -> None:
     controle.error = mensagem
+
+
+def _rotulo_de_grupo(texto: str) -> ft.Text:
+    return ft.Text(texto, color=theme.COR_SUBTITULO, size=theme.FONTE_SUBTITULO)
+
+
+def _atualizar(controle) -> None:
+    try:
+        controle.update()
+    except (RuntimeError, AssertionError):
+        pass  # ainda não está na página

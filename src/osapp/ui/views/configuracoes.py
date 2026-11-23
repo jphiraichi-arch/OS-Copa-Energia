@@ -1,6 +1,7 @@
 """Tela Configurações (/configuracoes): dados do usuário e do app, só para leitura.
 
 É uma lista de cartões, para que novas configurações entrem depois como novos cartões.
+Alterar senha e Usuários ficam em Perfil (decisão de 21/11/2026).
 """
 
 from __future__ import annotations
@@ -10,10 +11,9 @@ from importlib import metadata
 import flet as ft
 
 from osapp.services import ordens
-from osapp.ui import rotas, rotulos, textos, theme
+from osapp.ui import rotulos, textos, theme
 from osapp.ui.components import basicos
 from osapp.ui.views.base import Tela
-from osapp.ui.views.senha import cartao_alterar_senha
 
 
 def versao_do_app() -> str:
@@ -53,25 +53,6 @@ class Configuracoes(Tela):
                         ),
                     ],
                 ),
-                cartao_alterar_senha(app),
-                *(
-                    [
-                        self._cartao(
-                            textos.CONFIG_CARTAO_USUARIOS,
-                            ft.Icons.GROUP_OUTLINED,
-                            [
-                                basicos.subtitulo(textos.CONFIG_USUARIOS_AJUDA),
-                                basicos.botao_secundario(
-                                    textos.CONFIG_USUARIOS_ABRIR,
-                                    ft.Icons.GROUP_OUTLINED,
-                                    self._abrir_usuarios,
-                                ),
-                            ],
-                        )
-                    ]
-                    if sessao.is_admin
-                    else []
-                ),
                 self._cartao(
                     textos.CONFIG_CARTAO_APLICATIVO,
                     ft.Icons.INFO_OUTLINE,
@@ -79,9 +60,6 @@ class Configuracoes(Tela):
                 ),
             ]
         )
-
-    async def _abrir_usuarios(self, _e=None) -> None:
-        await self.app.ir(rotas.USUARIOS)
 
     def _cartao(self, nome: str, icone: ft.IconData, linhas: list[ft.Control]) -> ft.Control:
         return basicos.cartao(

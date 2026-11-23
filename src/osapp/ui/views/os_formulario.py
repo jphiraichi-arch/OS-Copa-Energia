@@ -6,12 +6,16 @@ from functools import partial
 
 import flet as ft
 
+from osapp import formatacao
 from osapp.services import custos, ordens
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao, ErroValidacao
-from osapp.ui import formularios, rotas, theme
+from osapp.ui import formularios, rotas, rotulos, secoes, theme
+from osapp.ui import urgencia as urgencia_ui
 from osapp.ui.components import basicos
 from osapp.ui.components.editor_itens import ADICIONAR, EDITAR, EditorItens
 from osapp.ui.components.formulario_os import FormularioOs
+from osapp.ui.components.opcoes import opcao_card
+from osapp.ui.components.secao import SecaoCard, secao, status_pill
 from osapp.ui.views.base import Tela
 from osapp.ui.views.detalhe import MENSAGEM_CONFLITO
 
@@ -39,6 +43,7 @@ class AlvoDeErro:
 
 
 class _TelaDeFormulario(Tela):
+    banner = None
     titulo_da_tela = ""
     rotulo_do_botao = ""
 
@@ -53,16 +58,98 @@ class _TelaDeFormulario(Tela):
     def tem_alteracoes(self) -> bool:
         return self.formulario is not None and self.formulario.tem_alteracoes()
 
+    def _lista_de_secoes(self) -> tuple[str, ...]:
+        """Seções pelo papel e pela Ordem de Serviço carregada (ui/secoes.py)."""
+        os_ = getattr(self, "os", None)
+        return secoes.secoes(
+            self.app.sessao.papel,
+            os_.status if os_ else None,
+            solicitacao=bool(os_ and os_.origem == ordens.ORIGEM_SOLICITACAO),
+        )
+
     def _mostrar_formulario(self) -> None:
-        self.conteudo.controls = [
-            basicos.cartao(
-                basicos.coluna(
-                    [basicos.titulo(self.titulo_da_tela), self.formulario.controle, self.aviso]
+        """Um SecaoCard numerado por seção: 1. SOLICITAÇÃO, 2. URGÊNCIA (só leitura: é do
+        solicitante), PLANEJAMENTO, ITENS DE CUSTO e, para o administrador numa Ordem de
+        Serviço concluída, CONCLUSÃO."""
+        f = self.formulario
+        lista = tuple(
+            s
+            for s in self._lista_de_secoes()
+            if s != secoes.CONCLUSAO or secoes.CONCLUSAO in f.partes
+        )
+        os_ = getattr(self, "os", None)
+        cartoes: list[ft.Control] = []
+        self.secao_planejamento = self.secao_itens = None
+        for chave in lista:
+            n, titulo = secoes.numero(lista, chave), secoes.TITULOS[chave]
+            if chave == secoes.SOLICITACAO:
+                cartoes.append(
+                    secao(n, ft.Icons.DESCRIPTION_OUTLINED, titulo, f.partes[chave], True)
                 )
-            ),
-            *[basicos.cartao(editor.controle) for editor in self.editores],
+            elif chave == secoes.URGENCIA:
+                nivel = os_.urgencia if os_ else None
+                cartoes.append(
+                    secao(
+                        n,
+                        ft.Icons.PRIORITY_HIGH,
+                        titulo,
+                        [
+                            basicos.subtitulo("Informada pelo solicitante."),
+                            opcao_card(
+                                theme.cor_ponto_urgencia(nivel),
+                                rotulos.nivel(nivel),
+                                urgencia_ui.SIGNIFICADO.get(nivel, ""),
+                                True,
+                            ),
+                        ],
+                        pill=status_pill(urgencia_ui.pill(nivel), nivel or "neutro"),
+                    )
+                )
+            elif chave == secoes.PLANEJAMENTO:
+                self.secao_planejamento = SecaoCard(
+                    n,
+                    ft.Icons.EVENT_NOTE,
+                    titulo,
+                    f.partes[chave],
+                    pill=status_pill(f.resumo_planejamento(), "info"),
+                )
+                f.observar_planejamento(self._atualizar_pill_planejamento)
+                cartoes.append(self.secao_planejamento.controle)
+            elif chave == secoes.ITENS:
+                self.secao_itens = SecaoCard(
+                    n,
+                    ft.Icons.RECEIPT_LONG,
+                    titulo,
+                    [editor.controle for editor in self.editores],
+                    pill=status_pill(self._resumo_itens(), "info"),
+                )
+                for editor in self.editores:
+                    editor.observar(self._atualizar_pill_itens)
+                cartoes.append(self.secao_itens.controle)
+            elif chave == secoes.CONCLUSAO:
+                cartoes.append(secao(n, ft.Icons.TASK_ALT, titulo, f.partes[chave]))
+        self.conteudo.controls = [
+            *([] if self.banner else [basicos.titulo(self.titulo_da_tela, theme.FONTE_SAUDACAO)]),
+            *cartoes,
+            self.aviso,
             self.botao,
         ]
+
+    def _resumo_itens(self) -> str:
+        """'PREVISTO: R$ 1.250,00' (subtotal ao vivo da fase prevista)."""
+        previsto = next((e for e in self.editores if e.fase == custos.FASE_PREVISTO), None)
+        total = previsto.resumo().total_previsto_centavos if previsto else 0
+        return f"PREVISTO: {formatacao.formatar_brl(total)}"
+
+    def _atualizar_pill_itens(self) -> None:
+        if self.secao_itens is not None:
+            self.secao_itens.definir_pill(status_pill(self._resumo_itens(), "info"))
+
+    def _atualizar_pill_planejamento(self) -> None:
+        if self.secao_planejamento is not None:
+            self.secao_planejamento.definir_pill(
+                status_pill(self.formulario.resumo_planejamento(), "info")
+            )
 
     def _mostrar_mensagem(self, mensagem: str, rota_de_volta: str, rotulo: str) -> None:
         async def voltar(_e=None) -> None:
@@ -106,6 +193,7 @@ class _TelaDeFormulario(Tela):
 
 
 class CriarOs(_TelaDeFormulario):
+    banner = (ft.Icons.ADD_CIRCLE, "Nova Ordem de Serviço")
     titulo_da_tela = "Nova Ordem de Serviço"
     rotulo_do_botao = "Salvar Ordem de Serviço"
 
@@ -166,6 +254,7 @@ class CriarOs(_TelaDeFormulario):
         if resultado.ok:
             self.formulario.marcar_como_salvo()
             self.previstos.definir_itens([])  # nada mais a perder ao sair
+            await self.app.atualizar_contadores()
             await self.app.ir(
                 rotas.rota_os(resultado.valor.id), mensagem="Ordem de Serviço criada."
             )
@@ -337,29 +426,23 @@ class AssumirOs(EditarOs):
     def _mostrar_formulario(self) -> None:
         d = self.os
         pedido = basicos.cartao(
-            basicos.coluna(
+            ft.Row(
                 [
-                    basicos.titulo("Solicitação"),
-                    ft.Row(
-                        [
-                            basicos.selo_nivel(d.urgencia, "Urgência: "),
-                            basicos.selo_status(d.status),
-                        ],
-                        wrap=True,
-                        spacing=6,
-                    ),
                     basicos.rotulo_valor("Número", d.numero),
-                    basicos.rotulo_valor("Título", d.titulo),
-                    basicos.rotulo_valor("Descrição", d.descricao),
                     basicos.rotulo_valor("Solicitante", d.criado_por_nome),
+                    basicos.selo_status(d.status),
                 ],
-                espaco=theme.ESPACO_P + 4,
+                wrap=True,
+                spacing=theme.ESPACO_G,
+                run_spacing=theme.ESPACO_P,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
             )
         )
         super()._mostrar_formulario()
         self.conteudo.controls = [
+            *self.conteudo.controls[:1],  # título da tela
             pedido,
-            *self.conteudo.controls[:-1],
+            *self.conteudo.controls[1:-1],
             self.pendencias,
             self.botao_iniciar,
             self.botao,
@@ -404,6 +487,7 @@ class AssumirOs(EditarOs):
             )
             if iniciado.ok:
                 self.formulario.marcar_como_salvo()
+                await self.app.atualizar_contadores()
                 await self.app.ir(rotas.rota_os(self.os_id), mensagem="Execução iniciada.")
             elif isinstance(iniciado.erro, ErroValidacao):
                 # O serviço recusou: mostra o que falta (texto do próprio serviço).

@@ -1045,3 +1045,27 @@ varrendo). Antes disso o índice só custa espaço e tempo de gravação.
    é recalculado com ela. O marcador 'Não informado' da migração 0005 não é copiado. O
    downgrade não restaura o vínculo. Vale sempre (sem equipamento, nada muda), então a
    exportação CSV prévia passa a ser opcional.
+
+## Prompt 23 — base da interface: tema, componentes, barra inferior, faixa, seções (23/11/2026)
+
+- Tema (`ui/theme.py`): tokens primário #2F4A54, destaque #F28C28, barra #3A3A3A, fundo
+  #F1F2F4, cartão #FFFFFF, título #1F2A44, secundário #5F6673 (o #6B7280 dava 4,3:1 sobre o
+  fundo). Pontos de urgência verde/amarelo/laranja/vermelho. Raio 16, toque 48 px, largura
+  máxima 1100 px. `contraste()` (WCAG) e `PARES_TEXTO` (todos ≥ 4,5:1, com teste). Os nomes
+  antigos (`COR_CABECALHO`, `COR_BOTAO_PRIMARIO`...) ficaram como sinônimos.
+- Componentes novos: `components/banner.py`, `secao.py` (SecaoCard, status_pill),
+  `opcoes.py` (opcao_card, OpcaoGrupo), `chips.py` (GrupoChips único/múltiplo). O seletor de
+  escopo da busca usa GrupoChips. Textos da urgência em `ui/urgencia.py`.
+- Navegação: `ui/navegacao.destinos(papel)` -> Nova OS · Ordens · Relatórios · Perfil; barra
+  inferior em todos os tamanhos, selo de abertas no ícone de 'Ordens'. Saíram o trilho
+  lateral, o menu de três barras e a saudação 'Olá, nome' (a faixa mostra o título e a
+  filial). Rotas novas `/perfil` e `/perfil/senha`; Configurações, Usuários e Alterar senha
+  voltam para Perfil.
+- `services.ordens.contadores(ator_id, filial_id=None)`: abertas (ABERTA + EM_EXECUCAO),
+  aguardando início (ABERTA) e o rótulo da filial; mesmo escopo de `listar_os` (helper
+  `_filial_da_lista`). O app guarda os contadores e o filtro de filial do administrador.
+- Seções (`ui/secoes.py`): SOLICITAÇÃO e URGÊNCIA (todos; urgência só em solicitação),
+  PLANEJAMENTO e ITENS DE CUSTO (manutenção e administrador), CONCLUSÃO (em execução para
+  quem conclui; só leitura depois de concluída). Telas refeitas: Home, Detalhe, Nova/Editar
+  Solicitação, Nova/Alterar Ordem de Serviço, Assumir, Concluir, Configurações, Perfil e o
+  relatório de tempos. Tipo e prioridade viraram chips.

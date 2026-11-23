@@ -1,6 +1,7 @@
-"""Destinos da navegação principal por papel. Módulo puro (sem Flet).
+"""Destinos da barra inferior por papel. Módulo puro (sem Flet).
 
-A interface só mostra caminhos; quem autoriza cada ação é o serviço.
+A interface só mostra caminhos; quem autoriza cada ação é o serviço. Esconder
+'Relatórios' é conveniência: o serviço do relatório já recusa o papel usuario.
 """
 
 from __future__ import annotations
@@ -13,38 +14,46 @@ from osapp.ui import rotas, textos
 @dataclass(frozen=True)
 class Destino:
     chave: str  # nome do ícone em ui/app.py
-    rotulo: str  # barra inferior (celular)
-    rotulo_trilho: str  # trilho lateral (telas largas)
+    rotulo: str
     rota: str
 
 
-ORDENS = Destino("ordens", textos.NAVEGACAO_ORDENS, textos.TRILHO_ORDENS, rotas.HOME)
-NOVA_ORDEM = Destino(
-    "nova_ordem", textos.NAVEGACAO_NOVA_ORDEM, textos.TRILHO_NOVA_ORDEM, rotas.OS_NOVA
-)
-RELATORIOS = Destino(
-    "relatorios", textos.NAVEGACAO_RELATORIOS, textos.TRILHO_RELATORIOS, rotas.RELATORIOS
-)
-NOVA_SOLICITACAO = Destino(
-    "nova_solicitacao",
-    textos.NAVEGACAO_NOVA_SOLICITACAO,
-    textos.TRILHO_NOVA_SOLICITACAO,
-    rotas.SOLICITACAO_NOVA,
-)
+ORDENS = Destino("ordens", textos.NAVEGACAO_ORDENS, rotas.HOME)
+RELATORIOS = Destino("relatorios", textos.NAVEGACAO_RELATORIOS, rotas.RELATORIOS)
+PERFIL = Destino("perfil", textos.NAVEGACAO_PERFIL, rotas.PERFIL)
+
+
+def nova_os(papel: str) -> Destino:
+    """'Nova OS': Nova Solicitação para o usuario; Nova Ordem de Serviço para os demais."""
+    rota = rotas.SOLICITACAO_NOVA if papel == "usuario" else rotas.OS_NOVA
+    return Destino("nova_os", textos.NAVEGACAO_NOVA_OS, rota)
 
 
 def destinos(papel: str) -> tuple[Destino, ...]:
-    """usuario: Ordens e Nova Solicitação. manutencao: Ordens, Nova Ordem de Serviço e
-    Relatórios. admin: os da manutenção e Nova Solicitação. Papel desconhecido: só Ordens."""
+    """Nova OS · Ordens · Relatórios (manutenção e administrador) · Perfil.
+
+    Papel desconhecido: só Ordens e Perfil."""
     if papel == "usuario":
-        return (ORDENS, NOVA_SOLICITACAO)
-    if papel == "manutencao":
-        return (ORDENS, NOVA_ORDEM, RELATORIOS)
-    if papel == "admin":
-        return (ORDENS, NOVA_ORDEM, NOVA_SOLICITACAO, RELATORIOS)
-    return (ORDENS,)
+        return (nova_os(papel), ORDENS, PERFIL)
+    if papel in ("manutencao", "admin"):
+        return (nova_os(papel), ORDENS, RELATORIOS, PERFIL)
+    return (ORDENS, PERFIL)
 
 
 def ve_relatorios(papel: str) -> bool:
-    """Entrada 'Relatórios' no menu: manutenção e administrador (o usuario não tem)."""
+    """Atalhos para Relatórios: manutenção e administrador (o usuario não tem)."""
     return papel in ("manutencao", "admin")
+
+
+def destino_ativo(papel: str, rota: str) -> int | None:
+    """Índice do destino da barra que corresponde à rota (o pai, para subtelas)."""
+    caminho = rotas.normalizar(rota)
+    lista = destinos(papel)
+    for indice, d in enumerate(lista):
+        if d.rota == caminho:
+            return indice
+    pai = rotas.secao_da_rota(caminho)
+    for indice, d in enumerate(lista):
+        if d.rota == pai:
+            return indice
+    return None
