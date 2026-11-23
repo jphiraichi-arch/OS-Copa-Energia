@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, raiseload
 
-from osapp.models import Filial, OrdemServico, OsItemCusto, Usuario
+from osapp.models import Filial, OrdemServico, OsEvento, OsItemCusto, Usuario
 from osapp.models.ordem_servico import INCLUIR_EXCLUIDAS
 
 LARGURA_SEQUENCIA = 6
@@ -112,6 +112,42 @@ class OrdemServicoRepo:
         if condicao is not None:
             consulta = consulta.where(condicao)
         return [tuple(linha) for linha in self._s.execute(consulta.order_by(OrdemServico.id))]
+
+    # --- Relatório mensal (prompt 25) -----------------------------------------------
+
+    def solicitacoes_ate(self, filial_id: int | None, fim: datetime, condicao=None) -> list:
+        """(id, urgencia, aberta_em, numero, titulo) das solicitações abertas antes de
+        ``fim`` (todas as situações, canceladas incluídas), da mais antiga à mais nova."""
+        consulta = select(
+            OrdemServico.id,
+            OrdemServico.urgencia,
+            OrdemServico.aberta_em,
+            OrdemServico.numero,
+            OrdemServico.titulo,
+        ).where(OrdemServico.origem == "solicitacao", OrdemServico.aberta_em < fim)
+        if filial_id is not None:
+            consulta = consulta.where(OrdemServico.filial_id == filial_id)
+        if condicao is not None:
+            consulta = consulta.where(condicao)
+        return [tuple(linha) for linha in self._s.execute(consulta.order_by(OrdemServico.id))]
+
+    def marcos_ate(self, filial_id: int | None, fim: datetime) -> list:
+        """(os_id, data_hora, tipo, valor_novo) dos eventos CRIACAO e STATUS antes de
+        ``fim`` das mesmas solicitações de solicitacoes_ate (sem a busca)."""
+        consulta = (
+            select(OsEvento.os_id, OsEvento.data_hora, OsEvento.tipo, OsEvento.valor_novo)
+            .join(OrdemServico, OsEvento.os_id == OrdemServico.id)
+            .where(
+                OsEvento.tipo.in_(("CRIACAO", "STATUS")),
+                OsEvento.data_hora < fim,
+                OrdemServico.origem == "solicitacao",
+                OrdemServico.aberta_em < fim,
+            )
+        )
+        if filial_id is not None:
+            consulta = consulta.where(OrdemServico.filial_id == filial_id)
+        consulta = consulta.order_by(OsEvento.os_id, OsEvento.data_hora, OsEvento.id)
+        return [tuple(linha) for linha in self._s.execute(consulta)]
 
     def abertas_de_solicitacoes(self, filial_id: int | None, condicao=None) -> list[datetime]:
         """aberta_em de cada solicitação ainda ABERTA (situação de agora)."""

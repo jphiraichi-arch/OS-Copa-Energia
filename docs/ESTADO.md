@@ -1097,3 +1097,37 @@ varrendo). Antes disso o índice só custa espaço e tempo de gravação.
   EDICAO com observação); `pendencias_para_iniciar` não pede prioridade quando há
   urgência. Assumir: chips de prioridade começam na urgência com a legenda 'Sugerida pela
   urgência do solicitante'; sem mudança manual, quem grava é o serviço ao iniciar.
+
+## Prompt 25 — relatório mensal: mês, acumulado, status no fim do período (23/11/2026)
+
+- Histórico de status (inspeção): desde o prompt 5 toda transição grava um evento STATUS
+  (`campo='status'`, `valor_antigo`/`valor_novo` com os CÓDIGOS — ABERTA, EM_EXECUCAO,
+  CONCLUIDA, CANCELADA — e `data_hora` = o mesmo `relogio.agora()` da coluna de instante,
+  na mesma transação); a criação grava CRIACAO desde o prompt 4. Nenhuma migração mudou
+  `status`. Conferência só de leitura: `python -m osapp.cli verificar-eventos-status`
+  (sem evento CRIACAO, transição fora de ordem, status atual diferente do refeito, colunas
+  de instante a mais de 60 s do evento). No banco local de demonstração: nenhuma
+  divergência. Em produção: comando para rodar depois do deploy (não rodei).
+- `services/linha_do_tempo.py` (puro): `situacao_em(eventos, t)` / `status_em(eventos, t)`
+  (última transição antes de t; início desfeito não vale) e `periodo_do_mes(ano, mes, tz)`.
+- `relatorios.relatorio_mensal(ator_id, ano, mes, termo, escopo, status, filial_id,
+  pagina)`: blocos `mes_selecionado` e `acumulado` (fluxo, taxa de conclusão com
+  numerador e denominador, tempos e por urgência com `_medidas`, custos com
+  `_resultado_busca`/`calcular_resumo`, resumo da busca), a lista do mês (50 por página) e
+  o cartão de solicitações abertas agora. Mês futuro: ErroValidacao; usuario:
+  ErroPermissao. O filtro de status vale para tempos, custos e lista (status no fim do
+  período), não para o fluxo nem a taxa.
+- Tela `/relatorios`: seletor de mês (setas e 'Novembro de 2026'; o mês atual em OS_TZ é o
+  padrão; meses futuros desabilitados), seções 1. MÊS SELECIONADO e 2. ACUMULADO ATÉ
+  dd/mm/aaaa, lista do mês, 'Solicitações em aberto' (agora) e o atalho para o relatório
+  de custos e desempenho. `relatorio_tempos` (período livre) continua no serviço, sem tela.
+
+### Reprodutibilidade do relatório mensal
+
+Um mês passado dá os mesmos números quando recalculado depois, porque tudo vem do
+histórico de eventos (que só recebe inserções) e de `aberta_em` (gravado na criação).
+Exceções: exclusão ou restauração de uma ordem (lixeira); mudança da urgência (muda a
+linha 'por urgência'); mudança de um texto que afeta a busca (título, descrição ou
+descrição de item); e — além das previstas no prompt — mudança de itens de custo depois
+do período (o administrador pode alterar itens de ordem concluída: os custos do mês
+passado mudam) e o cartão 'Solicitações em aberto', que é sempre a situação de agora.

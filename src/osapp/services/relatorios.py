@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from osapp.config import carregar_config
 from osapp.db import sessao
 from osapp.repositories import FilialRepo, OrdemServicoRepo
-from osapp.services import custos, ordens, relogio
+from osapp.services import custos, linha_do_tempo, ordens, relogio
 from osapp.services import status as _status
 from osapp.services.auth import Ator, carregar_ator
 from osapp.services.erros import ErroPermissao, ErroValidacao
@@ -531,4 +531,229 @@ def relatorio_tempos(
         ),
         total_no_periodo=len(linhas),
         busca=busca,
+    )
+
+
+# --- Relatório mensal: mês selecionado e acumulado (prompt 25) -------------------------
+#
+# Substitui o período livre do prompt 18 por um mês M (00:00 do dia 1 até 00:00 do dia 1
+# de M+1 em OS_TZ, fim exclusivo). Acumulado: da primeira ordem até o FIM de M.
+# População: origem 'solicitacao', não excluída (filtro central), escopo de filial do
+# ator e a busca do prompt 22 (no mês e no acumulado). O status de cada ordem é o do fim
+# do período, refeito pelos eventos (linha_do_tempo.situacao_em), nunca o atual.
+# - Fluxo: abertas (aberta_em no período), concluídas e canceladas (evento no período,
+#   abertas quando for). O filtro de status não se aplica ao fluxo nem à taxa.
+# - Taxa de conclusão, sobre as abertas no período: concluídas até o fim / (abertas -
+#   canceladas até o fim).
+# - Tempos, custos e lista: abertas no período cujo status no fim está no filtro; início
+#   e conclusão só contam se aconteceram antes do fim (o início vale se não foi desfeito
+#   antes do fim). Mesmas funções do prompt 18 (_medidas) e do 22 (_resultado_busca).
+
+
+@dataclass(frozen=True)
+class Fluxo:
+    abertas: int
+    concluidas: int
+    canceladas: int
+
+
+@dataclass(frozen=True)
+class TaxaConclusao:
+    numerador: int  # abertas no período e concluídas até o fim
+    denominador: int  # abertas no período menos as canceladas até o fim
+    percentual: float | None  # None quando o denominador é 0
+
+
+@dataclass(frozen=True)
+class ResumoDaBusca:
+    correspondentes: int
+    total: int  # a mesma população sem o termo
+    percentual: float | None
+
+
+@dataclass(frozen=True)
+class BlocoMensal:
+    inicio: datetime | None  # None no acumulado (desde a primeira ordem)
+    fim: datetime  # exclusivo, em UTC
+    fluxo: Fluxo
+    taxa: TaxaConclusao
+    resposta: Medida
+    solucao: Medida
+    por_urgencia: tuple[TemposPorUrgencia, ...]
+    custos: CustosBusca
+    busca: ResumoDaBusca | None  # só com termo
+
+
+@dataclass(frozen=True)
+class RelatorioMensal:
+    ano: int
+    mes: int
+    filial_id: int | None
+    filial_rotulo: str
+    termo: str | None
+    escopo: str
+    status: tuple[str, ...]
+    mes_selecionado: BlocoMensal
+    acumulado: BlocoMensal
+    ordens: tuple[LinhaBusca, ...]  # do mês, 50 por página, as mais recentes primeiro
+    pagina: int
+    total_paginas: int
+    # Solicitações ABERTA agora (prompt 18; busca aplicada, decisão de 21/11). Não é do
+    # período: é a situação no momento em que o relatório é tirado.
+    backlog: Backlog | None = None
+
+
+def taxa_de_conclusao(concluidas: int, abertas: int, canceladas: int) -> TaxaConclusao:
+    """concluídas / (abertas - canceladas) x 100; None quando o denominador é 0."""
+    denominador = abertas - canceladas
+    return TaxaConclusao(concluidas, denominador, custos.percentual(concluidas, denominador))
+
+
+def _no_periodo(instante: datetime | None, inicio: datetime | None, fim: datetime) -> bool:
+    return instante is not None and (inicio is None or instante >= inicio) and instante < fim
+
+
+def _bloco(repo, populacao, situacoes, ids_busca, termo, status, inicio, fim):
+    """Um bloco (mês ou acumulado). ``populacao``: linhas de solicitacoes_ate sem a busca;
+    ``ids_busca``: ids que correspondem ao termo (None sem termo)."""
+
+    def casa(os_id: int) -> bool:
+        return ids_busca is None or os_id in ids_busca
+
+    abertas = [p for p in populacao if _no_periodo(p[2], inicio, fim)]
+    filtradas = [p for p in abertas if casa(p[0])]
+    sit = situacoes
+    fluxo = Fluxo(
+        abertas=len(filtradas),
+        concluidas=sum(
+            1 for p in populacao if casa(p[0]) and _no_periodo(sit[p[0]].concluida_em, inicio, fim)
+        ),
+        canceladas=sum(
+            1 for p in populacao if casa(p[0]) and _no_periodo(sit[p[0]].cancelada_em, inicio, fim)
+        ),
+    )
+    taxa = taxa_de_conclusao(
+        sum(1 for p in filtradas if sit[p[0]].status == _status.CONCLUIDA),
+        len(filtradas),
+        sum(1 for p in filtradas if sit[p[0]].status == _status.CANCELADA),
+    )
+
+    def linhas(lista):
+        # O mesmo formato de tempos_de_solicitacoes (prompt 18/22), com a situação do fim.
+        return [
+            (
+                os_id,
+                urgencia,
+                aberta,
+                sit[os_id].inicio,
+                sit[os_id].concluida_em,
+                sit[os_id].status,
+                numero,
+                titulo,
+            )
+            for os_id, urgencia, aberta, numero, titulo in lista
+            if sit[os_id].status in status
+        ]
+
+    medidas = linhas(filtradas)
+    resposta, solucao, por_urgencia = _medidas(medidas)
+    total = len(linhas(abertas))
+    resultado = _resultado_busca(repo, termo or "", ordens.ESCOPO_ITENS, medidas, total, 1)
+    busca = (
+        ResumoDaBusca(len(medidas), total, custos.percentual(len(medidas), total))
+        if termo
+        else None
+    )
+    bloco = BlocoMensal(
+        inicio=inicio,
+        fim=fim,
+        fluxo=fluxo,
+        taxa=taxa,
+        resposta=resposta,
+        solucao=solucao,
+        por_urgencia=por_urgencia,
+        custos=resultado.custos,
+        busca=busca,
+    )
+    return bloco, medidas
+
+
+def _validar_mes(ano: object, mes: object, tz: str) -> tuple[int, int]:
+    if not _e_int(ano) or not ANO_MIN <= ano <= ANO_MAX:
+        raise ErroValidacao("ano", "Ano inválido.")
+    if not _e_int(mes) or not 1 <= mes <= 12:
+        raise ErroValidacao("mes", "Mês inválido.")
+    hoje = relogio.agora().astimezone(ZoneInfo(tz))
+    if (ano, mes) > (hoje.year, hoje.month):
+        raise ErroValidacao("mes", "Não é possível escolher um mês futuro.")
+    return ano, mes
+
+
+def relatorio_mensal(
+    ator_id: int,
+    ano: int,
+    mes: int,
+    termo: object = None,
+    escopo: str | None = ordens.ESCOPO_ITENS,
+    status: object = None,
+    filial_id: int | None = None,
+    pagina: int = 1,
+) -> RelatorioMensal:
+    """Mês selecionado e acumulado até o fim dele (ver o comentário acima). Manutenção
+    (própria filial) e administrador (uma filial ou todas); usuario: ErroPermissao."""
+    ator = carregar_ator(ator_id)
+    if ator.is_usuario:
+        logger.warning("Permissão negada: usuario_id=%s ação=relatório mensal.", ator.usuario_id)
+        raise ErroPermissao()
+    tz = carregar_config().tz
+    ano, mes = _validar_mes(ano, mes, tz)
+    status_escolhidos = _validar_status(status)
+    escopo = ordens.validar_escopo(escopo)
+    pagina = _validar_pagina(pagina)
+    condicao = ordens.condicao_busca(termo, escopo, ator)
+    termo_limpo = termo.strip()[: ordens.BUSCA_MAX] if condicao is not None else None
+    inicio, fim = linha_do_tempo.periodo_do_mes(ano, mes, tz)
+    with sessao() as s:
+        filial, rotulo = _filial_permitida(s, ator, filial_id)
+        repo = OrdemServicoRepo(s)
+        populacao = repo.solicitacoes_ate(filial, fim)
+        ids_busca = (
+            {linha[0] for linha in repo.solicitacoes_ate(filial, fim, condicao)}
+            if condicao is not None
+            else None
+        )
+        marcos: dict[int, list] = defaultdict(list)
+        for os_id, data_hora, tipo, valor_novo in repo.marcos_ate(filial, fim):
+            marcos[os_id].append(linha_do_tempo.Marco(data_hora, tipo, valor_novo))
+        situacoes = {p[0]: linha_do_tempo.situacao_em(marcos[p[0]], fim) for p in populacao}
+        bloco_mes, linhas_do_mes = _bloco(
+            repo, populacao, situacoes, ids_busca, termo_limpo, status_escolhidos, inicio, fim
+        )
+        acumulado, _ = _bloco(
+            repo, populacao, situacoes, ids_busca, termo_limpo, status_escolhidos, None, fim
+        )
+        lista = _resultado_busca(
+            repo, termo_limpo or "", escopo, linhas_do_mes, len(linhas_do_mes), pagina
+        )
+        abertas = repo.abertas_de_solicitacoes(filial, condicao)
+    mais_antiga = min(abertas) if abertas else None
+    backlog = Backlog(
+        len(abertas),
+        _segundos(mais_antiga, relogio.agora()) if mais_antiga is not None else None,
+        termo_limpo,
+    )
+    return RelatorioMensal(
+        ano=ano,
+        mes=mes,
+        filial_id=filial,
+        filial_rotulo=rotulo,
+        termo=termo_limpo,
+        escopo=escopo,
+        status=status_escolhidos,
+        mes_selecionado=bloco_mes,
+        acumulado=acumulado,
+        ordens=lista.ordens,
+        pagina=lista.pagina,
+        total_paginas=lista.total_paginas,
+        backlog=backlog,
     )

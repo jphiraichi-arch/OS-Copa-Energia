@@ -83,6 +83,15 @@ def _consolidar_1007(args) -> str:
     return "\n".join(linhas)
 
 
+def _verificar_eventos_status(_args) -> str:
+    """Só leitura: lista as ordens cujo histórico de status não bate com as colunas."""
+    achados = administracao.verificar_eventos_status()
+    if not achados:
+        return "Nenhuma divergência entre eventos de status e colunas de instante."
+    linhas = [f"{d.numero}: {d.problema}" for d in achados]
+    return "\n".join([*linhas, f"{len(achados)} divergência(s)."])
+
+
 def _recalcular_busca(_args) -> str:
     resultado = administracao.recalcular_busca()
     return (
@@ -179,6 +188,12 @@ def criar_parser() -> argparse.ArgumentParser:
         help="Recalcula o texto de busca de todas as ordens e itens (pode repetir)",
     )
     p.set_defaults(func=_recalcular_busca)
+
+    p = sub.add_parser(
+        "verificar-eventos-status",
+        help="Confere o histórico de status com as colunas de instante (só leitura)",
+    )
+    p.set_defaults(func=_verificar_eventos_status)
 
     exportacao_legada.registrar_comando(sub)  # exportação antes da migração 0010
 

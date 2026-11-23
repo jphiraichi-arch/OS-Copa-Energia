@@ -359,3 +359,82 @@ def aplicar_consolidacao(login_responsavel: str, codigo_destino: str = "1007") -
             len(ordens),
         )
         return plano
+
+
+# --- Conferência do histórico de status (prompt 25) ----------------------------------
+
+TOLERANCIA_SEGUNDOS = 60  # coluna e evento gravados na mesma transação, com o mesmo relógio
+
+
+@dataclass(frozen=True)
+class Divergencia:
+    numero: str
+    problema: str
+
+
+def verificar_eventos_status() -> list[Divergencia]:
+    """Só leitura. Para cada ordem (lixeira incluída), refaz a linha do tempo pelos
+    eventos CRIACAO e STATUS e compara com o status atual e as colunas de instante."""
+    from datetime import datetime as _dt
+
+    from osapp.models import OsEvento
+    from osapp.services import linha_do_tempo
+    from osapp.services import status as _status
+
+    def longe(a, b) -> bool:
+        if a is None or b is None:
+            return (a is None) != (b is None)
+        return abs((a - b).total_seconds()) > TOLERANCIA_SEGUNDOS
+
+    achados: list[Divergencia] = []
+    with sessao() as s:
+        eventos: dict[int, list] = {}
+        consulta = (
+            select(
+                OsEvento.os_id,
+                OsEvento.data_hora,
+                OsEvento.tipo,
+                OsEvento.valor_antigo,
+                OsEvento.valor_novo,
+            )
+            .where(OsEvento.tipo.in_(("CRIACAO", "STATUS")))
+            .order_by(OsEvento.os_id, OsEvento.data_hora, OsEvento.id)
+        )
+        for os_id, data_hora, tipo, antigo, novo in s.execute(consulta):
+            eventos.setdefault(os_id, []).append((data_hora, tipo, antigo, novo))
+        ordens = s.scalars(
+            select(OrdemServico)
+            .order_by(OrdemServico.id)
+            .execution_options(**{INCLUIR_EXCLUIDAS: True})
+        )
+        futuro = _dt.max.replace(tzinfo=relogio.agora().tzinfo)
+        for o in ordens:
+            lista = eventos.get(o.id, [])
+            marcos = [linha_do_tempo.Marco(d, t, n) for d, t, _a, n in lista]
+            if not any(t == "CRIACAO" for _d, t, _a, _n in lista):
+                achados.append(Divergencia(o.numero, "sem evento CRIACAO"))
+            anterior = _status.ABERTA
+            for _d, tipo, antigo, novo in lista:
+                if tipo == "STATUS":
+                    if antigo != anterior:
+                        achados.append(
+                            Divergencia(o.numero, f"transição de {antigo} depois de {anterior}")
+                        )
+                    anterior = novo
+            sit = linha_do_tempo.situacao_em(marcos, futuro)
+            if sit.status != o.status:
+                achados.append(
+                    Divergencia(o.numero, f"status {o.status}; pelos eventos {sit.status}")
+                )
+            criacao = next((d for d, t, _a, _n in lista if t == "CRIACAO"), None)
+            for nome, coluna, evento in (
+                ("aberta_em", o.aberta_em, criacao),
+                ("inicio_execucao_em", o.inicio_execucao_em, sit.inicio),
+                ("concluida_em", o.concluida_em, sit.concluida_em),
+                ("cancelada_em", o.cancelada_em, sit.cancelada_em),
+            ):
+                if longe(coluna, evento):
+                    achados.append(
+                        Divergencia(o.numero, f"{nome} {coluna} difere do evento {evento}")
+                    )
+    return achados

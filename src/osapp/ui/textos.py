@@ -127,9 +127,6 @@ def nome_do_mes(ano: int, mes: int) -> str:
 
 # --- Relatório de tempos de atendimento (prompt 18) ------------------------------------
 TEMPOS_TITULO = "Relatório de tempos de atendimento"
-TEMPOS_PERIODO = "Período (data em que a solicitação foi aberta)"
-TEMPOS_DE = "De (dd/mm/aaaa)"
-TEMPOS_ATE = "Até (dd/mm/aaaa)"
 TEMPOS_APLICAR = "Aplicar"
 TEMPOS_RESPOSTA = "Tempo de resposta"
 TEMPOS_RESPOSTA_AJUDA = "Da abertura até o início da execução."
@@ -139,6 +136,7 @@ TEMPOS_MEDIA = "Média"
 TEMPOS_MEDIANA = "Mediana"
 TEMPOS_POR_URGENCIA = "Por urgência"
 TEMPOS_ABERTAS = "Solicitações em aberto"
+TEMPOS_ABERTAS_AGORA = "Situação agora (não depende do mês escolhido)."
 TEMPOS_QUANTIDADE = "Quantidade"
 TEMPOS_MAIS_ANTIGA = "mais antiga há"
 TEMPOS_NOTA = (
@@ -146,6 +144,17 @@ TEMPOS_NOTA = (
     "calendário de expediente."
 )
 TEMPOS_VAZIO = "Sem dados no período."
+MENSAL_NOTA_STATUS = "Status calculado na data de fim do período. Ordens excluídas não entram."
+MENSAL_MES = "Mês selecionado"
+MENSAL_ACUMULADO = "Acumulado até"
+MENSAL_ABERTAS = "Abertas"
+MENSAL_CONCLUIDAS = "Concluídas"
+MENSAL_CANCELADAS = "Canceladas"
+MENSAL_TAXA = "Taxa de conclusão"
+MENSAL_TAXA_NOTA = (
+    "A taxa considera as ordens abertas no período; o fluxo conta o que aconteceu no "
+    "período (abertas, concluídas e canceladas)."
+)
 TEMPOS_BUSCA = "Buscar no relatório"
 TEMPOS_FILTRADO_POR = "filtrado por:"
 TEMPOS_BUSCA_VAZIA = "Nenhuma ordem corresponde à busca no período."
