@@ -85,8 +85,17 @@ def test_restricoes_do_banco(os_base, extras):
 def test_os_com_itens_nao_pode_ser_apagada(os_base):
     with sessao() as s:
         s.add(item(os_base))
-    with pytest.raises(IntegrityError), sessao() as s:
+    # Prompt 24: pelo ORM, apagar uma ordem nem chega ao banco.
+    with pytest.raises(RuntimeError), sessao() as s:
         s.delete(s.get(OrdemServico, os_base["os"]))
+    # E o banco continua recusando, pela chave estrangeira dos itens (fora do ORM).
+    from sqlalchemy import delete
+
+    from osapp import db
+
+    with pytest.raises(IntegrityError), db.obter_engine().begin() as conexao:
+        tabela = OrdemServico.__table__
+        conexao.execute(delete(tabela).where(tabela.c.id == os_base["os"]))
 
 
 def test_numero_sap(os_base):

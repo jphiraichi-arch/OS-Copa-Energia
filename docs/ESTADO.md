@@ -1069,3 +1069,31 @@ varrendo). Antes disso o índice só custa espaço e tempo de gravação.
   quem conclui; só leitura depois de concluída). Telas refeitas: Home, Detalhe, Nova/Editar
   Solicitação, Nova/Alterar Ordem de Serviço, Assumir, Concluir, Configurações, Perfil e o
   relatório de tempos. Tipo e prioridade viraram chips.
+
+## Prompt 24 — exclusão lógica (Lixeira) e prioridade sugerida pela urgência (23/11/2026)
+
+- Migração `0011`: `ordens_servico.excluida_em`, `excluida_por_id` (FK usuarios),
+  `motivo_exclusao`; CHECK `exclusao_completa` (os três juntos); índice em `excluida_em`;
+  `os_eventos.observacao` (nota opcional do evento). Downgrade remove tudo; ordens que
+  estavam na lixeira voltam a aparecer e as notas se perdem. Testada com dados.
+- Filtro central (`models/ordem_servico.py`): `do_orm_execute` + `with_loader_criteria`
+  com `include_aliases=True`; opção `INCLUIR_EXCLUIDAS` só na lixeira, em
+  `recalcular_busca` e na consolidação de filiais. Confirmado na documentação do
+  SQLAlchemy 2.1.8 (docstring de `with_loader_criteria`: alcança a entidade no SELECT, em
+  subconsultas, condições de junção e cargas de relacionamento) e por teste: `Session.get`,
+  `count()`, EXISTS da busca nos itens, consultas que partem de `os_itens_custo` (junção
+  explícita ou só no WHERE), sugestões, contadores e os dois relatórios. Rede de segurança:
+  `before_delete` em OrdemServico levanta erro.
+- `services/lixeira.py`: `excluir_os`, `restaurar_os`, `listar_excluidas` (todas as
+  filiais, busca com escopo 'tudo', 50 por página), `obter_excluida` (detalhe com todas as
+  ações desligadas e o histórico). Permissão única: `permissoes.pode_usar_lixeira`
+  (também alimenta `AcoesOs.pode_excluir`).
+- Telas: 'Excluir' no Detalhe (administrador) com diálogo do motivo (contador, aviso de que
+  some para todos e de não escrever dados pessoais); Perfil -> Lixeira (`/lixeira`), lista
+  com número, título, status na exclusão, data, autor e motivo, com busca; `/lixeira/{id}`
+  só leitura, faixa 'Ordem excluída' e 'Restaurar' com confirmação. Histórico mostra
+  EXCLUSAO e RESTAURACAO com o motivo.
+- Parte B: `iniciar_execucao` copia a urgência para a prioridade vazia (mesma transação,
+  EDICAO com observação); `pendencias_para_iniciar` não pede prioridade quando há
+  urgência. Assumir: chips de prioridade começam na urgência com a legenda 'Sugerida pela
+  urgência do solicitante'; sem mudança manual, quem grava é o serviço ao iniciar.

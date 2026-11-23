@@ -28,6 +28,21 @@ MENU_USUARIOS = "Usuários"
 MENU_NOVA_SOLICITACAO = "Nova Solicitação"
 MENU_SAIR = "Sair"
 
+# --- Lixeira (prompt 24) -------------------------------------------------------------------
+MENU_LIXEIRA = "Lixeira"
+LIXEIRA_TITULO = "Lixeira"
+LIXEIRA_AVISO_EXCLUIR = (
+    "A Ordem de Serviço será escondida de todos (inclusive dos administradores) até ser "
+    "restaurada na Lixeira. O número dela não será reutilizado."
+)
+LIXEIRA_SEM_DADOS_PESSOAIS = "Não escreva dados pessoais no motivo."
+LIXEIRA_VAZIA = "A Lixeira está vazia."
+LIXEIRA_BUSCA = "Buscar na Lixeira"
+LIXEIRA_FAIXA = "Ordem excluída"
+LIXEIRA_RESTAURAR = "Restaurar"
+
+PRIORIDADE_SUGERIDA = "Sugerida pela urgência do solicitante"
+
 # --- Faixa (banner) ------------------------------------------------------------------------
 BANNER_ABERTAS = "Abertas"
 BANNER_AGUARDANDO = "Aguardando início"

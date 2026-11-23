@@ -25,6 +25,7 @@ from osapp.ui.views.concluir import ConcluirOs
 from osapp.ui.views.configuracoes import Configuracoes
 from osapp.ui.views.detalhe import Detalhe
 from osapp.ui.views.home import Home
+from osapp.ui.views.lixeira import Lixeira, LixeiraDetalhe
 from osapp.ui.views.login import Login
 from osapp.ui.views.os_formulario import AssumirOs, CriarOs, EditarOs
 from osapp.ui.views.perfil import AlterarSenha, Perfil
@@ -53,6 +54,8 @@ TELAS = {
     "home": Home,
     "perfil": Perfil,
     "alterar_senha": AlterarSenha,
+    "lixeira": Lixeira,
+    "lixeira_detalhe": LixeiraDetalhe,
     "configuracoes": Configuracoes,
     "trocar_senha": TrocarSenha,
     "usuarios": ListaUsuarios,

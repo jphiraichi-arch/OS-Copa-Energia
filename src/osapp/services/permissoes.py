@@ -16,6 +16,11 @@ def pode_acessar_filial(ator: Ator, filial_id: int) -> bool:
     return ator.is_admin or ator.filial_id == filial_id
 
 
+def pode_usar_lixeira(ator: Ator) -> bool:
+    """Excluir, restaurar e ver as ordens excluídas: só o administrador (prompt 24)."""
+    return ator.is_admin
+
+
 def pode_ver_relatorio_mensal(ator: Ator, filial_id: int | None) -> bool:
     """Relatório mensal, com custos (decisão de 21/11/2026).
 

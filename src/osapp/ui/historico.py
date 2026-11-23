@@ -55,6 +55,8 @@ CAMPOS: dict[str, tuple[str, Callable[[str], str]]] = {
 FRASE_ITEM_ADICIONADO = "Item de custo adicionado"
 FRASE_ITEM_ALTERADO = "Item de custo alterado"
 FRASE_ITEM_REMOVIDO = "Item de custo removido"
+FRASE_EXCLUSAO = "Ordem de Serviço excluída (enviada para a Lixeira)"
+FRASE_RESTAURACAO = "Ordem de Serviço restaurada da Lixeira"
 
 
 def _rotulos():
@@ -97,8 +99,17 @@ def frase(evento) -> str:
             f"{FRASE_ITEM_ALTERADO}{detalhe}: {_item(evento.valor_antigo)} {SETA} "
             f"{_item(evento.valor_novo)}"
         )
+    if evento.tipo == ordens.TIPO_EXCLUSAO:
+        return f"{FRASE_EXCLUSAO}. Motivo: {_texto(evento.valor_novo or '')}"
+    if evento.tipo == ordens.TIPO_RESTAURACAO:
+        return f"{FRASE_RESTAURACAO}. Motivo da exclusão: {_texto(evento.valor_antigo or '')}"
     rotulo = rotulo_campo(evento.campo)
     novo = _formatar(evento.campo, evento.valor_novo)
+    observacao = getattr(evento, "observacao", None)
+    if observacao and evento.tipo == ordens.TIPO_EDICAO:
+        return (
+            f"{rotulo}: {_formatar(evento.campo, evento.valor_antigo)} {SETA} {novo} ({observacao})"
+        )
     if evento.tipo == ordens.TIPO_REALIZADO:
         return f"{rotulo}: {novo}"
     if evento.tipo in (ordens.TIPO_STATUS, ordens.TIPO_EDICAO):

@@ -5,9 +5,9 @@ from __future__ import annotations
 import flet as ft
 
 from osapp import formatacao
-from osapp.services import custos, ordens, status
+from osapp.services import custos, lixeira, ordens, status
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao
-from osapp.ui import historico, rotas, rotulos, secoes, theme
+from osapp.ui import historico, rotas, rotulos, secoes, textos, theme
 from osapp.ui import urgencia as urgencia_ui
 from osapp.ui.components import basicos
 from osapp.ui.components.opcoes import opcao_card
@@ -276,7 +276,92 @@ class Detalhe(Tela):
                     "Cancelar", ft.Icons.CANCEL_OUTLINED, self._perguntar_cancelar
                 )
             )
+        if d.acoes.pode_excluir:
+            botoes.append(
+                basicos.botao_secundario(
+                    "Excluir", ft.Icons.DELETE_OUTLINE, self._perguntar_excluir
+                )
+            )
         return botoes
+
+    # --- Exclusão (prompt 24) ---------------------------------------------------------
+
+    def _perguntar_excluir(self, _e=None) -> None:
+        """Diálogo com o motivo (obrigatório, com contador) e o aviso de que a ordem
+        some para todos. Quem decide se pode é o serviço (lixeira.excluir_os)."""
+        motivo = basicos.campo_texto(
+            "Motivo da exclusão",
+            multiline=True,
+            min_lines=3,
+            max_lines=6,
+            max_length=lixeira.MOTIVO_MAX,
+            helper=textos.LIXEIRA_SEM_DADOS_PESSOAIS,
+        )
+
+        async def excluir(_e=None) -> None:
+            resultado = await self.app.chamar(
+                lixeira.excluir_os,
+                self.app.sessao.ator_id,
+                self.os_id,
+                self.os.versao,
+                (motivo.value or "").strip(),
+                campos={"motivo": motivo},
+                erros_tratados=(ErroConflito, ErroPermissao, ErroNaoEncontrado),
+            )
+            if resultado.ok:
+                self.app.page.pop_dialog()
+                await self.app.atualizar_contadores()
+                await self.app.ir(
+                    rotas.HOME,
+                    mensagem=f"Ordem de Serviço {resultado.valor.numero} enviada para a Lixeira.",
+                )
+            elif isinstance(resultado.erro, ErroConflito):
+                self.app.page.pop_dialog()
+                self.app.avisar(MENSAGEM_CONFLITO)
+            elif isinstance(resultado.erro, ErroPermissao | ErroNaoEncontrado):
+                self.app.page.pop_dialog()
+                self.app.avisar(self.app.MENSAGEM_GENERICA)
+
+        def cancelar(_e=None) -> None:
+            self.app.page.pop_dialog()
+
+        self.app.page.show_dialog(
+            ft.AlertDialog(
+                modal=True,
+                bgcolor=theme.COR_CARTAO,
+                title=ft.Text("Excluir Ordem de Serviço?", color=theme.COR_TITULO),
+                content=ft.Container(
+                    width=theme.LARGURA_MAX_LOGIN,
+                    content=basicos.coluna(
+                        [
+                            ft.Text(
+                                textos.LIXEIRA_AVISO_EXCLUIR,
+                                color=theme.COR_ERRO,
+                                size=theme.FONTE_SUBTITULO,
+                                weight=ft.FontWeight.BOLD,
+                            ),
+                            motivo,
+                        ],
+                        espaco=theme.ESPACO_M,
+                    ),
+                ),
+                actions=[
+                    ft.TextButton(
+                        content="Voltar",
+                        style=theme.estilo_botao_texto(),
+                        height=theme.ALVO_TOQUE_MIN,
+                        on_click=cancelar,
+                    ),
+                    ft.TextButton(
+                        content="Excluir",
+                        style=theme.estilo_botao_texto(),
+                        height=theme.ALVO_TOQUE_MIN,
+                        on_click=excluir,
+                    ),
+                ],
+                scrollable=True,
+            )
+        )
 
     # --- Visão do solicitante (papel usuario) -------------------------------------------
 

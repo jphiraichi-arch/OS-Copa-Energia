@@ -47,7 +47,10 @@ def test_indices_e_constraints_existem(banco):
         "ck_ordens_servico_conclusao_apos_inicio",
         "ck_ordens_servico_cancelamento_apos_abertura",
         "ck_ordens_servico_concluida_ou_cancelada",
+        # 0011: exclusão lógica (os três campos juntos)
+        "ck_ordens_servico_exclusao_completa",
     }
+    assert indices_os["ix_ordens_servico_excluida_em"] == ["excluida_em"]
 
 
 def test_alembic_ini_nao_contem_url():

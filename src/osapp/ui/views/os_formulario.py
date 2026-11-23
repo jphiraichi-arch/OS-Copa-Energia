@@ -261,6 +261,8 @@ class CriarOs(_TelaDeFormulario):
 
 
 class EditarOs(_TelaDeFormulario):
+    sugerir_prioridade = False  # Assumir: a prioridade começa na urgência (prompt 24)
+
     titulo_da_tela = "Alterar Ordem de Serviço"
     rotulo_do_botao = "Salvar alterações"
 
@@ -303,6 +305,7 @@ class EditarOs(_TelaDeFormulario):
                     os=os_,
                     com_realizado=os_.acoes.pode_editar_realizado,
                     tipos=tipos.valor,
+                    sugerir_prioridade=self.sugerir_prioridade,
                 )
                 self.editores = [
                     EditorItens(
@@ -411,6 +414,7 @@ class AssumirOs(EditarOs):
     prioridade e previsto; 'Salvar' ou 'Salvar e iniciar execução'."""
 
     titulo_da_tela = "Assumir solicitação"
+    sugerir_prioridade = True
     rotulo_do_botao = "Salvar"
 
     def __init__(self, app, os_id: int, **_params) -> None:

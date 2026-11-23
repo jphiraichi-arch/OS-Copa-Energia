@@ -81,6 +81,7 @@ def test_itens_do_perfil_por_papel():
         "configuracoes",
         "alterar_senha",
         "usuarios",
+        "lixeira",
         "nova_solicitacao",
         "sair",
     )

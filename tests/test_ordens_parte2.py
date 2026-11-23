@@ -487,6 +487,7 @@ def test_admin_corrigindo_realizado_passa_pela_validacao(cenario):
             pode_editar_realizado=True,
             pode_editar_itens_previstos=True,
             pode_editar_itens_realizados=True,
+            pode_excluir=True,  # prompt 24: o administrador pode mandar para a Lixeira
         ),
     )
 

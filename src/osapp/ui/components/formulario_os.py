@@ -10,7 +10,7 @@ import flet as ft
 
 from osapp import formatacao
 from osapp.services import ordens
-from osapp.ui import formularios, rotulos, secoes, theme
+from osapp.ui import formularios, rotulos, secoes, textos, theme
 from osapp.ui.components import basicos
 from osapp.ui.components.campos import CampoDuracao, CampoHora
 from osapp.ui.components.chips import GrupoChips
@@ -49,6 +49,7 @@ class FormularioOs:
         com_realizado: bool = False,
         tipos=(),
         ao_mudar_planejamento=None,
+        sugerir_prioridade: bool = False,
     ) -> None:
         self.app = app
         self._ao_mudar_planejamento = ao_mudar_planejamento
@@ -81,9 +82,17 @@ class FormularioOs:
             os.tipo_id if os else None,
             ao_mudar=self._avisar_planejamento,
         )
+        # Prompt 24 (Assumir): sem prioridade escolhida, os chips começam na urgência do
+        # solicitante (mesma escala). Esse valor conta como o original: se ninguém mexer,
+        # nada é gravado aqui e o serviço copia a urgência ao iniciar (com o evento).
+        self.prioridade_sugerida = (
+            os.urgencia
+            if sugerir_prioridade and os is not None and os.prioridade is None and os.urgencia
+            else None
+        )
         self.prioridade = GrupoChips(
             [(n, rotulos.nivel(n)) for n in ordens.NIVEIS],
-            os.prioridade if os else None,
+            (os.prioridade or self.prioridade_sugerida) if os else None,
             ao_mudar=self._avisar_planejamento,
         )
         self.tempo = CampoDuracao(
@@ -105,6 +114,11 @@ class FormularioOs:
                 _rotulo_de_grupo("Tipo de manutenção"),
                 self.tipo.controle,
                 _rotulo_de_grupo("Prioridade"),
+                *(
+                    [_rotulo_de_grupo(textos.PRIORIDADE_SUGERIDA)]
+                    if self.prioridade_sugerida
+                    else []
+                ),
                 self.prioridade.controle,
                 self.tempo.controle,
             ],

@@ -42,7 +42,7 @@ from osapp.services.erros import (
     ErroPermissao,
     ErroValidacao,
 )
-from osapp.services.permissoes import pode_acessar_filial
+from osapp.services.permissoes import pode_acessar_filial, pode_usar_lixeira
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,9 @@ TIPO_CRIACAO = "CRIACAO"
 TIPO_EDICAO = "EDICAO"
 TIPO_STATUS = "STATUS"
 TIPO_REALIZADO = "REALIZADO"  # campos preenchidos na conclusão (valor_antigo é sempre nulo)
+TIPO_EXCLUSAO = "EXCLUSAO"  # prompt 24: valor_novo = motivo
+TIPO_RESTAURACAO = "RESTAURACAO"  # prompt 24: valor_antigo = motivo da exclusão desfeita
+NOTA_PRIORIDADE_DA_URGENCIA = "Sugerida pela urgência do solicitante"
 
 TOLERANCIA_FUTURO_MINUTOS = 5
 
@@ -154,6 +157,7 @@ class EventoDTO:
     campo: str | None
     valor_antigo: str | None
     valor_novo: str | None
+    observacao: str | None = None
 
 
 @dataclass(frozen=True)
@@ -172,6 +176,7 @@ class AcoesOs:
     pode_editar_itens_realizados: bool
     pode_cancelar: bool = False
     pode_editar_solicitacao: bool = False  # editar_solicitacao (título, descrição, urgência)
+    pode_excluir: bool = False  # lixeira.excluir_os (prompt 24)
 
 
 @dataclass(frozen=True)
@@ -459,7 +464,9 @@ def pendencias_para_iniciar(ordem: OrdemServico) -> tuple[str, ...]:
         faltam.append(PENDENCIA_VALOR)
     if ordem.tipo_id is None:
         faltam.append(PENDENCIA_TIPO)
-    if ordem.prioridade is None:
+    # Prompt 24: numa solicitação, a prioridade vazia é preenchida com a urgência ao
+    # iniciar; por isso não é pendência quando há urgência.
+    if ordem.prioridade is None and ordem.urgencia is None:
         faltam.append(PENDENCIA_PRIORIDADE)
     return tuple(faltam)
 
@@ -480,6 +487,7 @@ def _acoes(ator: Ator, ordem: OrdemServico) -> AcoesOs:
         pode_editar_itens_realizados=_pode_editar_itens(ator, ordem, custos.FASE_REALIZADO),
         pode_cancelar=_pode(_status.CANCELAR, ator, ordem),
         pode_editar_solicitacao=_pode_editar_solicitacao(ator, ordem),
+        pode_excluir=pode_usar_lixeira(ator),
     )
 
 
@@ -641,6 +649,7 @@ def registrar_evento(
     campo: str | None = None,
     valor_antigo: str | None = None,
     valor_novo: str | None = None,
+    observacao: str | None = None,
 ) -> None:
     """Único ponto que grava em os_eventos, sempre na sessão (transação) da alteração."""
     OsEventoRepo(s).adicionar(
@@ -652,6 +661,7 @@ def registrar_evento(
             campo=campo,
             valor_antigo=valor_antigo,
             valor_novo=valor_novo,
+            observacao=observacao,
         )
     )
 
@@ -912,6 +922,7 @@ def listar_eventos(ator_id: int, os_id: int) -> list[EventoDTO]:
                 campo=e.campo,
                 valor_antigo=e.valor_antigo,
                 valor_novo=e.valor_novo,
+                observacao=e.observacao,
             )
             for e in OsEventoRepo(s).listar_por_os(ordem.id)
         ]
@@ -1166,6 +1177,21 @@ def iniciar_execucao(ator_id: int, os_id: int, versao: int) -> OsDetalhe:
                     "previsto", "Para iniciar a execução, preencha: " + ", ".join(faltam) + "."
                 )
             agora = relogio.agora()
+            if ordem.prioridade is None and ordem.urgencia is not None:
+                # Prompt 24: a prioridade começa com a urgência do solicitante (mesma escala),
+                # na mesma transação, com um evento EDICAO que diz de onde veio.
+                ordem.prioridade = ordem.urgencia
+                registrar_evento(
+                    s,
+                    ordem.id,
+                    ator.usuario_id,
+                    TIPO_EDICAO,
+                    agora,
+                    "prioridade",
+                    None,
+                    ordem.urgencia,
+                    observacao=NOTA_PRIORIDADE_DA_URGENCIA,
+                )
             _mudar_status(
                 s,
                 ator,

@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, raiseload
 
 from osapp.models import Filial, OrdemServico, OsItemCusto, Usuario
+from osapp.models.ordem_servico import INCLUIR_EXCLUIDAS
 
 LARGURA_SEQUENCIA = 6
 
@@ -28,6 +29,28 @@ class OrdemServicoRepo:
         return self._s.scalars(
             select(OrdemServico).where(OrdemServico.numero == numero)
         ).one_or_none()
+
+    # --- Lixeira (prompt 24): as únicas consultas que pedem as ordens excluídas ---------
+
+    def obter_excluida(self, os_id: int) -> OrdemServico | None:
+        """A ordem, só se estiver excluída."""
+        ordem = self._s.get(OrdemServico, os_id, execution_options={INCLUIR_EXCLUIDAS: True})
+        return ordem if ordem is not None and ordem.excluida_em is not None else None
+
+    def listar_excluidas(self, condicao=None, limite: int = 50, deslocamento: int = 0):
+        consulta = (
+            select(OrdemServico)
+            .where(OrdemServico.excluida_em.is_not(None))
+            .execution_options(**{INCLUIR_EXCLUIDAS: True})
+        )
+        if condicao is not None:
+            consulta = consulta.where(condicao)
+        consulta = (
+            consulta.order_by(OrdemServico.excluida_em.desc(), OrdemServico.id.desc())
+            .limit(limite)
+            .offset(deslocamento)
+        )
+        return list(self._s.scalars(consulta))
 
     def adicionar(self, ordem: OrdemServico) -> OrdemServico:
         self._s.add(ordem)

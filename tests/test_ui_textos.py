@@ -81,8 +81,7 @@ def test_nova_os_so_na_barra_inferior():
     usos = [
         p.relative_to(RAIZ_UI).as_posix()
         for p in RAIZ_UI.rglob("*.py")
-        if "__pycache__" not in p.parts
-        and "NAVEGACAO_NOVA_OS" in p.read_text(encoding="utf-8")
+        if "__pycache__" not in p.parts and "NAVEGACAO_NOVA_OS" in p.read_text(encoding="utf-8")
     ]
     assert sorted(usos) == ["navegacao.py", "textos.py"]
 

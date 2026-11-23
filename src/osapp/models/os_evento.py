@@ -28,5 +28,7 @@ class OsEvento(Base):
     campo: Mapped[str | None] = mapped_column(String(50))
     valor_antigo: Mapped[str | None] = mapped_column(Text)
     valor_novo: Mapped[str | None] = mapped_column(Text)
+    # Prompt 24: nota curta sobre a origem da mudança (ex.: prioridade sugerida pela urgência).
+    observacao: Mapped[str | None] = mapped_column(Text)
 
     usuario: Mapped[Usuario] = relationship()

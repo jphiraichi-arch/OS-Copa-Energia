@@ -16,6 +16,7 @@ RELATORIOS = "/relatorios"
 RELATORIO_MENSAL = "/relatorios/mensal"
 PERFIL = "/perfil"
 ALTERAR_SENHA = "/perfil/senha"
+LIXEIRA = "/lixeira"
 
 # nome da tela -> padrão do caminho. A ordem importa: /os/nova antes de /os/{id}.
 TABELA: dict[str, re.Pattern[str]] = {
@@ -28,6 +29,8 @@ TABELA: dict[str, re.Pattern[str]] = {
     "usuario": re.compile(r"^/usuarios/(?P<usuario_id>[1-9]\d{0,17})$"),
     "perfil": re.compile(r"^/perfil$"),
     "alterar_senha": re.compile(r"^/perfil/senha$"),
+    "lixeira": re.compile(r"^/lixeira$"),
+    "lixeira_detalhe": re.compile(r"^/lixeira/(?P<os_id>[1-9]\d{0,17})$"),
     "relatorios": re.compile(r"^/relatorios$"),
     "relatorios_mensal": re.compile(r"^/relatorios/mensal$"),
     "os_nova": re.compile(r"^/os/nova$"),
@@ -50,6 +53,10 @@ def rota_editar(os_id: int) -> str:
 
 def rota_concluir(os_id: int) -> str:
     return f"/os/{os_id}/concluir"
+
+
+def rota_lixeira(os_id: int) -> str:
+    return f"/lixeira/{os_id}"
 
 
 def rota_usuario(usuario_id: int) -> str:
@@ -96,8 +103,10 @@ def rota_anterior(rota: str) -> str | None:
         return HOME
     if nome == "relatorios_mensal":
         return RELATORIOS
-    if nome in ("configuracoes", "alterar_senha", "usuarios"):
+    if nome in ("configuracoes", "alterar_senha", "usuarios", "lixeira"):
         return PERFIL
+    if nome == "lixeira_detalhe":
+        return LIXEIRA
     if nome in ("usuario_novo", "usuario"):
         return USUARIOS
     if nome in ("os_editar", "os_concluir", "os_assumir", "os_solicitacao"):
@@ -113,7 +122,16 @@ def secao_da_rota(rota: str | None) -> str:
     nome = resolvida[0]
     if nome in ("relatorios", "relatorios_mensal"):
         return RELATORIOS
-    if nome in ("perfil", "configuracoes", "alterar_senha", "usuarios", "usuario_novo", "usuario"):
+    if nome in (
+        "perfil",
+        "configuracoes",
+        "alterar_senha",
+        "usuarios",
+        "usuario_novo",
+        "usuario",
+        "lixeira",
+        "lixeira_detalhe",
+    ):
         return PERFIL
     if nome in ("os_nova", "solicitacao_nova"):
         return _caminho(rota)

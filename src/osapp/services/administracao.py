@@ -13,6 +13,7 @@ from sqlalchemy import select
 
 from osapp.db import sessao
 from osapp.models import CategoriaCusto, Filial, OrdemServico, Usuario
+from osapp.models.ordem_servico import INCLUIR_EXCLUIDAS
 from osapp.repositories import (
     CategoriaCustoRepo,
     FilialRepo,
@@ -242,7 +243,8 @@ def recalcular_busca() -> dict[str, int]:
 
     mudou = {"ordens": 0, "itens": 0}
     with sessao() as s:
-        for ordem in s.scalars(select(OrdemServico)):
+        # Inclui as ordens da lixeira: ao restaurar, a busca já está certa.
+        for ordem in s.scalars(select(OrdemServico).execution_options(**{INCLUIR_EXCLUIDAS: True})):
             certo = normalizar_busca(f"{ordem.titulo or ''} {ordem.descricao or ''}")
             if ordem.busca_texto != certo:
                 ordem.busca_texto = certo
@@ -277,7 +279,14 @@ class PlanoConsolidacao:
 
 def _plano(s, destino: Filial) -> tuple[PlanoConsolidacao, list[Usuario], list[Usuario], list]:
     usuarios = list(s.scalars(select(Usuario).order_by(Usuario.id)))
-    ordens = list(s.scalars(select(OrdemServico).where(OrdemServico.filial_id != destino.id)))
+    # Inclui as ordens da lixeira: nenhuma ordem pode ficar numa filial consolidada.
+    ordens = list(
+        s.scalars(
+            select(OrdemServico)
+            .where(OrdemServico.filial_id != destino.id)
+            .execution_options(**{INCLUIR_EXCLUIDAS: True})
+        )
+    )
     desativar = [u for u in usuarios if u.login in LOGINS_FICTICIOS and u.ativo]
     mover = [u for u in usuarios if u.login not in LOGINS_FICTICIOS and u.filial_id != destino.id]
     origens = []

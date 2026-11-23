@@ -93,6 +93,27 @@ Toda função de serviço começa por `carregar_ator`; usuário inativo é recus
   `src/osapp/assets/logo.png`: sem redesenhar, recolorir nem distorcer. Nenhum outro
   logotipo real de empresa.
 
+## Exclusão lógica e Lixeira (prompt 24)
+
+- Ordem de Serviço nunca é apagada do banco: nenhum código emite DELETE em
+  `ordens_servico` (há teste estático e um `before_delete` que levanta erro). Excluir é
+  `services/lixeira.excluir_os` (só administrador, motivo de 10 a 500 caracteres, sem dados
+  pessoais); restaurar é `restaurar_os`. Eventos EXCLUSAO e RESTAURACAO no histórico.
+- **Toda consulta nova respeita a exclusão lógica.** O filtro é central: um evento
+  `do_orm_execute` (models/ordem_servico.py) acrescenta `excluida_em IS NULL` a toda
+  consulta ORM que toque OrdemServico (select, Session.get, contagens, subconsultas,
+  junções, carga de relacionamentos). Não escreva consultas Core (`conexao.execute` em
+  tabelas) que leiam ordens fora de migrações. Só a lixeira usa a opção de execução
+  `INCLUIR_EXCLUIDAS` (e as rotinas administrativas `recalcular-busca` e a consolidação de
+  filiais, que precisam tratar todas as ordens).
+- Ordem excluída some para todos os papéis (administrador também) de listas, busca,
+  detalhe, contadores, selo, sugestões e relatórios; aberta pelo endereço, dá o mesmo
+  ErroNaoEncontrado de uma ordem inexistente. Ninguém a edita, muda o status ou os itens
+  até ser restaurada. O número nunca é reutilizado.
+- Prioridade: ao iniciar uma solicitação sem prioridade, o serviço copia a urgência (mesma
+  escala) e grava um EDICAO com a observação "Sugerida pela urgência do solicitante". A
+  urgência nunca muda.
+
 ## Layout (prompt 23; leia antes de mexer em qualquer tela)
 
 - Toda tela usa os componentes de `src/osapp/ui/components/`: `banner` (faixa no topo das

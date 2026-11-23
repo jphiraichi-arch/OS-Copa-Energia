@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text, event, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, Session, mapped_column, relationship, with_loader_criteria
 
 from osapp.busca import normalizar_busca
 from osapp.db import Base
@@ -41,6 +41,14 @@ class OrdemServico(Base):
         Index("ix_ordens_servico_criado_em", "criado_em"),
         Index("ix_ordens_servico_filial_id_origem_aberta_em", "filial_id", "origem", "aberta_em"),
         Index("ix_ordens_servico_status", "status"),
+        # Prompt 24: exclusão lógica. Os três campos andam juntos.
+        CheckConstraint(
+            "(excluida_em IS NULL AND excluida_por_id IS NULL AND motivo_exclusao IS NULL)"
+            " OR (excluida_em IS NOT NULL AND excluida_por_id IS NOT NULL"
+            " AND motivo_exclusao IS NOT NULL)",
+            name="exclusao_completa",
+        ),
+        Index("ix_ordens_servico_excluida_em", "excluida_em"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -81,6 +89,10 @@ class OrdemServico(Base):
     # Busca sem acento e sem maiúsculas: normalizar_busca(título + ' ' + descrição).
     # Mantida pelos eventos do ORM abaixo; nunca usar insert/update em lote nesta tabela.
     busca_texto: Mapped[str] = mapped_column(Text, default="", server_default="")
+    # --- Prompt 24: exclusão lógica (lixeira). Nunca há DELETE nesta tabela. ----------
+    excluida_em: Mapped[datetime | None] = mapped_column(DataHoraUTC())
+    excluida_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
+    motivo_exclusao: Mapped[str | None] = mapped_column(Text)
 
     # Trava otimista: o ORM inclui "WHERE versao = ?" em cada UPDATE e incrementa o valor.
     __mapper_args__ = {"version_id_col": versao}
@@ -91,6 +103,7 @@ class OrdemServico(Base):
     concluido_por: Mapped[Usuario | None] = relationship(foreign_keys=[concluido_por_id])
     tipo: Mapped[TipoManutencao | None] = relationship()
     cancelada_por: Mapped[Usuario | None] = relationship(foreign_keys=[cancelada_por_id])
+    excluida_por: Mapped[Usuario | None] = relationship(foreign_keys=[excluida_por_id])
     # Itens de custo (os totais são sempre calculados a partir deles).
     itens: Mapped[list[OsItemCusto]] = relationship(
         order_by="OsItemCusto.id", lazy="selectin", viewonly=True
@@ -101,3 +114,36 @@ class OrdemServico(Base):
 @event.listens_for(OrdemServico, "before_update")
 def _atualizar_busca_da_os(_mapper, _conexao, ordem: OrdemServico) -> None:
     ordem.busca_texto = normalizar_busca(f"{ordem.titulo or ''} {ordem.descricao or ''}")
+
+
+@event.listens_for(OrdemServico, "before_delete")
+def _proibir_exclusao_fisica(_mapper, _conexao, ordem: OrdemServico) -> None:
+    """Rede de segurança do prompt 24: uma ordem nunca é apagada do banco (só vai para a
+    lixeira). Apagar a ordem pela sessão falha antes do comando chegar ao banco."""
+    raise RuntimeError("Exclusão física de Ordem de Serviço é proibida; use a Lixeira.")
+
+
+# --- Exclusão lógica: um único filtro central -----------------------------------------
+#
+# Toda consulta ORM (select, Session.get, contagens, subconsultas, junções e carga de
+# relacionamentos) recebe "excluida_em IS NULL" para OrdemServico. Só as funções da
+# lixeira pedem as excluídas, com a opção de execução INCLUIR_EXCLUIDAS.
+# Consultas Core sobre tabelas refletidas (migrações, exportacao_legada) não passam por
+# aqui; nenhuma delas é usada pelas telas.
+
+INCLUIR_EXCLUIDAS = "incluir_excluidas"
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _esconder_excluidas(estado) -> None:
+    if (
+        estado.is_select
+        and not estado.is_column_load
+        and not estado.is_relationship_load  # já recebem o critério por propagação
+        and not estado.execution_options.get(INCLUIR_EXCLUIDAS, False)
+    ):
+        estado.statement = estado.statement.options(
+            with_loader_criteria(
+                OrdemServico, lambda cls: cls.excluida_em.is_(None), include_aliases=True
+            )
+        )
