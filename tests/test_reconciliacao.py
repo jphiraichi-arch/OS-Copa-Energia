@@ -89,6 +89,8 @@ def test_regra_01_relatorios_so_pela_barra_inferior():
         assert rotas.RELATORIOS in [d.rota for d in navegacao.destinos(papel)]
     app = _texto(UI / "app.py") + _texto(UI / "components" / "cabecalho.py")
     assert "PopupMenuButton" not in app and "NavigationRail" not in app
+    # Decisão de 24/11/2026: nem o cartão de atalho na Home; só a barra inferior.
+    assert "rotas.RELATORIOS" not in _texto(UI / "views" / "home.py")
 
 
 def test_regra_02_so_o_app_monta_a_navegacao_e_usa_a_funcao_pura():
