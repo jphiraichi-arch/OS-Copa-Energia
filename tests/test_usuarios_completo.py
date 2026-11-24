@@ -189,12 +189,6 @@ def test_reset_troca_e_desativacao_revogam_sessoes_lembradas(p, monkeypatch):
     assert chamados == [p["man"]] * 3
 
 
-def test_gancho_existe_e_nao_faz_nada_ate_o_prompt_35():
-    from osapp.services import sessoes_lembradas
-
-    assert sessoes_lembradas.revogar_sessoes_lembradas(1) == 0
-
-
 # --- Migração 0015 -----------------------------------------------------------------------
 
 

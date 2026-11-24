@@ -14,7 +14,7 @@ from typing import Any
 import flet as ft
 
 from osapp.config import Config
-from osapp.services import alertas, ordens, relogio
+from osapp.services import alertas, ordens, relogio, sessoes_lembradas
 from osapp.services.erros import ErroAutenticacao, ErroValidacao
 from osapp.ui import navegacao, rotas, textos, theme
 from osapp.ui import sessao as sessao_ui
@@ -102,6 +102,10 @@ class App:
         # Faixa e selo de 'Ordens' (services.ordens.contadores).
         self.contadores: ordens.Contadores | None = None
         self.filtro_filial: int | None = None  # filial escolhida no filtro (administrador)
+        # Prompt 35: família do token 'Lembrar de mim' deste navegador (None sem token) e
+        # se já se tentou entrar com o token desde a última entrada.
+        self.familia_lembrada: str | None = None
+        self._token_tentado = False
         self._lugar_banner = ft.Container()
         self._barra_inferior: ft.NavigationBar | None = None
 
@@ -206,9 +210,60 @@ class App:
             await self.ir(anterior)
 
     async def sair(self, _e=None) -> None:
+        """'Sair': revoga o 'Lembrar de mim' deste aparelho e apaga o token guardado."""
+        if self.familia_lembrada is not None and self.sessao.ator_id is not None:
+            await self.chamar(
+                sessoes_lembradas.sair_deste_aparelho, self.sessao.ator_id, self.familia_lembrada
+            )
+        await self.esquecer_token()
         sessao_ui.encerrar(self.sessao)
         self._tela = None
+        self._token_tentado = True  # sem token: não tentar de novo nesta visita
         await self.ir(rotas.LOGIN, forcar=True)
+
+    # --- 'Lembrar de mim' (prompt 35) -----------------------------------------------------
+
+    async def guardar_token(self, emitido) -> None:
+        self.familia_lembrada = emitido.familia
+        try:
+            await ft.SharedPreferences().set(sessoes_lembradas.CHAVE_NAVEGADOR, emitido.token)
+        except Exception:  # noqa: BLE001 - sem armazenamento: só não lembra
+            logger.warning("Não foi possível guardar o token 'lembrar de mim' no navegador.")
+
+    async def esquecer_token(self) -> None:
+        self.familia_lembrada = None
+        try:
+            await ft.SharedPreferences().remove(sessoes_lembradas.CHAVE_NAVEGADOR)
+        except Exception:  # noqa: BLE001
+            logger.warning("Não foi possível apagar o token 'lembrar de mim' do navegador.")
+
+    async def _entrar_com_token(self) -> bool:
+        """Sem sessão (ou expirada): tenta o token guardado. Recusa: apaga o token e
+        segue para o login normal (todas as recusas são iguais para o usuário)."""
+        self._token_tentado = True
+        try:
+            token = await ft.SharedPreferences().get(sessoes_lembradas.CHAVE_NAVEGADOR)
+        except Exception:  # noqa: BLE001
+            return False
+        if not isinstance(token, str) or not token:
+            return False
+        resultado = await self.chamar(
+            sessoes_lembradas.entrar_com_token,
+            token,
+            self.page.client_ip,
+            exige_sessao=False,
+            erros_tratados=(ErroAutenticacao,),
+        )
+        if not resultado.ok:
+            await self.esquecer_token()
+            return False
+        entrada = resultado.valor
+        await self.guardar_token(entrada.emitido)
+        sessao_ui.iniciar(self.sessao, entrada.ator, relogio.agora(), "")
+        self.contadores = None
+        self.filtro_filial = entrada.ator.filial_id if self.sessao.e_admin else None
+        self._token_tentado = False  # numa nova expiração, tenta de novo (até os 7 dias)
+        return True
 
     async def atualizar_contadores(self) -> None:
         """Busca os números da faixa e do selo; chamado no login, em 'Atualizar' e
@@ -230,10 +285,18 @@ class App:
             except RuntimeError:
                 pass  # a tela já foi trocada
 
-    async def entrar(self, ator, login: str = "") -> None:
-        """Chamado pela tela de login depois de o serviço autenticar o usuário."""
+    async def entrar(self, ator, login: str = "", lembrar: bool = False) -> None:
+        """Chamado pela tela de login depois de o serviço autenticar o usuário.
+        ``lembrar``: a caixa 'Lembrar de mim por 7 dias' estava marcada."""
         pendente = self.sessao.rota_pendente
         sessao_ui.iniciar(self.sessao, ator, relogio.agora(), login)
+        self._token_tentado = False
+        if lembrar:
+            emitido = await self.chamar(
+                sessoes_lembradas.lembrar, ator.usuario_id, self.page.client_user_agent
+            )
+            if emitido.ok:
+                await self.guardar_token(emitido.valor)
         self.sessao.rota_pendente = None
         self.contadores = None
         self.filtro_filial = ator.filial_id if self.sessao.e_admin else None
@@ -248,6 +311,8 @@ class App:
 
     async def _navegar(self, rota: str | None) -> None:
         """Toda mudança de rota passa aqui, inclusive URL digitada à mão."""
+        if sessao_ui.deve_tentar_token(self.sessao, relogio.agora(), self._token_tentado):
+            await self._entrar_com_token()
         destino = sessao_ui.aplicar_navegacao(rota, self.sessao, relogio.agora())
         if self.page.route != destino:
             await self.page.push_route(destino)  # dispara de novo _ao_mudar_rota

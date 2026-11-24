@@ -229,3 +229,20 @@ de nova solicitação, abaixo), planos preventivos, estoque, exportação PDF/Ex
   PostgreSQL.
 - `busca_texto` é mantido por eventos do ORM: nunca usar inserção ou alteração em lote em
   `ordens_servico` e `os_itens_custo`.
+
+## 'Lembrar de mim por 7 dias' (prompt 35; exceção à regra do prompt 6)
+
+- A regra do prompt 6 'nunca guardar token no armazenamento do navegador' continua valendo,
+  com UMA exceção: o token 'Lembrar de mim', guardado com `ft.SharedPreferences` (chave
+  `osapp.lembrar`) só quando o usuário marca a caixa (desmarcada por padrão; dica 'Não
+  marque em aparelhos compartilhados.').
+- Como qualquer um com acesso ao navegador lê o token, a proteção é do servidor
+  (`services/sessoes_lembradas.py`): 32 bytes do `secrets`; só o SHA-256 no banco; nunca
+  em log; validade de 7 dias desde o login, que a rotação não estende; troca a cada uso
+  (mesma família, mesmo `expira_em`); token já trocado usado de novo revoga a família e
+  gera aviso de segurança no log; toda recusa é igual e conta no limite por IP;
+  revogação em 'Sair', 'Sair de todos os aparelhos', troca e redefinição de senha,
+  desativação e pelo administrador. `rotulo_aparelho` é um texto curto, nunca o user
+  agent cru nem o IP.
+- Sem a caixa, o tempo de inatividade continua o mesmo. Com ela, uma sessão expirada é
+  retomada pelo token, dentro dos 7 dias.

@@ -56,6 +56,12 @@ def autenticada(sessao: SessaoUI, agora: datetime) -> bool:
     return sessao.ator_id is not None and not expirada(sessao, agora)
 
 
+def deve_tentar_token(sessao: SessaoUI, agora: datetime, ja_tentou: bool) -> bool:
+    """Prompt 35: sem usuário (ou com a sessão expirada) e ainda sem tentativa neste
+    navegador desde a última entrada -> tentar o token 'Lembrar de mim'. Função pura."""
+    return not autenticada(sessao, agora) and not ja_tentou
+
+
 def decidir_rota(rota: str | None, sessao: SessaoUI, agora: datetime) -> str:
     """Rota que deve ser mostrada. Função pura, chamada a cada mudança de rota.
 

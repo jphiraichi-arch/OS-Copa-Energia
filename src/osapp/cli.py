@@ -11,7 +11,7 @@ import sys
 
 from osapp.config import ConfigError
 from osapp.logs import configurar_logging
-from osapp.services import administracao, fila_email, ordens
+from osapp.services import administracao, fila_email, ordens, sessoes_lembradas
 from osapp.services.erros import (
     ErroConflito,
     ErroDominio,
@@ -48,6 +48,11 @@ def _enviar_fila_email(_args) -> str:
         f"Rodada da fila: {r.enviados} enviado(s), {r.falhas} falha(s), "
         f"{r.cancelados} cancelado(s)."
     )
+
+
+def _limpar_sessoes_lembradas(_args) -> str:
+    apagadas = sessoes_lembradas.limpar()
+    return f"'Lembrar de mim': {apagadas} registro(s) expirado(s) ou revogado(s) apagado(s)."
 
 
 def _criar_filial(args) -> str:
@@ -295,6 +300,12 @@ def criar_parser() -> argparse.ArgumentParser:
         help="Uma rodada do envio da fila (testes locais com um coletor SMTP)",
     )
     p.set_defaults(func=_enviar_fila_email)
+
+    p = sub.add_parser(
+        "limpar-sessoes-lembradas",
+        help="Apaga tokens 'lembrar de mim' expirados ou revogados há mais de 30 dias",
+    )
+    p.set_defaults(func=_limpar_sessoes_lembradas)
 
     p = sub.add_parser("redefinir-senha", help="Redefine a senha e zera o atraso do login")
     p.add_argument("--login")

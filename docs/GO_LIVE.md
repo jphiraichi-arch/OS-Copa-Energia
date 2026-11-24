@@ -230,6 +230,15 @@ no Perfil; o usuário o remove em 'Remover e-mail' (os envios pendentes dele sã
       (no máximo 1 por erro por hora e 20 por dia). Dependem do SMTP (item 3, E-mail).
 - [ ] Mudança para servidor próprio: docs/IMPLANTACAO_LOCAL.md.
 
+## 12. 'Lembrar de mim por 7 dias' (prompt 35)
+
+- [ ] Orientar os usuários: marcar só no próprio celular; nunca em aparelho
+      compartilhado (a tela avisa).
+- [ ] Agendar uma vez por semana `python -m osapp.cli limpar-sessoes-lembradas`
+      (apaga tokens expirados ou revogados há mais de 30 dias).
+- [ ] Aparelho perdido: o usuário (Perfil > Aparelhos conectados > 'Sair de todos os
+      aparelhos') ou o administrador (tela do usuário > 'Desconectar aparelhos').
+
 ## Pendências conhecidas
 
 - Confirmar no Render (com `OS_DEPURAR_CABECALHOS_IP=1` por alguns minutos) de onde vem a

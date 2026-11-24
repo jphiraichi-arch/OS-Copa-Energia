@@ -13,6 +13,10 @@ from osapp.ui.components.cabecalho import logo
 from osapp.ui.views.base import Tela
 
 MENSAGEM_CREDENCIAIS = "Usuário ou senha inválidos."
+# Prompt 35
+ROTULO_LEMBRAR = "Lembrar de mim por 7 dias"
+DICA_LEMBRAR = "Não marque em aparelhos compartilhados."
+LEMBRAR_PADRAO = False
 
 
 class Login(Tela):
@@ -38,6 +42,12 @@ class Login(Tela):
             visible=bool(app.sessao.mensagem_login),
         )
         app.sessao.mensagem_login = None  # mostrada uma única vez
+        self.lembrar = ft.Checkbox(
+            label=ROTULO_LEMBRAR,
+            value=LEMBRAR_PADRAO,
+            active_color=theme.COR_BOTAO_PRIMARIO,
+            label_style=ft.TextStyle(color=theme.COR_TITULO, size=theme.FONTE_CORPO),
+        )
         self.botao = basicos.botao_primario("Entrar", ft.Icons.LOGIN, self._entrar)
         self.conteudo = ft.Container(
             alignment=ft.Alignment.TOP_CENTER,
@@ -55,6 +65,10 @@ class Login(Tela):
                                     basicos.titulo("Entrar"),
                                     self.usuario,
                                     self.senha,
+                                    ft.Column(
+                                        [self.lembrar, basicos.subtitulo(DICA_LEMBRAR)],
+                                        spacing=0,
+                                    ),
                                     self.mensagem,
                                     self.botao,
                                 ]
@@ -106,7 +120,7 @@ class Login(Tela):
         self.senha.value = ""  # o campo de senha é limpo depois de toda tentativa
         self.botao.disabled = False
         if resultado.ok:
-            await self.app.entrar(resultado.valor, login)
+            await self.app.entrar(resultado.valor, login, lembrar=bool(self.lembrar.value))
             return
         if isinstance(resultado.erro, ErroMuitasTentativas):
             self.mensagem.value = MENSAGEM_MUITAS_TENTATIVAS

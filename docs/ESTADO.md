@@ -1307,3 +1307,27 @@ estão agora, não refeitas pelo histórico).
 - Eventos: 'filial' passou a se chamar 'filial padrão'; novo campo 'filiais' (códigos).
 - Testes: `tests/test_usuarios_completo.py`; `tests/test_usuarios.py` ajustado às
   senhas geradas.
+
+
+## Prompt 35 — 'Lembrar de mim por 7 dias' (25/11/2026)
+
+- Inspeção: login (`views/login.py` -> `auth.autenticar` com `page.client_ip`) e sessão
+  em memória por navegador (`ui/sessao.py`: `iniciar`, `expirada` por
+  OS_SESSAO_TIMEOUT_MIN, `decidir_rota` como guarda de toda navegação). O gancho
+  `revogar_sessoes_lembradas` do prompt 34 existia (vazio). Armazenamento no cliente do
+  Flet 1.1.2: `ft.SharedPreferences()` (serviço; `set/get/remove/clear/get_keys`,
+  assíncronos; registra-se na página atual ao ser criado). O servidor apaga a chave do
+  navegador com `remove()`, mas só num navegador conectado; os outros aparelhos são
+  desligados pela revogação no banco. `page.client_user_agent` dá o user agent.
+- Migração `0016`: `sessoes_lembradas` (id, usuario_id, familia, token_hash único,
+  criado_em, expira_em, ultimo_uso_em, rotulo_aparelho, revogado_em). `ultimo_uso_em`
+  preenchido = token já trocado (é a marca de 'usado').
+- Serviço `services/sessoes_lembradas.py`: `lembrar`, `entrar_com_token` (rotação, roubo,
+  limite por IP), `revogar_sessoes_lembradas`, `sair_deste_aparelho`, `sair_de_todos`,
+  `revogar_de_usuario` (administrador), `listar_aparelhos`, `limpar`.
+- Telas: caixa no login; `App` tenta o token quando não há sessão (ou ela expirou) uma
+  vez por entrada (`sessao.deve_tentar_token`); 'Sair' revoga a família e apaga o token;
+  Perfil > 'Aparelhos conectados' (todos os papéis); tela do usuário >
+  'Desconectar aparelhos' (administrador).
+- CLI: `limpar-sessoes-lembradas`.
+- Testes: `tests/test_lembrar.py`.

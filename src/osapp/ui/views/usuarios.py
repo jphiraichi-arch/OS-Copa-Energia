@@ -9,7 +9,7 @@ from __future__ import annotations
 import flet as ft
 
 from osapp import formatacao
-from osapp.services import notificacoes, ordens, usuarios
+from osapp.services import notificacoes, ordens, sessoes_lembradas, usuarios
 from osapp.services.auth import PAPEIS
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao
 from osapp.ui import rotas, rotulos, theme
@@ -345,6 +345,9 @@ class FormularioUsuario(Tela):
                 "Redefinir senha", ft.Icons.LOCK_RESET, self._perguntar_redefinir
             ),
             basicos.botao_secundario(
+                "Desconectar aparelhos", ft.Icons.DEVICES_OTHER_OUTLINED, self._perguntar_aparelhos
+            ),
+            basicos.botao_secundario(
                 "Desativar" if u.ativo else "Reativar",
                 ft.Icons.PERSON_OFF_OUTLINED if u.ativo else ft.Icons.PERSON_OUTLINE,
                 self._perguntar_ativo,
@@ -504,6 +507,24 @@ class FormularioUsuario(Tela):
         elif isinstance(resultado.erro, ErroConflito):
             self.error = MSG_CONFLITO
             self.app.avisar(MSG_CONFLITO)
+
+    def _perguntar_aparelhos(self, _e=None) -> None:
+        """Prompt 35: revoga todos os 'Lembrar de mim' do usuário."""
+
+        async def revogar() -> None:
+            r = await self.app.chamar(
+                sessoes_lembradas.revogar_de_usuario, self.app.sessao.ator_id, self.usuario.id
+            )
+            if r.ok:
+                self.app.avisar(f"{r.valor} aparelho(s) desconectado(s).")
+
+        self.app.confirmar(
+            "Desconectar aparelhos?",
+            "Todos os aparelhos em que este usuário marcou 'Lembrar de mim' vão pedir a "
+            "senha de novo.",
+            "Desconectar",
+            revogar,
+        )
 
     def _perguntar_ativo(self, _e=None) -> None:
         ativo = self.usuario.ativo

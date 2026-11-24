@@ -11,6 +11,7 @@ import flet as ft
 
 from osapp.ui import rotas, rotulos, textos, theme
 from osapp.ui.components import basicos
+from osapp.ui.views.aparelhos import SecaoAparelhos
 from osapp.ui.views.base import Tela
 from osapp.ui.views.notificacoes_email import SecaoEmail
 from osapp.ui.views.senha import cartao_alterar_senha
@@ -71,15 +72,18 @@ class Perfil(Tela):
                 linhas.append(ft.Divider(height=1, thickness=1, color=theme.COR_CONTORNO))
             linhas.append(self._linha(rotulo, icone, rota))
         self.secao_email = SecaoEmail(app) if tem_secao_email(sessao.papel) else None
+        self.secao_aparelhos = SecaoAparelhos(app)  # prompt 35: todos os papéis
         controles: list[ft.Control] = [quem]
         if self.secao_email is not None:
             controles.append(self.secao_email.controle)
+        controles.append(self.secao_aparelhos.controle)
         controles.append(basicos.cartao(ft.Column(linhas, spacing=0)))
         self.conteudo = basicos.coluna(controles, espaco=theme.ESPACO_M)
 
     async def carregar(self) -> None:
         if self.secao_email is not None:
             await self.secao_email.carregar()
+        await self.secao_aparelhos.carregar()
 
     def _linha(self, rotulo: str, icone: ft.IconData, rota: str | None) -> ft.Control:
         async def abrir(_e=None) -> None:
