@@ -424,7 +424,7 @@ class DialogoItem:
 
     def _ao_digitar_descricao(self, e) -> None:
         self._ao_digitar(e)
-        if self.editor.filial_de is None or self.app.sessao.is_usuario:
+        if self.editor.filial_de is None or self.app.sessao.e_usuario:
             return
         self._geracao_sugestoes += 1
         self.app.page.run_task(self._sugerir, self._geracao_sugestoes, self.descricao.value or "")

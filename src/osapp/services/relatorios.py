@@ -145,7 +145,7 @@ def gerar_relatorio(ator_id: int, ano: int, mes: int, filial_id: int | None = No
     """Relatório do mês (no fuso OS_TZ). ``filial_id`` None: a própria filial, ou todas
     as filiais para administrador."""
     ator = carregar_ator(ator_id)
-    if ator.is_usuario:
+    if ator.e_usuario:
         logger.warning("Permissão negada: usuario_id=%s ação=relatório mensal.", ator.usuario_id)
         raise ErroPermissao()
     if not _e_int(ano) or not ANO_MIN <= ano <= ANO_MAX:
@@ -491,7 +491,7 @@ def relatorio_tempos(
     sobre o total do período, os custos e a lista paginada (50 por página).
     """
     ator = carregar_ator(ator_id)
-    if ator.is_usuario:
+    if ator.e_usuario:
         logger.warning("Permissão negada: usuario_id=%s ação=relatório de tempos.", ator.usuario_id)
         raise ErroPermissao()
     tz = carregar_config().tz
@@ -702,7 +702,7 @@ def relatorio_mensal(
     """Mês selecionado e acumulado até o fim dele (ver o comentário acima). Manutenção
     (própria filial) e administrador (uma filial ou todas); usuario: ErroPermissao."""
     ator = carregar_ator(ator_id)
-    if ator.is_usuario:
+    if ator.e_usuario:
         logger.warning("Permissão negada: usuario_id=%s ação=relatório mensal.", ator.usuario_id)
         raise ErroPermissao()
     tz = carregar_config().tz

@@ -302,7 +302,7 @@ def sugerir_descricoes(
     ator = carregar_ator(ator_id)
     if not _e_int(filial_id):
         raise ErroValidacao("filial_id", "Filial inválida.")
-    if ator.is_usuario or not pode_acessar_filial(ator, filial_id):
+    if ator.e_usuario or not pode_acessar_filial(ator, filial_id):
         logger.warning(
             "Permissão negada: usuario_id=%s ação=sugestões de descrição.", ator.usuario_id
         )

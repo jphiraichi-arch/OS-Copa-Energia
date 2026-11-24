@@ -16,7 +16,7 @@ MENSAGEM_SESSAO_EXPIRADA = "Sessão expirada. Entre novamente."
 
 @dataclass
 class SessaoUI:
-    """Estado de exibição; ``e_admin``/``is_usuario`` são derivados do papel."""
+    """Estado de exibição; ``e_admin``/``e_usuario`` são derivados do papel."""
 
     timeout_min: int
     ator_id: int | None = None
@@ -41,8 +41,8 @@ def _papel_e(papel: str):
 
 
 SessaoUI.e_admin = _papel_e("admin")
-SessaoUI.is_usuario = _papel_e("usuario")
-SessaoUI.is_manutencao = _papel_e("manutencao")
+SessaoUI.e_usuario = _papel_e("usuario")
+SessaoUI.e_manutencao = _papel_e("manutencao")
 
 
 def expirada(sessao: SessaoUI, agora: datetime) -> bool:

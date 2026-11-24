@@ -65,7 +65,7 @@ def _numeros(busca=None, **filtros) -> list[str]:
 
     from osapp.services import ordens
 
-    condicao = ordens.condicao_busca(busca, ordens.ESCOPO_TUDO, SimpleNamespace(is_usuario=False))
+    condicao = ordens.condicao_busca(busca, ordens.ESCOPO_TUDO, SimpleNamespace(e_usuario=False))
     with sessao() as s:
         return [o.numero for o in OrdemServicoRepo(s).listar(condicao=condicao, **filtros)]
 

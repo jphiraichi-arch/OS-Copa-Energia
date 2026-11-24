@@ -49,11 +49,11 @@ class Ator:
         return self.papel == PAPEL_ADMIN
 
     @property
-    def is_manutencao(self) -> bool:
+    def e_manutencao(self) -> bool:
         return self.papel == PAPEL_MANUTENCAO
 
     @property
-    def is_usuario(self) -> bool:
+    def e_usuario(self) -> bool:
         return self.papel == PAPEL_USUARIO
 
 

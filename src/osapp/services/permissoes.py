@@ -30,4 +30,4 @@ def pode_ver_relatorio_mensal(ator: Ator, filial_id: int | None) -> bool:
     """
     if ator.e_admin:
         return True
-    return ator.is_manutencao and filial_id == ator.filial_id
+    return ator.e_manutencao and filial_id == ator.filial_id

@@ -371,7 +371,7 @@ def condicao_busca(termo: object, escopo: str, ator: Ator):
     palavras = normalizar_busca(bruto).split()
     if not palavras:
         return None
-    if ator.is_usuario:
+    if ator.e_usuario:
         no_texto, nos_itens = True, False
     else:
         no_texto, nos_itens = escopo == ESCOPO_TUDO, True
@@ -400,7 +400,7 @@ def condicao_busca(termo: object, escopo: str, ator: Ator):
 
 
 def _manutencao_da_filial(ator: Ator, ordem) -> bool:
-    return ator.is_manutencao and ator.filial_id == ordem.filial_id
+    return ator.e_manutencao and ator.filial_id == ordem.filial_id
 
 
 def _solicitante(ator: Ator, ordem) -> bool:
@@ -449,7 +449,7 @@ def _pode(acao: str, ator: Ator, ordem) -> bool:
     if quem == _status.MANUTENCAO_DA_FILIAL:
         return _manutencao_da_filial(ator, ordem)
     if quem == _status.SOMENTE_EXECUTOR:
-        return not ator.is_usuario and ordem.executor_id == ator.usuario_id
+        return not ator.e_usuario and ordem.executor_id == ator.usuario_id
     if quem == _status.SOMENTE_SOLICITANTE:
         return _solicitante(ator, ordem)
     return False
@@ -525,7 +525,7 @@ def _carregar_visivel(s: Session, ator: Ator, os_id: object) -> OrdemServico:
 def _carregar_para_escrita(s: Session, ator: Ator, os_id: object) -> OrdemServico:
     """Como _carregar_visivel; para o papel usuario não carrega relacionamentos (itens,
     executor...): só a linha da OS, para gravar."""
-    if not ator.is_usuario:
+    if not ator.e_usuario:
         return _carregar_visivel(s, ator, os_id)
     ordem = OrdemServicoRepo(s).obter_sem_relacoes(os_id) if _e_int(os_id) else None
     if ordem is None or ordem.filial_id != ator.filial_id:
@@ -634,7 +634,7 @@ def _resumo_solicitante(linha) -> ResumoSolicitante:
 def _ver(s: Session, ator: Ator, ordem: OrdemServico):
     """O modelo de leitura do papel do ator, com a OS já gravada."""
     s.flush()
-    if ator.is_usuario:
+    if ator.e_usuario:
         return _visao_solicitante(OrdemServicoRepo(s).visao_solicitante(ordem.id), ator)
     s.refresh(ordem)  # versão nova e relacionamentos (só para manutenção e administrador)
     return _detalhe(ordem, ator)
@@ -784,7 +784,7 @@ def criar_os(
     prioridade são opcionais aqui; iniciar exige o previsto completo.
     Um evento CRIACAO e um ITEM_ADICIONADO por item, numa só transação."""
     ator = carregar_ator(ator_id)
-    if ator.is_usuario:
+    if ator.e_usuario:
         raise _negar(ator, "criar OS completa")
     destino = _filial_de_destino(ator, filial_id, "criar OS")
     titulo = _validar_titulo(titulo)
@@ -834,7 +834,7 @@ def obter_os(ator_id: int, os_id: int):
     """OsDetalhe (manutenção, administrador) ou OsVisaoSolicitante (usuario)."""
     ator = carregar_ator(ator_id)
     with sessao() as s:
-        if ator.is_usuario:
+        if ator.e_usuario:
             linha = OrdemServicoRepo(s).visao_solicitante(os_id) if _e_int(os_id) else None
             if linha is None or linha["filial_id"] != ator.filial_id:
                 raise ErroNaoEncontrado()
@@ -869,7 +869,7 @@ def listar_os(
 
     with sessao() as s:
         repo = OrdemServicoRepo(s)
-        if ator.is_usuario:
+        if ator.e_usuario:
             linhas = repo.listar_visao_solicitante(
                 filtro_filial, status, condicao, limite, deslocamento
             )
@@ -910,7 +910,7 @@ def listar_os(
 def listar_eventos(ator_id: int, os_id: int) -> list[EventoDTO]:
     """Eventos da OS, do mais antigo para o mais novo. O papel usuario não vê o histórico."""
     ator = carregar_ator(ator_id)
-    if ator.is_usuario:
+    if ator.e_usuario:
         raise _negar(ator, "ver histórico")
     with sessao() as s:
         ordem = _carregar_visivel(s, ator, os_id)
@@ -983,7 +983,7 @@ def listar_filiais(ator_id: int) -> list[FilialDTO]:
 def listar_tipos(ator_id: int) -> list[TipoDTO]:
     """Tipos de manutenção ativos (manutenção e administrador)."""
     ator = carregar_ator(ator_id)
-    if ator.is_usuario:
+    if ator.e_usuario:
         raise _negar(ator, "listar tipos de manutenção")
     with sessao() as s:
         return [TipoDTO(t.id, t.codigo, t.nome) for t in TipoManutencaoRepo(s).listar()]
@@ -1040,7 +1040,7 @@ def editar_os(ator_id: int, os_id: int, versao: int, alteracoes: dict) -> OsDeta
     administrador; título e descrição só em OS de origem 'manutencao'; realizado só o
     administrador em OS concluída). Um evento EDICAO por campo que mudou."""
     ator = carregar_ator(ator_id)
-    if ator.is_usuario:
+    if ator.e_usuario:
         raise _negar(ator, "editar campos da manutenção")
     try:
         with sessao() as s:

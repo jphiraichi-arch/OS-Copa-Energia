@@ -121,7 +121,9 @@ def test_regra_03_usuario_sem_relatorios(c):
 def test_regra_04_papel_e_a_unica_fonte_do_papel():
     assert "is_" + "admin" not in Usuario.__table__.c
     assert "papel" in Usuario.__table__.c
-    proibido = re.compile(r"\bis_" + "admin" + r"\b")
+    # Os três nomes antigos das propriedades de papel (hoje e_admin, e_usuario,
+    # e_manutencao), montados por partes para este arquivo não se acusar.
+    proibido = re.compile(r"\bis_(" + "admin|usuario|manutencao" + r")\b")
     achados = []
     for pasta in ("src", "tests"):
         for p in (RAIZ / pasta).rglob("*.py"):

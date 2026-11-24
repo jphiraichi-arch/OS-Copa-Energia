@@ -36,12 +36,12 @@ class Home(Tela):
 
         # Na Home a busca começa em 'Tudo'; o relatório começa em 'Itens'.
         self.escopo = (
-            None if app.sessao.is_usuario else SeletorEscopo(app, self._buscar, ESCOPO_PADRAO)
+            None if app.sessao.e_usuario else SeletorEscopo(app, self._buscar, ESCOPO_PADRAO)
         )
         self.busca = basicos.campo_texto(
             textos.HOME_BUSCA,
             hint_text=textos.HOME_BUSCA_DICA_USUARIO
-            if app.sessao.is_usuario
+            if app.sessao.e_usuario
             else textos.HOME_BUSCA_DICA,
             on_submit=self._buscar,
             suffix_icon=ft.IconButton(
@@ -54,7 +54,7 @@ class Home(Tela):
             ),
         )
         opcoes = [(None, textos.HOME_TODAS), *status.ROTULOS.items()]
-        if not app.sessao.is_usuario:
+        if not app.sessao.e_usuario:
             opcoes.insert(1, (SOLICITACOES_ABERTAS, ROTULO_SOLICITACOES_ABERTAS))
         self.chips = GrupoChips(
             opcoes,
