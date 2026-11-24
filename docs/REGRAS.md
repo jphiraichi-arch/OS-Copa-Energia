@@ -259,3 +259,21 @@ de nova solicitação, abaixo), planos preventivos, estoque, exportação PDF/Ex
   `ResumoSolicitante`).
 - Usuários de manutenção podem ter zero ou mais especialidades (`usuario_especialidades`);
   hoje isso não filtra nada (prepara o filtro de avisos). Mudar o papel as apaga.
+
+## SLA (prompt 38)
+
+- Alvos por filial e urgência em `sla_alvos` (minutos de relógio; um dia = 24 h; sem dias
+  úteis nesta versão). Padrões: emergencial 1 h / 8 h, alta 4 h / 2 dias, média 1 dia /
+  5 dias, baixa 3 dias / 15 dias. Filial nova recebe os padrões. Só o administrador
+  altera (Perfil > SLA), com registro no log.
+- Os prazos são gravados na OS ao abrir (`prazo_inicio_em`, `prazo_solucao_em`), com os
+  alvos daquele momento; mudar a urgência com a OS ABERTA recalcula os dois (evento
+  EDICAO). Mudar os alvos nunca muda ordens existentes. Só ordens com urgência
+  (solicitações) têm prazo.
+- Etiqueta calculada no serviço (`services/sla.etiqueta`): ABERTA usa o prazo de início,
+  EM_EXECUCAO o de solução; 'Atrasada' / 'Vence em X' (25% ou menos restando) / 'No
+  prazo', sempre com texto e ícone. Só manutenção e administrador recebem; o usuario não.
+- Relatório: % dentro do SLA de início e de solução entre as ordens já vencidas no fim do
+  período ou que já cumpriram a etapa (as que ainda estão no prazo ficam fora do
+  denominador), com a situação reconstruída no fim do período (prompt 25); '—' com
+  denominador zero; também por urgência.

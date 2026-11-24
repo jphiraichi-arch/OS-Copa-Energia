@@ -175,3 +175,24 @@ def mensagem_central(mensagem: str) -> ft.Container:
             text_align=ft.TextAlign.CENTER,
         ),
     )
+
+
+# Prompt 38: etiqueta do SLA. Cor + texto (a cor nunca é o único sinal).
+TOM_SLA = {
+    "atrasada": "COR_NIVEL_EMERGENCIAL",
+    "vence": "COR_NIVEL_ALTA",
+    "no_prazo": "COR_STATUS_CONCLUIDA",
+}
+ICONE_SLA = {
+    "atrasada": ft.Icons.ERROR_OUTLINE,
+    "vence": ft.Icons.SCHEDULE,
+    "no_prazo": ft.Icons.CHECK,
+}
+
+
+def selo_sla(etiqueta) -> ft.Container | None:
+    """'Atrasada' (vermelho), 'Vence em 45 min' (laranja), 'No prazo' (verde)."""
+    if etiqueta is None:
+        return None
+    fundo, cor = getattr(theme, TOM_SLA[etiqueta.codigo])
+    return selo(etiqueta.texto, fundo, cor, ICONE_SLA[etiqueta.codigo])

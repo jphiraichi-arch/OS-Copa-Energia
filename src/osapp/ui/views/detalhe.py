@@ -123,6 +123,7 @@ class Detalhe(Tela):
             basicos.selo_origem(d.origem),
             *([basicos.selo_nivel(d.urgencia, "Urgência: ")] if solicitacao else []),
             basicos.selo_nivel(d.prioridade, "Prioridade: "),
+            *([basicos.selo_sla(d.sla)] if d.sla is not None else []),
         ]
         cartoes: list[ft.Control] = [self._cabeca(d.numero, d.status, d.titulo, selos)]
         cartoes += self._acoes(d)

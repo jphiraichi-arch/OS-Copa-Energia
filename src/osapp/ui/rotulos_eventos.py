@@ -84,6 +84,8 @@ CAMPOS: dict[str, tuple[str, Callable[[str], str]]] = {
     "prioridade": ("Prioridade", _nivel),
     "origem": ("Origem", _origem),
     "inicio_realizado": ("Início", _instante),
+    "prazo_inicio_em": ("Prazo de início (SLA)", _instante),  # prompt 38
+    "prazo_solucao_em": ("Prazo de solução (SLA)", _instante),
     "fim_realizado": ("Fim", _instante),
     "descricao_realizado": ("Descrição do que foi feito", _texto),
     "nota_conclusao": ("Nota para o solicitante", _texto),

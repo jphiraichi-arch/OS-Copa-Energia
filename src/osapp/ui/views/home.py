@@ -215,6 +215,8 @@ class Home(Tela):
                 selos.append(basicos.selo_nivel(item.urgencia, "Urgência: "))
             if item.prioridade:
                 selos.append(basicos.selo_nivel(item.prioridade, "Prioridade: "))
+            if item.sla is not None:  # prompt 38 (só manutenção e administrador)
+                selos.append(basicos.selo_sla(item.sla))
             detalhes = [
                 item.solicitante,
                 formatacao.formatar_brl(item.total_previsto_centavos),

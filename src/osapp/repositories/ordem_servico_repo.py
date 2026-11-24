@@ -134,6 +134,16 @@ class OrdemServicoRepo:
             consulta = consulta.where(condicao)
         return [tuple(linha) for linha in self._s.execute(consulta.order_by(OrdemServico.id))]
 
+    def prazos(self, os_ids) -> dict[int, tuple]:
+        """id -> (prazo_inicio_em, prazo_solucao_em) (prompt 38)."""
+        ids = list(os_ids)
+        if not ids:
+            return {}
+        consulta = select(
+            OrdemServico.id, OrdemServico.prazo_inicio_em, OrdemServico.prazo_solucao_em
+        ).where(OrdemServico.id.in_(ids))
+        return {i: (a, b) for i, a, b in self._s.execute(consulta).all()}
+
     def especialidades(self, os_ids) -> dict[int, int | None]:
         """id -> especialidade_id, como está agora (prompt 37)."""
         ids = list(os_ids)

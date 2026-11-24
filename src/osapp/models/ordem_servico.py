@@ -81,6 +81,9 @@ class OrdemServico(Base):
     tipo_id: Mapped[int | None] = mapped_column(ForeignKey("tipos_manutencao.id"))
     # Prompt 37: quem atende (vazia nas ordens anteriores).
     especialidade_id: Mapped[int | None] = mapped_column(ForeignKey("especialidades.id"))
+    # Prompt 38: prazos do SLA, gravados ao abrir (só solicitações, que têm urgência).
+    prazo_inicio_em: Mapped[datetime | None] = mapped_column(DataHoraUTC())
+    prazo_solucao_em: Mapped[datetime | None] = mapped_column(DataHoraUTC())
     nota_conclusao: Mapped[str | None] = mapped_column(Text)
     aberta_em: Mapped[datetime] = mapped_column(
         DataHoraUTC(), default=_agora_utc, server_default=func.now()

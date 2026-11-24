@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from osapp.config import carregar_config
 from osapp.db import sessao
 from osapp.repositories import EspecialidadeRepo, FilialRepo, OrdemServicoRepo
-from osapp.services import custos, linha_do_tempo, ordens, relogio
+from osapp.services import custos, linha_do_tempo, ordens, relogio, sla
 from osapp.services import status as _status
 from osapp.services.auth import Ator, carregar_ator
 from osapp.services.erros import ErroPermissao, ErroValidacao
@@ -600,6 +600,11 @@ class BlocoMensal:
     sem_gasto_realizadas: int = 0
     # Prompt 37: uma linha por especialidade (na ordem da lista) e 'Não informada'.
     por_especialidade: tuple[TemposPorEspecialidade, ...] = ()
+    # Prompt 38: % dentro do SLA de início e de solução (situação no fim do período) e
+    # por urgência: (urgencia, início, solução), da mais à menos urgente.
+    sla_inicio: sla.Cumprimento = sla.Cumprimento(0, 0)
+    sla_solucao: sla.Cumprimento = sla.Cumprimento(0, 0)
+    sla_por_urgencia: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -650,6 +655,21 @@ def medidas_por_especialidade(linhas, especialidade_de, nomes) -> tuple:
     )
 
 
+def _sla_do_bloco(medidas, prazos: dict, fim) -> dict:
+    """Prompt 38: mesma população e busca do bloco (``medidas``), com o início e a
+    conclusão vistos no fim do período (prompt 25)."""
+
+    def itens(linhas):
+        return [(*prazos.get(m[0], (None, None)), m[3], m[4]) for m in linhas]
+
+    inicio, solucao = sla.cumprimento(itens(medidas), fim)
+    por = tuple(
+        (u, *sla.cumprimento(itens([m for m in medidas if m[1] == u]), fim))
+        for u in reversed(ordens.NIVEIS)
+    )
+    return {"sla_inicio": inicio, "sla_solucao": solucao, "sla_por_urgencia": por}
+
+
 def _bloco(
     repo,
     populacao,
@@ -661,6 +681,7 @@ def _bloco(
     fim,
     sem_gasto=None,
     especialidades=None,
+    prazos=None,
 ):
     """Um bloco (mês ou acumulado). ``populacao``: linhas de solicitacoes_ate sem a busca;
     ``ids_busca``: ids que correspondem ao termo (None sem termo)."""
@@ -728,6 +749,7 @@ def _bloco(
         custos=resultado.custos,
         busca=busca,
         por_especialidade=medidas_por_especialidade(medidas, *(especialidades or ({}, []))),
+        **_sla_do_bloco(medidas, prazos or {}, fim),
     )
     return bloco, medidas
 
@@ -781,6 +803,7 @@ def relatorio_mensal(
             marcos[os_id].append(linha_do_tempo.Marco(data_hora, tipo, valor_novo))
         situacoes = {p[0]: linha_do_tempo.situacao_em(marcos[p[0]], fim) for p in populacao}
         sem_gasto = repo.sem_gasto(p[0] for p in populacao)
+        prazos = repo.prazos(p[0] for p in populacao)
         especialidades = (
             repo.especialidades(p[0] for p in populacao),
             [(e.id, e.nome) for e in EspecialidadeRepo(s).listar(so_ativas=False)],
@@ -796,6 +819,7 @@ def relatorio_mensal(
             fim,
             sem_gasto,
             especialidades,
+            prazos,
         )
         acumulado, _ = _bloco(
             repo,
@@ -808,6 +832,7 @@ def relatorio_mensal(
             fim,
             sem_gasto,
             especialidades,
+            prazos,
         )
         lista = _resultado_busca(
             repo, termo_limpo or "", escopo, linhas_do_mes, len(linhas_do_mes), pagina

@@ -20,7 +20,7 @@ from osapp.repositories import (
     UsuarioRepo,
 )
 from osapp.services import ordens as ordens_servico
-from osapp.services import protecao_login, relogio, usuarios
+from osapp.services import protecao_login, relogio, sla, usuarios
 from osapp.services.auth import LOGIN_MAX
 from osapp.services.auth import PAPEIS as PAPEIS_DO_ATOR
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroValidacao
@@ -100,6 +100,7 @@ def criar_filial(codigo: str, nome: str) -> FilialCriada:
         if repo.obter_por_codigo(codigo) is not None:
             raise ErroConflito()
         filial = repo.adicionar(Filial(codigo=codigo, nome=nome))
+        sla.criar_padroes(s, filial.id)  # prompt 38: a filial nova recebe os alvos padrão
         logger.info("Filial criada: id=%s.", filial.id)
         return FilialCriada(filial.id, filial.codigo, filial.nome)
 

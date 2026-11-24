@@ -1385,3 +1385,27 @@ estão agora, não refeitas pelo histórico).
   chips de especialidades na tela do usuário.
 - Testes: `tests/test_especialidade.py`; `tests/fabricas.args_de_criacao` e os testes que
   completam o previsto passaram a escolher uma especialidade.
+
+
+## Prompt 38 — SLA por filial e urgência (25/11/2026)
+
+- Inspeção: o relatório mensal reconstrói status e início no fim do período a partir de
+  os_eventos (`linha_do_tempo.situacao_em`, prompt 25); a urgência muda em
+  `editar_solicitacao` (o solicitante enquanto ABERTA; o administrador a qualquer momento,
+  menos numa cancelada).
+- Migração `0018`: `sla_alvos` com os padrões para cada filial existente;
+  `ordens_servico.prazo_inicio_em`/`prazo_solucao_em`, preenchidos nas solicitações
+  existentes a partir dos padrões e de `aberta_em`.
+- `services/sla.py`: padrões, `prazos`, `criar_padroes` (filial nova, em
+  `administracao.criar_filial`), `etiqueta` (pura), `listar_alvos`/`definir_alvo`
+  (administrador, com log), `cumprimento`/`texto_cumprimento` (puras).
+- `ordens`: prazos gravados em `criar_solicitacao`; recalculados com evento em
+  `editar_solicitacao` quando a urgência muda e a OS está ABERTA (inclusive se quem muda
+  é o administrador); `OsDetalhe` e `OsResumo` ganham `sla` (e os prazos no detalhe); o
+  modelo do usuario não.
+- Relatório mensal: `BlocoMensal.sla_inicio`, `sla_solucao`, `sla_por_urgencia`, com a
+  mesma população e busca do bloco; cartão 'Dentro do SLA' na tela.
+- Telas: selo do SLA nos cartões da Home e no Detalhe (manutenção e administrador);
+  Perfil > SLA (`/perfil/sla`, administrador): uma seção por filial, uma linha por
+  urgência, início e solução com a máscara de duração (H:MM, até 999 h).
+- Testes: `tests/test_sla.py`.

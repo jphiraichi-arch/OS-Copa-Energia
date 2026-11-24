@@ -32,6 +32,7 @@ MENU_SAIR = "Sair"
 MENU_LIXEIRA = "Lixeira"
 MENU_FILA_EMAIL = "Fila de e-mails"
 MENU_ESPECIALIDADES = "Especialidades"
+MENU_SLA = "SLA (prazos)"
 LIXEIRA_TITULO = "Lixeira"
 LIXEIRA_AVISO_EXCLUIR = (
     "A Ordem de Serviço será escondida de todos (inclusive dos administradores) até ser "

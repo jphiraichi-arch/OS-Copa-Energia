@@ -36,6 +36,7 @@ from osapp.repositories import (
     UsuarioRepo,
 )
 from osapp.services import custos, email_mensagem, notificacoes, relogio
+from osapp.services import sla as sla_srv
 from osapp.services import status as _status
 from osapp.services.auth import Ator, carregar_ator
 from osapp.services.erros import (
@@ -135,6 +136,7 @@ class OsResumo:
     prioridade: str | None = None
     aberta_em: datetime | None = None
     solicitante: str = ""
+    sla: sla_srv.Etiqueta | None = None  # prompt 38
 
 
 @dataclass(frozen=True)
@@ -259,6 +261,10 @@ class OsDetalhe:
     tipo_nome: str | None = None
     especialidade_id: int | None = None  # prompt 37 (nunca no modelo do usuario)
     especialidade_nome: str | None = None
+    # Prompt 38: prazos do SLA e a etiqueta (nunca no modelo do usuario).
+    prazo_inicio_em: datetime | None = None
+    prazo_solucao_em: datetime | None = None
+    sla: sla_srv.Etiqueta | None = None
     nota_conclusao: str | None = None
     aberta_em: datetime | None = None
     inicio_execucao_em: datetime | None = None
@@ -357,6 +363,17 @@ def _validar_tipo(s: Session, valor: object) -> int | None:
     if tipo is None or not tipo.ativo:
         raise ErroValidacao("tipo_id", "Escolha um tipo de manutenção válido.")
     return tipo.id
+
+
+def _etiqueta(ordem) -> sla_srv.Etiqueta | None:
+    """Prompt 38: etiqueta do SLA (manutenção e administrador)."""
+    return sla_srv.etiqueta(
+        ordem.status,
+        ordem.aberta_em,
+        ordem.prazo_inicio_em,
+        ordem.prazo_solucao_em,
+        relogio.agora(),
+    )
 
 
 def _validar_especialidade(s: Session, valor: object, atual: int | None = None) -> int | None:
@@ -618,6 +635,9 @@ def _detalhe(ordem: OrdemServico, ator: Ator) -> OsDetalhe:
         tipo_nome=ordem.tipo.nome if ordem.tipo else None,
         especialidade_id=ordem.especialidade_id,
         especialidade_nome=ordem.especialidade.nome if ordem.especialidade else None,
+        prazo_inicio_em=ordem.prazo_inicio_em,
+        prazo_solucao_em=ordem.prazo_solucao_em,
+        sla=_etiqueta(ordem),
         nota_conclusao=ordem.nota_conclusao,
         aberta_em=ordem.aberta_em,
         inicio_execucao_em=ordem.inicio_execucao_em,
@@ -819,6 +839,9 @@ def criar_solicitacao(
                 descricao=descricao,
                 urgencia=urgencia,
             )
+            ordem.prazo_inicio_em, ordem.prazo_solucao_em = sla_srv.prazos(
+                s, ordem.filial_id, ordem.urgencia, ordem.aberta_em
+            )
             _avisar_por_email(s, ator, ordem)
             logger.info("Solicitação aberta: os_id=%s usuario_id=%s.", ordem.id, ator.usuario_id)
             return _ver(s, ator, ordem)
@@ -966,6 +989,7 @@ def listar_os(
                 prioridade=o.prioridade,
                 aberta_em=o.aberta_em,
                 solicitante=o.criado_por.nome,
+                sla=_etiqueta(o),
             )
             for o in ordens[:ITENS_POR_PAGINA]
         )
@@ -1231,6 +1255,17 @@ def editar_solicitacao(ator_id: int, os_id: int, versao: int, alteracoes: dict):
                 if antigo != novo:
                     mudancas.append((campo, _como_texto(antigo), _como_texto(novo)))
                     setattr(ordem, campo, novo)
+            # Prompt 38: urgência mudada com a ordem ABERTA recalcula os prazos (a partir
+            # da abertura, com os alvos de agora), com um evento por prazo.
+            if "urgencia" in {m[0] for m in mudancas} and ordem.status == _status.ABERTA:
+                novos_prazos = sla_srv.prazos(s, ordem.filial_id, ordem.urgencia, ordem.aberta_em)
+                for campo, novo in zip(
+                    ("prazo_inicio_em", "prazo_solucao_em"), novos_prazos, strict=True
+                ):
+                    antigo = getattr(ordem, campo)
+                    if antigo != novo:
+                        mudancas.append((campo, _como_texto(antigo), _como_texto(novo)))
+                        setattr(ordem, campo, novo)
             if mudancas:
                 ordem.atualizado_em = agora
             _registrar_mudancas(s, ator, ordem, mudancas, agora)

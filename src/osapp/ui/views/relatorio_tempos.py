@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 import flet as ft
 
 from osapp import formatacao
-from osapp.services import ordens, relatorios, relogio
+from osapp.services import ordens, relatorios, relogio, sla
 from osapp.services.erros import ErroPermissao
 from osapp.ui import historico, rotas, rotulos, textos, theme
 from osapp.ui.components import basicos
@@ -67,6 +67,11 @@ def texto_resumo_mensal(resumo, termo: str, periodo: str) -> str:
 
 
 TEMPOS_POR_ESPECIALIDADE = "Por especialidade"
+TITULO_SLA = "Dentro do SLA"
+AJUDA_SLA = (
+    "Entre as ordens cujo prazo já venceu no fim do período ou que já cumpriram a etapa: "
+    "quantas cumpriram no prazo."
+)
 
 
 def texto_sem_gasto(bloco) -> str:
@@ -328,6 +333,7 @@ class RelatorioTempos(Tela):
                 basicos.subtitulo(textos.TEMPOS_NOTA),
                 self._por_urgencia(b),
                 *([self._por_especialidade(b)] if getattr(b, "por_especialidade", ()) else []),
+                *([self._sla(b)] if hasattr(b, "sla_inicio") else []),
             ]
         else:
             linhas.append(basicos.subtitulo(textos.TEMPOS_VAZIO))
@@ -391,6 +397,41 @@ class RelatorioTempos(Tela):
             for e in r.por_especialidade
         ]
         return self._tabela_tempos(TEMPOS_POR_ESPECIALIDADE, "Especialidade", itens)
+
+    @staticmethod
+    def _sla(b) -> ft.Control:
+        """Prompt 38: % dentro do SLA ('92% (46 de 50)' ou '—'), geral e por urgência."""
+        linhas: list[ft.Control] = [
+            basicos.titulo(TITULO_SLA, theme.FONTE_CORPO + 2),
+            basicos.subtitulo(AJUDA_SLA),
+            ft.Row(
+                [
+                    basicos.rotulo_valor(
+                        "Início no prazo", sla.texto_cumprimento(b.sla_inicio), uma_linha=True
+                    ),
+                    basicos.rotulo_valor(
+                        "Solução no prazo", sla.texto_cumprimento(b.sla_solucao), uma_linha=True
+                    ),
+                ],
+                spacing=theme.ESPACO_G,
+                wrap=True,
+            ),
+        ]
+        for urgencia, inicio, solucao in b.sla_por_urgencia:
+            linhas.append(
+                ft.Row(
+                    [
+                        basicos.selo_nivel(urgencia),
+                        basicos.texto(
+                            f"início {sla.texto_cumprimento(inicio)}  ·  "
+                            f"solução {sla.texto_cumprimento(solucao)}"
+                        ),
+                    ],
+                    wrap=True,
+                    spacing=theme.ESPACO_P,
+                )
+            )
+        return basicos.cartao(basicos.coluna(linhas, espaco=theme.ESPACO_P))
 
     def _tabela_tempos(self, titulo: str, primeira: str, itens) -> ft.Control:
         """Tabela em telas largas; um cartão por linha no celular. ``itens``: (rótulo,

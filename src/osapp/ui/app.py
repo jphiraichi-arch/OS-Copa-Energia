@@ -34,6 +34,7 @@ from osapp.ui.views.perfil import AlterarSenha, Perfil
 from osapp.ui.views.relatorio_tempos import RelatorioTempos
 from osapp.ui.views.relatorios import Relatorios
 from osapp.ui.views.senha import TrocarSenha
+from osapp.ui.views.sla import Sla
 from osapp.ui.views.solicitacao import EditarSolicitacao, NovaSolicitacao
 from osapp.ui.views.usuarios import FormularioUsuario, ListaUsuarios
 
@@ -58,6 +59,7 @@ TELAS = {
     "alterar_senha": AlterarSenha,
     "fila_email": FilaEmails,
     "especialidades": Especialidades,
+    "sla": Sla,
     "lixeira": Lixeira,
     "lixeira_detalhe": LixeiraDetalhe,
     "configuracoes": Configuracoes,
