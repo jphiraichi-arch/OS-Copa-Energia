@@ -11,11 +11,12 @@ import os
 import sys
 
 import flet as ft
+import flet.fastapi as flet_fastapi
 
 from osapp import rede
 from osapp.config import Config, ConfigError, carregar_config
 from osapp.logs import configurar_logging
-from osapp.services import protecao_login
+from osapp.services import fila_email, protecao_login
 from osapp.ui.app import App
 from osapp.ui.marca import PASTA_ASSETS
 
@@ -41,6 +42,20 @@ def _iniciar() -> Config:
     return config
 
 
+def criar_app_asgi():
+    """O app ASGI do Flet com o trabalhador da fila de e-mails (prompt 32).
+
+    Igual ao que ``ft.run(main, export_asgi_app=True)`` monta (o FastAPI do Flet com o
+    app montado em '/'), mais os ganchos on_startup/on_shutdown: o trabalhador sobe uma
+    vez por processo, na partida do servidor — nunca no ``main()``, que roda uma vez por
+    sessão de navegador. Ver docs/ESTADO.md, prompt 32.
+    """
+    trabalhador = fila_email.Trabalhador()
+    asgi = flet_fastapi.FastAPI(on_startup=[trabalhador.iniciar], on_shutdown=[trabalhador.parar])
+    asgi.mount("/", flet_fastapi.app(main, assets_dir=str(PASTA_ASSETS), no_cdn=True))
+    return asgi
+
+
 if __name__ == "__main__":
     _iniciar()
     logger.info("Servidor de desenvolvimento em http://localhost:%d", PORTA_DESENVOLVIMENTO)
@@ -57,6 +72,4 @@ else:
     protecao_login.limpeza_ao_iniciar()
     # O IP do cliente é resolvido aqui (True-Client-Ip, X-Forwarded-For da direita para
     # a esquerda), só para conexões vindas de OS_PROXIES_CONFIAVEIS; ver osapp/rede.py.
-    app = rede.ResolverIpCliente(
-        ft.run(main, export_asgi_app=True, assets_dir=str(PASTA_ASSETS), no_cdn=True)
-    )
+    app = rede.ResolverIpCliente(criar_app_asgi())

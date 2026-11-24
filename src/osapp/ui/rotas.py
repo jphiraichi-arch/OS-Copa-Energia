@@ -17,6 +17,7 @@ RELATORIO_MENSAL = "/relatorios/mensal"
 PERFIL = "/perfil"
 ALTERAR_SENHA = "/perfil/senha"
 LIXEIRA = "/lixeira"
+FILA_EMAIL = "/perfil/fila-email"
 
 # nome da tela -> padrão do caminho. A ordem importa: /os/nova antes de /os/{id}.
 TABELA: dict[str, re.Pattern[str]] = {
@@ -29,6 +30,7 @@ TABELA: dict[str, re.Pattern[str]] = {
     "usuario": re.compile(r"^/usuarios/(?P<usuario_id>[1-9]\d{0,17})$"),
     "perfil": re.compile(r"^/perfil$"),
     "alterar_senha": re.compile(r"^/perfil/senha$"),
+    "fila_email": re.compile(r"^/perfil/fila-email$"),
     "lixeira": re.compile(r"^/lixeira$"),
     "lixeira_detalhe": re.compile(r"^/lixeira/(?P<os_id>[1-9]\d{0,17})$"),
     "relatorios": re.compile(r"^/relatorios$"),
@@ -103,7 +105,7 @@ def rota_anterior(rota: str) -> str | None:
         return HOME
     if nome == "relatorios_mensal":
         return RELATORIOS
-    if nome in ("configuracoes", "alterar_senha", "usuarios", "lixeira"):
+    if nome in ("configuracoes", "alterar_senha", "usuarios", "lixeira", "fila_email"):
         return PERFIL
     if nome == "lixeira_detalhe":
         return LIXEIRA
@@ -126,6 +128,7 @@ def secao_da_rota(rota: str | None) -> str:
         "perfil",
         "configuracoes",
         "alterar_senha",
+        "fila_email",
         "usuarios",
         "usuario_novo",
         "usuario",

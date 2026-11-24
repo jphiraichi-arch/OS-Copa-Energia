@@ -34,7 +34,7 @@ from osapp.repositories import (
     TipoManutencaoRepo,
     UsuarioRepo,
 )
-from osapp.services import custos, relogio
+from osapp.services import custos, email_mensagem, notificacoes, relogio
 from osapp.services import status as _status
 from osapp.services.auth import Ator, carregar_ator
 from osapp.services.erros import (
@@ -754,6 +754,26 @@ def _nova_ordem(s: Session, ator: Ator, filial_id: int, agora: datetime, **campo
     return ordem
 
 
+def _avisar_por_email(s: Session, ator: Ator, ordem: OrdemServico) -> None:
+    """Prompt 32: grava na fila (mesma transação) um e-mail por destinatário. Nada de
+    SMTP aqui; o envio é do trabalhador da fila (services/fila_email.py)."""
+    if ordem.status != _status.STATUS_INICIAL or ordem.origem != ORIGEM_SOLICITACAO:
+        return
+    filial = FilialRepo(s).obter(ordem.filial_id)
+    dados = email_mensagem.DadosSolicitacao(
+        os_id=ordem.id,
+        numero=ordem.numero,
+        filial_codigo=filial.codigo,
+        filial_nome=filial.nome,
+        titulo=ordem.titulo,
+        urgencia=ordem.urgencia,
+        descricao=ordem.descricao or "",
+        solicitante=ator.nome,
+        aberta_em=ordem.aberta_em,
+    )
+    notificacoes.enfileirar_nova_solicitacao(s, dados, ordem.filial_id, ator.usuario_id)
+
+
 def criar_solicitacao(
     ator_id: int, titulo: str, descricao: str, urgencia: str, filial_id: int | None = None
 ):
@@ -777,6 +797,7 @@ def criar_solicitacao(
                 descricao=descricao,
                 urgencia=urgencia,
             )
+            _avisar_por_email(s, ator, ordem)
             logger.info("Solicitação aberta: os_id=%s usuario_id=%s.", ordem.id, ator.usuario_id)
             return _ver(s, ator, ordem)
     except IntegrityError:

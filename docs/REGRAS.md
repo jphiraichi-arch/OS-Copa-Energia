@@ -186,8 +186,38 @@ Toda função de serviço começa por `carregar_ator`; usuário inativo é recus
 
 ## Fora do escopo do MVP (o desenho não pode bloqueá-los)
 
-Status cancelada, triagem, aceite pela operação, KPIs, fotos, notificações, planos preventivos,
-estoque, exportação PDF/Excel.
+Status cancelada, triagem, aceite pela operação, KPIs, fotos, notificações (exceto o e-mail
+de nova solicitação, abaixo), planos preventivos, estoque, exportação PDF/Excel.
+
+## Notificações por e-mail (prompt 32; substitui a regra do prompt 20 'sem e-mail')
+
+- E-mail só para **manutenção** e **administrador**, opcional e com consentimento (LGPD): o
+  endereço é gravado só por ação do próprio usuário, serve só para estes avisos e o próprio
+  usuário o remove ('Remover e-mail'). O papel usuario não tem campo de e-mail (o serviço
+  recusa). O administrador vê o endereço na tela do usuário e pode desligar as notificações
+  dele, mas nunca grava nem confirma endereço de outra pessoa.
+- Confirmação por código de 6 dígitos (`secrets`); só o HMAC (OS_HMAC_SEGREDO) é gravado.
+  Validade de 15 min, 5 erros exigem código novo, um código a cada 60 s e no máximo 5 por
+  hora por usuário. Endereço não confirmado nunca recebe aviso; trocar o endereço apaga a
+  confirmação. Notificações começam desligadas.
+- Único evento: solicitação nova (status Aberta, origem 'solicitacao'). Destinatários:
+  ativos, manutenção ou administrador, endereço confirmado, notificações ligadas, filial
+  da OS acessível (administrador: todas; manutenção: a própria — até o prompt 28) e
+  urgência da OS >= urgência mínima (baixa < media < alta < emergencial). O solicitante
+  não é avisado do próprio pedido.
+- **Caixa de saída transacional**: o serviço só grava linhas em `email_fila`, na mesma
+  transação da OS; nada fala com o SMTP durante um pedido. Um trabalhador por processo
+  (iniciado no on_startup do app ASGI, nunca no `main()` do Flet) envia, com reserva
+  atômica (PostgreSQL: FOR UPDATE SKIP LOCKED), concessão de 5 min, novas tentativas
+  exponenciais (1, 2, 4... até 60 min) e 'falhou' depois de OS_EMAIL_MAX_TENTATIVAS.
+  Entrega pelo menos uma vez; Message-ID estável pelo id da linha.
+- Mensagem: só texto puro UTF-8 (`EmailMessage`). Texto de usuário só no Assunto (limpo de
+  CR, LF e controles, 150 caracteres) e no corpo; nunca em outro cabeçalho. Nunca custos,
+  previsto, realizado, prioridade, executor nem histórico. Logs com o id da linha e o
+  endereço mascarado (j***@dominio), nunca o endereço inteiro nem o corpo.
+- SMTP só por variáveis de ambiente (OS_SMTP_*); sem elas os avisos ficam pendentes.
+  Retenção: `limpar-fila-email` (enviados/cancelados 30 dias, falhos 90). Nada de HTML,
+  outros eventos ou outros canais. Testes nunca usam SMTP real.
 
 ## Busca e cadastro de equipamento (prompt 21)
 

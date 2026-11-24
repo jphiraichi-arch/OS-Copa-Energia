@@ -5,6 +5,7 @@ from osapp.repositories.cadastros_repo import (
     TipoManutencaoRepo,
 )
 from osapp.repositories.filial_repo import FilialRepo
+from osapp.repositories.notificacao_repo import EmailFilaRepo, NotificacaoRepo
 from osapp.repositories.ordem_servico_repo import OrdemServicoRepo
 from osapp.repositories.os_evento_repo import OsEventoRepo
 from osapp.repositories.os_sequencia_repo import OsSequenciaRepo
@@ -13,7 +14,9 @@ from osapp.repositories.usuario_repo import UsuarioRepo
 
 __all__ = [
     "CategoriaCustoRepo",
+    "EmailFilaRepo",
     "FilialRepo",
+    "NotificacaoRepo",
     "OrdemServicoRepo",
     "OsEventoRepo",
     "OsSequenciaRepo",

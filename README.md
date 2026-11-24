@@ -42,6 +42,9 @@ cp .env.example .env      # ajuste os valores; o .env nunca vai para o git
 | `OS_LOG_LEVEL` | não | `INFO` | DEBUG, INFO, WARNING, ERROR ou CRITICAL. |
 | `OS_SEED_SENHA` | só no seed | — | Senha dos usuários fictícios (mínimo 8 caracteres). |
 | `OS_TEST_DATABASE_URL` | não | — | Banco alternativo para os testes. |
+| `OS_SMTP_HOST`, `OS_SMTP_PORTA`, `OS_SMTP_TLS`, `OS_SMTP_USUARIO`, `OS_SMTP_SENHA`, `OS_SMTP_REMETENTE` | só para e-mail | — | SMTP dos avisos de nova solicitação (ver abaixo e docs/GO_LIVE.md). |
+| `OS_BASE_URL` | só para e-mail | — | Endereço do app usado no link do e-mail. |
+| `OS_EMAIL_MAX_TENTATIVAS` | não | `6` | Tentativas de envio antes de 'falhou'. |
 
 Se uma variável obrigatória faltar ou um valor for inválido, o app encerra na inicialização
 com uma mensagem clara. Um arquivo `.env` local é lido em desenvolvimento.
@@ -115,6 +118,34 @@ publicar sem custo (Render + Neon) está em [docs/NUVEM.md](docs/NUVEM.md). Para
 PostgreSQL fora do contêiner: `pip install -e '.[postgres]'`; URLs `postgres://` e
 `postgresql://` são aceitas e passam a usar o driver psycopg.
 
+## E-mail: teste manual com um coletor SMTP local
+
+Nunca use uma conta real nem pessoal para testar. Suba um coletor que só mostra as
+mensagens, por exemplo [Mailpit](https://mailpit.axllent.org/) (interface em
+http://localhost:8025) ou o aiosmtpd (instalado à parte, fora do projeto):
+
+```bash
+python -m pip install aiosmtpd            # num ambiente separado, se preferir
+python -m aiosmtpd -n -l localhost:1025   # imprime cada mensagem no terminal
+```
+
+No `.env` de desenvolvimento:
+
+```
+OS_SMTP_HOST=localhost
+OS_SMTP_PORTA=1025
+OS_SMTP_TLS=nenhum            # aceito só com host localhost
+OS_SMTP_REMETENTE=sistema-os@exemplo.com.br
+OS_BASE_URL=http://localhost:8550
+```
+
+O trabalhador da fila sobe com o servidor ASGI (`uvicorn osapp.main:app --port 8550`); o
+servidor de desenvolvimento (`python -m osapp.main`) não o inicia. Com ele, rode uma rodada
+de envio quando quiser: `python -m osapp.cli enviar-fila-email`. Depois: entre como
+manutenção ou administrador, Perfil > 'Notificações por e-mail', 'Enviar código', copie o
+código do coletor, 'Confirmar', ligue 'Receber notificações' e abra uma solicitação com
+outro usuário da mesma filial.
+
 ## CLI de administração
 
 Senhas são sempre pedidas no terminal (nunca passadas como argumento).
@@ -127,6 +158,8 @@ python -m osapp.cli criar-usuario --nome 'Bia Modelo' --login bia.modelo --filia
 python -m osapp.cli definir-perfil --login bia.modelo --perfil gerente   # usuario|gerente|administrador
 python -m osapp.cli redefinir-senha --login ana.modelo  # também remove o bloqueio
 python -m osapp.cli desativar-usuario --login ana.modelo
+python -m osapp.cli limpar-fila-email                   # retenção da fila de e-mails (diária)
+python -m osapp.cli enviar-fila-email                   # uma rodada de envio (testes locais)
 ```
 
 ## Testes e qualidade

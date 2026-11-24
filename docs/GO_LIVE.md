@@ -75,8 +75,39 @@ Se o IP do cliente não puder ser determinado, o app usa um limite comum chamado
 | `OS_SEED_SENHA` | só na primeira subida | Senha inicial do `admin` criado pelo seed. Remover depois. |
 | `OS_SEED_EXEMPLOS` | **não usar em produção** | Cria usuários fictícios de exemplo. |
 | `PORT` | não | Porta do servidor no contêiner (padrão 8000). |
+| `OS_SMTP_HOST` | só para e-mail | Servidor SMTP da conta remetente (prompt 32). Sem as variáveis de SMTP o app funciona e os avisos ficam pendentes na fila (um aviso no log por hora). |
+| `OS_SMTP_PORTA` | só para e-mail | 587 (STARTTLS) ou 465 (SSL). |
+| `OS_SMTP_TLS` | só para e-mail | `starttls` ou `ssl`. (`nenhum` só é aceito com host `localhost`, para o coletor local de testes.) |
+| `OS_SMTP_USUARIO` | só para e-mail | Usuário da conta remetente (vai junto com a senha). |
+| `OS_SMTP_SENHA` | só para e-mail | Senha ou senha de aplicativo da conta remetente. **Segredo.** Nunca aparece em log. |
+| `OS_SMTP_REMETENTE` | só para e-mail | Endereço do remetente (From), por exemplo uma caixa de serviço da empresa. |
+| `OS_BASE_URL` | só para e-mail | Endereço público do app, para o link 'Abrir a OS' (ex.: `https://os.empresa.com.br`). Sem ela o e-mail diz só o número da OS. |
+| `OS_EMAIL_MAX_TENTATIVAS` | não (padrão 6) | Tentativas de envio antes de a mensagem ficar como 'falhou'. |
 
 - [ ] Segredos guardados no cofre/gerenciador de segredos da plataforma, nunca no git.
+
+### E-mail (prompt 32): o que pedir à TI
+
+- [ ] **Conta remetente** da empresa, só para o sistema (uma caixa de serviço, por exemplo
+      `sistema-os@<domínio da empresa>`), com SMTP autenticado (porta 587 com STARTTLS ou 465
+      com SSL). Nunca uma conta pessoal (Gmail ou outra).
+- [ ] **SPF** do domínio do remetente incluindo o servidor que envia (o do provedor de
+      e-mail da empresa).
+- [ ] **DKIM** assinado pelo provedor para o domínio do remetente.
+- [ ] **DMARC** publicado para o domínio (no mínimo `p=none` com relatórios no início;
+      `quarantine`/`reject` depois de conferir que SPF e DKIM passam).
+- [ ] **A hospedagem permite SMTP de saída.** No Render, serviços web do plano **gratuito**
+      não podem abrir conexões de saída nas portas 25, 465 e 587 (documentação
+      https://render.com/docs/free, em vigor desde 26/09/2025); a porta 25 é bloqueada em todos
+      os planos. Ou seja: no `render.yaml` atual (`plan: free`) nenhum e-mail sai; é preciso um
+      plano pago, ou outra hospedagem que permita 587/465. Conferir na hospedagem definitiva
+      antes de configurar as variáveis.
+- [ ] Teste: cadastrar e confirmar um e-mail no Perfil, abrir uma solicitação com outro
+      usuário e ver a mensagem chegar; em Perfil > 'Fila de e-mails' (administrador) as
+      contagens e os erros.
+- [ ] **Retenção** (dados pessoais e texto das OS): agendar uma vez por dia
+      `python -m osapp.cli limpar-fila-email` (apaga enviados e cancelados com mais de 30 dias
+      e falhos com mais de 90).
 
 ## 4. Banco de dados
 
@@ -146,7 +177,11 @@ Se o IP do cliente não puder ser determinado, o app usa um limite comum chamado
 | Nome de quem criou, executou, concluiu ou alterou cada OS | tabelas `ordens_servico` e `os_eventos` (pelo id do usuário) | Histórico/auditoria das ordens. |
 | HMAC do login digitado e HMAC do IP, com contagem de falhas | tabela `tentativas_login`: IP até 15 min, login até 30 dias sem atividade (apagados ao tentar de novo ou ao iniciar o app) | Proteção contra tentativa de senha. Não é possível obter o IP ou o login a partir do HMAC sem o segredo. |
 
-Não há e-mail, telefone, CPF nem localização.
+| E-mail (opcional, só manutenção e administrador), data da confirmação, preferências, HMAC do código de confirmação | tabela `usuario_notificacao` (prompt 32) | Avisar de novas solicitações, só com o consentimento do próprio usuário (ele cadastra, confirma, liga e remove). |
+| Endereço copiado, assunto e texto da mensagem (título, descrição, solicitante da OS) | tabela `email_fila` até o envio; apagada pela retenção (`limpar-fila-email`: 30 dias enviadas/canceladas, 90 falhas) | Entrega dos avisos. O texto do código de confirmação é apagado assim que enviado. |
+
+Não há telefone, CPF nem localização. O e-mail é opcional e só existe para quem o cadastra
+no Perfil; o usuário o remove em 'Remover e-mail' (os envios pendentes dele são cancelados).
 
 **Quem vê**
 
@@ -162,7 +197,10 @@ Não há e-mail, telefone, CPF nem localização.
    decidir anonimizar, um DBA, **depois de um backup**, troca nome e login no banco:
    `UPDATE usuarios SET nome = 'Usuário removido', login = 'removido-' || id WHERE login = '<login>';`
    (o sistema ainda não tem comando para isso; ver pendências).
-3. As entradas em `tentativas_login` expiram em até 30 dias e são apagadas na próxima
+3. E-mail: o próprio usuário remove em Perfil > 'Remover e-mail'. Pela TI, depois de um
+   backup: `DELETE FROM usuario_notificacao WHERE usuario_id = <id>;` e
+   `DELETE FROM email_fila WHERE usuario_id = <id>;`.
+4. As entradas em `tentativas_login` expiram em até 30 dias e são apagadas na próxima
    tentativa ou no próximo início do app; para apagar antes, `redefinir-senha` do login
    remove a entrada do login.
 
@@ -178,3 +216,4 @@ Não há e-mail, telefone, CPF nem localização.
 - Confirmar no Render (com `OS_DEPURAR_CABECALHOS_IP=1` por alguns minutos) de onde vem a
   conexão e quais cabeçalhos chegam, e se o Render sobrescreve `True-Client-Ip`.
 - Não há comando de anonimização de usuário (item 9).
+- E-mail: no plano gratuito do Render o SMTP de saída é bloqueado (item 3, E-mail).

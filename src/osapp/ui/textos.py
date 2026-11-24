@@ -30,6 +30,7 @@ MENU_SAIR = "Sair"
 
 # --- Lixeira (prompt 24) -------------------------------------------------------------------
 MENU_LIXEIRA = "Lixeira"
+MENU_FILA_EMAIL = "Fila de e-mails"
 LIXEIRA_TITULO = "Lixeira"
 LIXEIRA_AVISO_EXCLUIR = (
     "A Ordem de Serviço será escondida de todos (inclusive dos administradores) até ser "

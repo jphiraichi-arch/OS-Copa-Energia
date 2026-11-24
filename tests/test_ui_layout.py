@@ -82,6 +82,7 @@ def test_itens_do_perfil_por_papel():
         "alterar_senha",
         "usuarios",
         "lixeira",
+        "fila_email",  # prompt 32
         "nova_solicitacao",
         "sair",
     )

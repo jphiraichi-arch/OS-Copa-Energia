@@ -9,13 +9,15 @@ from __future__ import annotations
 import flet as ft
 
 from osapp import formatacao
-from osapp.services import ordens, usuarios
+from osapp.services import notificacoes, ordens, usuarios
 from osapp.services.auth import PAPEIS
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao
 from osapp.ui import rotas, rotulos, theme
 from osapp.ui.components import basicos
 from osapp.ui.components.formulario_os import lista_suspensa
 from osapp.ui.views.base import Tela
+from osapp.ui.views.notificacoes_email import SEM_EMAIL, TITULO_SECAO
+from osapp.ui.views.notificacoes_email import texto_status as texto_status_email
 
 TODOS = "todos"
 MSG_CONFLITO = "Este usuário foi alterado por outra pessoa. Abra de novo e tente outra vez."
@@ -281,6 +283,7 @@ class FormularioUsuario(Tela):
         ]
         if u is not None:
             cartoes.append(self._acoes(u))
+            cartoes.append(await self._notificacoes())
             cartoes.append(await self._historico())
         self.conteudo.controls = cartoes
         self._inicial = self._digitado()
@@ -314,6 +317,53 @@ class FormularioUsuario(Tela):
         if u.deve_trocar_senha:
             linhas.append(basicos.subtitulo("A senha atual é temporária."))
         return basicos.cartao(basicos.coluna([basicos.titulo("Acesso"), *linhas, *botoes]))
+
+    async def _notificacoes(self) -> ft.Control:
+        """Prompt 32: o administrador vê o endereço e pode desligar as notificações;
+        nunca grava nem confirma o endereço de outra pessoa."""
+        self.cartao_email = ft.Container()
+        await self._mostrar_notificacoes()
+        return self.cartao_email
+
+    async def _mostrar_notificacoes(self, n=None) -> None:
+        if n is None:
+            resultado = await self.app.chamar(
+                notificacoes.obter_de_usuario, self.app.sessao.ator_id, self.usuario_id
+            )
+            if not resultado.ok:
+                return
+            n = resultado.valor
+        if not n.disponivel and not n.email:
+            self.cartao_email.content = None
+            _atualizar(self.cartao_email)
+            return
+        linhas: list[ft.Control] = [
+            basicos.titulo(TITULO_SECAO),
+            basicos.rotulo_valor("E-mail", n.email or SEM_EMAIL),
+            basicos.rotulo_valor(
+                "Situação", texto_status_email(n.confirmado_em, n.email), uma_linha=True
+            ),
+            basicos.rotulo_valor(
+                "Notificações", "Ativas" if n.notificacoes_ativas else "Desligadas"
+            ),
+        ]
+        if n.notificacoes_ativas:
+
+            async def desligar(_e=None) -> None:
+                r = await self.app.chamar(
+                    notificacoes.desativar_de_usuario, self.app.sessao.ator_id, self.usuario_id
+                )
+                if r.ok:
+                    self.app.avisar("Notificações desligadas.")
+                    await self._mostrar_notificacoes(r.valor)
+
+            linhas.append(
+                basicos.botao_secundario(
+                    "Desligar notificações", ft.Icons.NOTIFICATIONS_OFF_OUTLINED, desligar
+                )
+            )
+        self.cartao_email.content = basicos.cartao(basicos.coluna(linhas))
+        _atualizar(self.cartao_email)
 
     async def _historico(self) -> ft.Control:
         resultado = await self.app.chamar(

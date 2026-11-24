@@ -11,9 +11,15 @@ def exigir_admin(ator: Ator) -> None:
         raise ErroPermissao()
 
 
+def pode_acessar_filial_do_papel(papel: str, filial_do_usuario: int, filial_id: int) -> bool:
+    """Administrador acessa qualquer filial; os demais, apenas a própria. (Usada também
+    sem um Ator carregado, por exemplo para escolher os destinatários de um e-mail.)"""
+    return papel == "admin" or filial_do_usuario == filial_id
+
+
 def pode_acessar_filial(ator: Ator, filial_id: int) -> bool:
     """Administrador acessa qualquer filial; os demais, apenas a própria."""
-    return ator.e_admin or ator.filial_id == filial_id
+    return pode_acessar_filial_do_papel(ator.papel, ator.filial_id, filial_id)
 
 
 def pode_usar_lixeira(ator: Ator) -> bool:

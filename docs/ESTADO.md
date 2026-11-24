@@ -1199,3 +1199,50 @@ estão agora, não refeitas pelo histórico).
   Serviço) a opção não aparece: `criar_os` não recebe a marca; marca-se depois.
 - CLI: `listar-sem-itens` (só leitura) e `marcar-sem-gasto NUMERO previsto|realizado
   --responsavel LOGIN` (administrador; exige a fase sem itens).
+
+
+## Prompt 32 — notificações por e-mail (24/11/2026)
+
+- Decisão da empresa de 24/11/2026: manutenção e administrador podem receber e-mail
+  quando uma solicitação é aberta (substitui a regra do prompt 20 'sem e-mail'; nos
+  documentos só havia o registro em GO_LIVE.md, item 9, 'Não há e-mail', agora corrigido).
+- Migração `0013`: tabelas `usuario_notificacao` (1:1 com `usuarios`, só para quem
+  cadastrar endereço: email, email_confirmado_em, notificacoes_ativas, urgencia_minima,
+  codigo_hash, codigo_expira_em, codigo_tentativas, codigo_enviado_em e, para o limite de
+  5 por hora, codigo_janela_inicio e codigo_envios_janela; CHECK: ligada exige endereço
+  confirmado) e `email_fila` (caixa de saída; além das colunas pedidas, `usuario_id` para
+  cancelar o pendente de quem remove o e-mail). Downgrade apaga as duas. Testada para cima
+  e para baixo com dados, no SQLite e no PostgreSQL.
+- Serviços: `services/notificacoes.py` (perfil: obter_minhas, enviar_codigo,
+  confirmar_codigo, definir_notificacoes, definir_urgencia_minima, remover_email;
+  administrador: obter_de_usuario, desativar_de_usuario; gatilho
+  enfileirar_nova_solicitacao), `services/email_mensagem.py` (validação do endereço,
+  assunto, corpo, EmailMessage, máscara; funções puras) e `services/fila_email.py`
+  (configuração SMTP, reserva, envio, novas tentativas, trabalhador, resumo e reenvio
+  para o administrador, retenção). `ordens.criar_solicitacao` grava a fila na mesma
+  transação. `permissoes.pode_acessar_filial_do_papel` (a mesma regra de filial, sem Ator).
+- Trabalhador: `osapp/main.py` monta o app ASGI como o `ft.run(..., export_asgi_app=True)`
+  monta (FastAPI do Flet, `flet.fastapi.FastAPI`, com o app em '/'), mais
+  `on_startup=[trabalhador.iniciar]` e `on_shutdown=[trabalhador.parar]`: uma vez por
+  processo. O `docker/iniciar.sh` sobe um processo uvicorn (as sessões ficam na memória),
+  logo um trabalhador. O servidor de desenvolvimento (`python -m osapp.main`) não sobe o
+  trabalhador; para testar use `uvicorn osapp.main:app` ou `cli enviar-fila-email`.
+- Reserva: PostgreSQL `SELECT ... FOR UPDATE SKIP LOCKED` + 'enviando' com concessão de
+  5 min; SQLite: a mesma consulta sem FOR UPDATE (o SQLAlchemy não o gera no SQLite; um
+  processo só em desenvolvimento). Concessão vencida volta a 'pendente'.
+- O texto do e-mail do código fica na fila só até o envio (depois o corpo é apagado; ao
+  pedir outro código ou confirmar, o pendente é cancelado e apagado).
+- Telas: seção 'Notificações por e-mail' no Perfil (manutenção e administrador): e-mail,
+  'Enviar código', código e 'Confirmar' (enquanto houver código válido), situação
+  ('Confirmado em dd/mm/aaaa' / 'Não confirmado'), interruptor 'Receber notificações'
+  (desabilitado sem confirmação), 'Urgência mínima' em chips (Todas | Alta e acima |
+  Somente emergencial) e 'Remover e-mail'. Administrador: Perfil > 'Fila de e-mails'
+  (`/perfil/fila-email`: contagem por status, últimos erros sem corpo e com endereço
+  mascarado, 'Reenviar' para 'falhou') e, na tela do usuário, o cartão 'Notificações por
+  e-mail' com 'Desligar notificações'.
+- CLI: `limpar-fila-email` (retenção) e `enviar-fila-email` (uma rodada; testes locais).
+- Hospedagem: o plano gratuito do Render bloqueia saída nas portas 25, 465 e 587 (ver
+  GO_LIVE.md); com o `render.yaml` atual nenhum e-mail sai, e as linhas ficam pendentes.
+- Testes: `tests/test_notificacoes_email.py` (destinatários, código, limites, cabeçalhos,
+  SMTP fora do ar, corpo sem custos, OS excluída, permissões, retenção, migração, dois
+  trabalhadores no PostgreSQL).

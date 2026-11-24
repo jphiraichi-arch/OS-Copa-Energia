@@ -11,7 +11,7 @@ import sys
 
 from osapp.config import ConfigError
 from osapp.logs import configurar_logging
-from osapp.services import administracao, ordens
+from osapp.services import administracao, fila_email, ordens
 from osapp.services.erros import (
     ErroConflito,
     ErroDominio,
@@ -30,6 +30,24 @@ def _ler_senha() -> str:
     if getpass.getpass("Repita a senha: ") != senha:
         raise ErroValidacao("senha", "As senhas não conferem.")
     return senha
+
+
+def _limpar_fila_email(_args) -> str:
+    enviados, falhos = fila_email.limpar_fila()
+    return (
+        f"Fila de e-mails: {enviados} enviada(s)/cancelada(s) com mais de 30 dias e "
+        f"{falhos} falha(s) com mais de 90 dias apagadas."
+    )
+
+
+def _enviar_fila_email(_args) -> str:
+    r = fila_email.processar_lote()
+    if r.sem_config:
+        return "E-mail não configurado (OS_SMTP_*): nada enviado."
+    return (
+        f"Rodada da fila: {r.enviados} enviado(s), {r.falhas} falha(s), "
+        f"{r.cancelados} cancelado(s)."
+    )
 
 
 def _criar_filial(args) -> str:
@@ -265,6 +283,18 @@ def criar_parser() -> argparse.ArgumentParser:
         help="Apaga contadores de falha de login expirados (o app também limpa sozinho)",
     )
     p.set_defaults(func=_limpar_tentativas)
+
+    p = sub.add_parser(
+        "limpar-fila-email",
+        help="Retenção: apaga e-mails enviados/cancelados (+30 dias) e falhos (+90 dias)",
+    )
+    p.set_defaults(func=_limpar_fila_email)
+
+    p = sub.add_parser(
+        "enviar-fila-email",
+        help="Uma rodada do envio da fila (testes locais com um coletor SMTP)",
+    )
+    p.set_defaults(func=_enviar_fila_email)
 
     p = sub.add_parser("redefinir-senha", help="Redefine a senha e zera o atraso do login")
     p.add_argument("--login")
