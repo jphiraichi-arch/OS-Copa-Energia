@@ -19,7 +19,7 @@ from osapp.services import administracao, custos, lixeira, ordens, relatorios
 from osapp.services.auth import carregar_ator
 from osapp.services.erros import ErroNaoEncontrado, ErroPermissao, ErroValidacao
 from tests.conftest import RAIZ, config_alembic
-from tests.fabricas import categoria_id, tipo_id
+from tests.fabricas import categoria_id, especialidade_id, tipo_id
 from tests.test_relatorio_tempos import BASE, DIA, SENHA, H, Relogio
 
 M = timedelta(minutes=1)
@@ -51,7 +51,11 @@ def solicitacao(p, tempo, minuto, titulo, item, urgencia="alta", prioridade=None
     tempo.agora = BASE + minuto * M
     v = ordens.criar_solicitacao(p["sol"], titulo, "Pedido do setor.", urgencia)
     d = ordens.obter_os(p["man"], v.id)
-    campos = {"tempo_previsto_minutos": 60, "tipo_id": tipo_id()}
+    campos = {
+        "tempo_previsto_minutos": 60,
+        "tipo_id": tipo_id(),
+        "especialidade_id": especialidade_id(),
+    }
     if prioridade:
         campos["prioridade"] = prioridade
     d = ordens.editar_os(p["man"], d.id, d.versao, campos)
@@ -371,6 +375,7 @@ def test_ordem_da_manutencao_ainda_exige_prioridade(p):
         [custos.ItemEntrada(categoria_id(), "Peça", Decimal("1"), 1)],
         60,
         tipo_id=tipo_id(),
+        especialidade_id=especialidade_id(),
     )
     assert d.pendencias_para_iniciar == (ordens.PENDENCIA_PRIORIDADE,)
     with pytest.raises(ErroValidacao):

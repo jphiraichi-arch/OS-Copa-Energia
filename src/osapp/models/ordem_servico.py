@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, Session, mapped_column, relationship, with_lo
 from osapp.busca import normalizar_busca
 from osapp.db import Base
 from osapp.models.custos import OsItemCusto
+from osapp.models.especialidade import Especialidade
 from osapp.models.filial import Filial
 from osapp.models.tipo_manutencao import TipoManutencao
 from osapp.models.tipos import DataHoraUTC
@@ -78,6 +79,8 @@ class OrdemServico(Base):
     urgencia: Mapped[str | None] = mapped_column(String(20))  # do solicitante
     prioridade: Mapped[str | None] = mapped_column(String(20))  # da manutenção
     tipo_id: Mapped[int | None] = mapped_column(ForeignKey("tipos_manutencao.id"))
+    # Prompt 37: quem atende (vazia nas ordens anteriores).
+    especialidade_id: Mapped[int | None] = mapped_column(ForeignKey("especialidades.id"))
     nota_conclusao: Mapped[str | None] = mapped_column(Text)
     aberta_em: Mapped[datetime] = mapped_column(
         DataHoraUTC(), default=_agora_utc, server_default=func.now()
@@ -105,6 +108,7 @@ class OrdemServico(Base):
     executor: Mapped[Usuario | None] = relationship(foreign_keys=[executor_id])
     concluido_por: Mapped[Usuario | None] = relationship(foreign_keys=[concluido_por_id])
     tipo: Mapped[TipoManutencao | None] = relationship()
+    especialidade: Mapped[Especialidade | None] = relationship()
     cancelada_por: Mapped[Usuario | None] = relationship(foreign_keys=[cancelada_por_id])
     excluida_por: Mapped[Usuario | None] = relationship(foreign_keys=[excluida_por_id])
     # Itens de custo (os totais são sempre calculados a partir deles).

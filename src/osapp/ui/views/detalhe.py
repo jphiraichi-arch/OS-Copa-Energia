@@ -191,6 +191,7 @@ class Detalhe(Tela):
             else "Não definido"
         )
         linhas = [
+            basicos.rotulo_valor("Especialidade", d.especialidade_nome or "Não definida"),
             basicos.rotulo_valor("Tipo de manutenção", d.tipo_nome or "Não definido"),
             basicos.rotulo_valor(
                 "Prioridade (definida pela manutenção)", rotulos.nivel(d.prioridade)

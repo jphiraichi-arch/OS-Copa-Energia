@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 
 from osapp.config import carregar_config
 from osapp.db import sessao
-from osapp.repositories import FilialRepo, OrdemServicoRepo
+from osapp.repositories import EspecialidadeRepo, FilialRepo, OrdemServicoRepo
 from osapp.services import custos, linha_do_tempo, ordens, relogio
 from osapp.services import status as _status
 from osapp.services.auth import Ator, carregar_ator
@@ -284,6 +284,18 @@ class TemposPorUrgencia:
     urgencia: str
     resposta: Medida
     solucao: Medida
+
+
+@dataclass(frozen=True)
+class TemposPorEspecialidade:
+    """Prompt 37: as mesmas medidas da quebra por urgência, por especialidade."""
+
+    especialidade: str  # o nome, ou NAO_INFORMADA
+    resposta: Medida
+    solucao: Medida
+
+
+NAO_INFORMADA = "Não informada"
 
 
 @dataclass(frozen=True)
@@ -586,6 +598,8 @@ class BlocoMensal:
     # Sem gasto, e das concluídas no fim do período, quantas têm o realizado Sem gasto.
     sem_gasto_previstas: int = 0
     sem_gasto_realizadas: int = 0
+    # Prompt 37: uma linha por especialidade (na ordem da lista) e 'Não informada'.
+    por_especialidade: tuple[TemposPorEspecialidade, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -617,7 +631,37 @@ def _no_periodo(instante: datetime | None, inicio: datetime | None, fim: datetim
     return instante is not None and (inicio is None or instante >= inicio) and instante < fim
 
 
-def _bloco(repo, populacao, situacoes, ids_busca, termo, status, inicio, fim, sem_gasto=None):
+def medidas_por_especialidade(linhas, especialidade_de, nomes) -> tuple:
+    """Resposta e solução por especialidade (prompt 37). ``especialidade_de``: os_id ->
+    especialidade_id ou None; ``nomes``: [(id, nome)] na ordem da lista. Função pura."""
+    grupos = {i: ([], []) for i, _ in nomes}
+    grupos[None] = ([], [])
+    for os_id, _urg, aberta, inicio_exec, concluida, *_resto in linhas:
+        chave = especialidade_de.get(os_id)
+        resp, sol = grupos.setdefault(chave, ([], []))
+        if inicio_exec is not None:
+            resp.append(_segundos(aberta, inicio_exec))
+        if concluida is not None:
+            sol.append(_segundos(aberta, concluida))
+    rotulos = [*nomes, (None, NAO_INFORMADA)]
+    return tuple(
+        TemposPorEspecialidade(nome, medir(grupos[i][0]), medir(grupos[i][1]))
+        for i, nome in rotulos
+    )
+
+
+def _bloco(
+    repo,
+    populacao,
+    situacoes,
+    ids_busca,
+    termo,
+    status,
+    inicio,
+    fim,
+    sem_gasto=None,
+    especialidades=None,
+):
     """Um bloco (mês ou acumulado). ``populacao``: linhas de solicitacoes_ate sem a busca;
     ``ids_busca``: ids que correspondem ao termo (None sem termo)."""
 
@@ -683,6 +727,7 @@ def _bloco(repo, populacao, situacoes, ids_busca, termo, status, inicio, fim, se
         por_urgencia=por_urgencia,
         custos=resultado.custos,
         busca=busca,
+        por_especialidade=medidas_por_especialidade(medidas, *(especialidades or ({}, []))),
     )
     return bloco, medidas
 
@@ -736,6 +781,10 @@ def relatorio_mensal(
             marcos[os_id].append(linha_do_tempo.Marco(data_hora, tipo, valor_novo))
         situacoes = {p[0]: linha_do_tempo.situacao_em(marcos[p[0]], fim) for p in populacao}
         sem_gasto = repo.sem_gasto(p[0] for p in populacao)
+        especialidades = (
+            repo.especialidades(p[0] for p in populacao),
+            [(e.id, e.nome) for e in EspecialidadeRepo(s).listar(so_ativas=False)],
+        )
         bloco_mes, linhas_do_mes = _bloco(
             repo,
             populacao,
@@ -746,6 +795,7 @@ def relatorio_mensal(
             inicio,
             fim,
             sem_gasto,
+            especialidades,
         )
         acumulado, _ = _bloco(
             repo,
@@ -757,6 +807,7 @@ def relatorio_mensal(
             None,
             fim,
             sem_gasto,
+            especialidades,
         )
         lista = _resultado_busca(
             repo, termo_limpo or "", escopo, linhas_do_mes, len(linhas_do_mes), pagina

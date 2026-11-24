@@ -21,7 +21,7 @@ from osapp.services import status as st
 from osapp.services.erros import ErroNaoEncontrado, ErroPermissao, ErroValidacao
 from osapp.ui import navegacao, rotas, secoes
 from tests.conftest import RAIZ
-from tests.fabricas import categoria_id, novo_usuario, tipo_id
+from tests.fabricas import categoria_id, especialidade_id, novo_usuario, tipo_id
 
 T0 = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
 UI = RAIZ / "src" / "osapp" / "ui"
@@ -54,7 +54,12 @@ def _solicitacao_completa(c):
         c["marina"],
         d.id,
         d.versao,
-        {"tempo_previsto_minutos": 60, "tipo_id": tipo_id(), "prioridade": "media"},
+        {
+            "tempo_previsto_minutos": 60,
+            "tipo_id": tipo_id(),
+            "especialidade_id": especialidade_id(),
+            "prioridade": "media",
+        },
     )
     return custos.adicionar_item(
         c["marina"], d.id, d.versao, "PREVISTO", categoria_id(), "Peça", Decimal("1"), 500
@@ -172,6 +177,7 @@ def test_regra_10_previsto_completo_e_a_unica_verificacao(c):
         ordens.PENDENCIA_TEMPO,
         ordens.PENDENCIA_VALOR,
         ordens.PENDENCIA_TIPO,
+        ordens.PENDENCIA_ESPECIALIDADE,  # prompt 37
         ordens.PENDENCIA_PRIORIDADE,
     }
     assert not re.search("equip" + "ament", " ".join(d.pendencias_para_iniciar), re.I)

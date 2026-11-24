@@ -21,7 +21,7 @@ from osapp.services.erros import (
     ErroValidacao,
 )
 from tests.conftest import config_alembic
-from tests.fabricas import NOTA, categoria_id, itens, tipo_id
+from tests.fabricas import NOTA, categoria_id, especialidade_id, itens, tipo_id
 
 SENHA = "senha-ficticia-123"
 T0 = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
@@ -73,6 +73,7 @@ def completar(p, os_id):
         {
             "tempo_previsto_minutos": 60,
             "tipo_id": tipo_id(),
+            "especialidade_id": especialidade_id(),
             "prioridade": "media",
         },
     )
@@ -380,7 +381,7 @@ def test_criar_os_completa_so_manutencao_e_admin(pessoas):
         None,
         (),
     )
-    assert d.acoes.pode_iniciar is False and len(d.pendencias_para_iniciar) == 4
+    assert d.acoes.pode_iniciar is False and len(d.pendencias_para_iniciar) == 5  # + especialidade
 
 
 # --- Previsto completo, conclusão, cancelamento, desfazer ---------------------------
@@ -393,6 +394,7 @@ def test_criar_os_completa_so_manutencao_e_admin(pessoas):
         ("itens", ordens.PENDENCIA_VALOR),
         ("tipo", ordens.PENDENCIA_TIPO),
         ("prioridade", ordens.PENDENCIA_PRIORIDADE),
+        ("especialidade", ordens.PENDENCIA_ESPECIALIDADE),  # prompt 37
     ],
 )
 def test_iniciar_exige_o_previsto_completo(pessoas, falta, pendencia):
@@ -400,6 +402,7 @@ def test_iniciar_exige_o_previsto_completo(pessoas, falta, pendencia):
         "tempo_previsto_minutos": 60,
         "itens_previstos": itens(1000),
         "tipo_id": tipo_id(),
+        "especialidade_id": especialidade_id(),
         "prioridade": "media",
     }
     chave = {
@@ -407,6 +410,7 @@ def test_iniciar_exige_o_previsto_completo(pessoas, falta, pendencia):
         "itens": "itens_previstos",
         "tipo": "tipo_id",
         "prioridade": "prioridade",
+        "especialidade": "especialidade_id",
     }[falta]
     dados.pop(chave)
     d = ordens.criar_os(pessoas["man"], "Título ok", "Descrição.", **dados)

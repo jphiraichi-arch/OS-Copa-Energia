@@ -9,7 +9,7 @@ from __future__ import annotations
 import flet as ft
 
 from osapp import formatacao
-from osapp.services import ordens, status
+from osapp.services import especialidades, ordens, status
 from osapp.ui import rotas, rotulos, textos, theme
 from osapp.ui.components import basicos
 from osapp.ui.components.chips import GrupoChips
@@ -62,6 +62,15 @@ class Home(Tela):
             opcional=False,
             ao_mudar=lambda: app.page.run_task(self._escolher_status),
         )
+        # Prompt 37: filtro por especialidade (manutenção e administrador).
+        self.filtro_especialidade: int | None = None
+        self.especialidades = GrupoChips(
+            [],
+            None,
+            opcional=True,
+            ao_mudar=lambda: app.page.run_task(self._escolher_especialidade),
+        )
+        self.especialidades.controle.visible = False
         self.filial = ft.Dropdown(
             label=textos.HOME_FILIAL,
             visible=False,
@@ -89,6 +98,7 @@ class Home(Tela):
                 self.busca,
                 *([self.escopo.controle] if self.escopo else []),
                 self.chips.controle,
+                self.especialidades.controle,
                 ft.Row(
                     [self.filial, self.atualizar],
                     alignment=ft.MainAxisAlignment.END,
@@ -105,6 +115,10 @@ class Home(Tela):
         self.filtro_status = self.chips.valor
         await self._recarregar()
 
+    async def _escolher_especialidade(self) -> None:
+        self.filtro_especialidade = self.especialidades.valor
+        await self._recarregar()
+
     async def _ao_escolher_filial(self, e) -> None:
         valor = e.control.value
         self.filtro_filial = None if valor in (None, TODAS_AS_FILIAIS) else int(valor)
@@ -118,6 +132,12 @@ class Home(Tela):
     # --- Carga ------------------------------------------------------------------------
 
     async def carregar(self) -> None:
+        if not self.app.sessao.e_usuario:
+            lista = await self.app.chamar(especialidades.listar, self.app.sessao.ator_id)
+            if lista.ok and lista.valor:
+                self.especialidades.opcoes = [(e.id, e.nome) for e in lista.valor]
+                self.especialidades.definir(None)
+                self.especialidades.controle.visible = True
         if self.app.sessao.e_admin:
             resultado = await self.app.chamar(ordens.listar_filiais, self.app.sessao.ator_id)
             if resultado.ok:
@@ -162,6 +182,7 @@ class Home(Tela):
             self.pagina,
             ordens.ORIGEM_SOLICITACAO if rapido else None,
             self.escopo.valor if self.escopo else ESCOPO_PADRAO,
+            None if self.app.sessao.e_usuario else self.filtro_especialidade,
         )
         self.rodape.controls = []
         if resultado.ok:

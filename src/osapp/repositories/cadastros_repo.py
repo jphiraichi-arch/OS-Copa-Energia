@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from osapp.models import CategoriaCusto, TipoManutencao
+from osapp.models import CategoriaCusto, Especialidade, TipoManutencao
 
 
 class CategoriaCustoRepo:
@@ -42,3 +42,29 @@ class TipoManutencaoRepo:
         if so_ativos:
             consulta = consulta.where(TipoManutencao.ativo.is_(True))
         return list(self._s.scalars(consulta))
+
+
+class EspecialidadeRepo:
+    """Prompt 37."""
+
+    def __init__(self, sessao: Session) -> None:
+        self._s = sessao
+
+    def obter(self, especialidade_id: int) -> Especialidade | None:
+        return self._s.get(Especialidade, especialidade_id)
+
+    def obter_por_codigo(self, codigo: str) -> Especialidade | None:
+        return self._s.scalars(
+            select(Especialidade).where(Especialidade.codigo == codigo)
+        ).one_or_none()
+
+    def listar(self, so_ativas: bool = True) -> list[Especialidade]:
+        consulta = select(Especialidade).order_by(Especialidade.ordem, Especialidade.id)
+        if so_ativas:
+            consulta = consulta.where(Especialidade.ativo.is_(True))
+        return list(self._s.scalars(consulta))
+
+    def adicionar(self, especialidade: Especialidade) -> Especialidade:
+        self._s.add(especialidade)
+        self._s.flush()
+        return especialidade

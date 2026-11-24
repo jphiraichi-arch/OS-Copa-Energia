@@ -1358,3 +1358,30 @@ estão agora, não refeitas pelo histórico).
 - Código do app, modelos e migrações: sem mudança.
 - Testes: `tests/test_backup.py` (puros sempre; ida e volta, arquivo corrompido e falha
   do pg_dump com PostgreSQL + age: rodaram aqui, 10 passaram).
+
+
+## Prompt 37 — especialidade nas ordens e nos usuários (25/11/2026)
+
+- Inspeção: `tipos_manutencao` é uma tabela (codigo, nome, ordem, ativo) semeada pela
+  migração 0007, sem tela de edição; tipo e prioridade são escolhidos em chips na seção
+  Planejamento (`components/formulario_os.py`) e conferidos por `pendencias_para_iniciar`
+  / `previsto_completo`; os relatórios quebram os tempos por urgência
+  (`relatorios._medidas`).
+- Migração `0017`: `especialidades` (MECANICA 'Mecânica', ELETRICA 'Elétrica', PREDIAL
+  'Predial/civil', UTILIDADES 'Utilidades'), `ordens_servico.especialidade_id` (vazia nas
+  antigas) e `usuario_especialidades`.
+- Serviços: `services/especialidades.py` (listar para manutenção/admin; criar, renomear,
+  ativar/desativar, mover só administrador, com log); `ordens`: campo
+  `especialidade_id` em `CAMPOS_MANUTENCAO`, `criar_os(..., especialidade_id)`, validação
+  (só ativa, exceto a atual da OS), pendência 'especialidade' para iniciar (ordens já em
+  execução ou depois não são afetadas), evento EDICAO com o nome, `listar_os(...,
+  especialidade_id)` (o usuario não pode filtrar); `usuarios`: 'especialidades' só para
+  manutenção, apagadas ao mudar de papel, evento 'especialidades'.
+- Relatório mensal: `BlocoMensal.por_especialidade` (resposta e solução por
+  especialidade, na ordem da lista, mais 'Não informada'), no mês e no acumulado; tabela
+  'Por especialidade' na tela.
+- Telas: chips 'Especialidade' no Planejamento; Detalhe mostra a especialidade; Home com
+  filtro em chips (manutenção e administrador); Perfil > Especialidades (administrador);
+  chips de especialidades na tela do usuário.
+- Testes: `tests/test_especialidade.py`; `tests/fabricas.args_de_criacao` e os testes que
+  completam o previsto passaram a escolher uma especialidade.

@@ -4,6 +4,7 @@ from sqlalchemy import CheckConstraint, Column, ForeignKey, String, Table, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from osapp.db import Base
+from osapp.models.especialidade import Especialidade, usuario_especialidades
 from osapp.models.filial import Filial
 
 # Prompt 34 (regra do prompt 28): filiais permitidas de cada usuário. A filial padrão
@@ -43,6 +44,11 @@ class Usuario(Base):
 
     filial: Mapped[Filial] = relationship()  # filial padrão
     filiais: Mapped[list[Filial]] = relationship(secondary=usuario_filiais, order_by=Filial.codigo)
+
+    # Prompt 37: especialidades de quem é da manutenção (prepara o filtro de avisos).
+    especialidades: Mapped[list[Especialidade]] = relationship(
+        secondary=usuario_especialidades, order_by=Especialidade.ordem
+    )
 
     @property
     def filiais_ids(self) -> tuple[int, ...]:

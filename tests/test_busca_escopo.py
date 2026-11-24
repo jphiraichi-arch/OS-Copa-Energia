@@ -14,7 +14,7 @@ import pytest
 from osapp.services import administracao, custos, ordens, relatorios
 from osapp.services.erros import ErroPermissao, ErroValidacao
 from osapp.ui.views.relatorio_tempos import linha_resumo_busca
-from tests.fabricas import categoria_id, tipo_id
+from tests.fabricas import categoria_id, especialidade_id, tipo_id
 from tests.test_relatorio_tempos import BASE, DIA, SENHA, H, Relogio
 
 M = timedelta(minutes=1)
@@ -57,7 +57,12 @@ def solicitacao(p, tempo, minuto, titulo, previstos, urgencia="media", sol="sol"
         p[man],
         d.id,
         d.versao,
-        {"tempo_previsto_minutos": 60, "tipo_id": tipo_id(), "prioridade": "media"},
+        {
+            "tempo_previsto_minutos": 60,
+            "tipo_id": tipo_id(),
+            "especialidade_id": especialidade_id(),
+            "prioridade": "media",
+        },
     )
     for descricao, valor in previstos:
         d = custos.adicionar_item(

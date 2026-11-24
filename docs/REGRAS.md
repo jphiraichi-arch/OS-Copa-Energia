@@ -246,3 +246,16 @@ de nova solicitação, abaixo), planos preventivos, estoque, exportação PDF/Ex
   agent cru nem o IP.
 - Sem a caixa, o tempo de inatividade continua o mesmo. Com ela, uma sessão expirada é
   retomada pelo token, dentro dos 7 dias.
+
+## Escopo e especialidade (prompt 37)
+
+- O sistema é só de **manutenção** (mecânica, elétrica, predial/civil, utilidades). **TI
+  está fora do escopo**: pedidos de informática não entram aqui.
+- Toda OS ganha a especialidade que a atende (tabela `especialidades`, mantida pelo
+  administrador em Perfil > Especialidades; desativada não entra em OS nova e continua
+  nas antigas). Definida por manutenção (de uma filial permitida) ou administrador, como
+  tipo e prioridade; obrigatória para iniciar (`pendencias_para_iniciar`). O papel
+  usuario nunca define nem recebe a especialidade (fora de `OsVisaoSolicitante` e
+  `ResumoSolicitante`).
+- Usuários de manutenção podem ter zero ou mais especialidades (`usuario_especialidades`);
+  hoje isso não filtra nada (prepara o filtro de avisos). Mudar o papel as apaga.

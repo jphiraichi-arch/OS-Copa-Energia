@@ -52,14 +52,22 @@ def tipo_id(codigo: str = "CORRETIVA") -> int:
         return s.scalars(select(TipoManutencao.id).where(TipoManutencao.codigo == codigo)).one()
 
 
+def especialidade_id(codigo: str = "MECANICA") -> int:
+    from osapp.models import Especialidade
+
+    with sessao() as s:
+        return s.scalars(select(Especialidade.id).where(Especialidade.codigo == codigo)).one()
+
+
 def args_de_criacao(dados: dict) -> dict:
     """Converte os argumentos antigos de criar_os (valor_previsto_centavos) nos novos e
-    completa o previsto (tipo, prioridade) para a OS poder ser iniciada."""
+    completa o previsto (tipo, prioridade, especialidade) para a OS poder ser iniciada."""
     dados = dict(dados)
     if "valor_previsto_centavos" in dados:
         dados["itens_previstos"] = itens(dados.pop("valor_previsto_centavos"))
     dados.setdefault("tipo_id", tipo_id())
     dados.setdefault("prioridade", "media")
+    dados.setdefault("especialidade_id", especialidade_id())
     return dados
 
 

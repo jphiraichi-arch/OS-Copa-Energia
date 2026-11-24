@@ -11,7 +11,7 @@ from sqlalchemy import MetaData, select
 
 from osapp import cli, db
 from osapp.db import sessao
-from osapp.models import OrdemServico, Usuario
+from osapp.models import Usuario
 from osapp.services import custos, ordens, relatorios, relogio
 from osapp.services.erros import (
     ErroAutenticacao,
@@ -21,7 +21,7 @@ from osapp.services.erros import (
 )
 from osapp.ui import historico
 from tests.conftest import config_alembic
-from tests.fabricas import categoria_id, novo_usuario, tipo_id
+from tests.fabricas import categoria_id, especialidade_id, novo_usuario, tipo_id
 
 T0 = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
 MSG = "Adicione um item ou marque Sem gasto."
@@ -48,7 +48,12 @@ def _sem_itens(c):
         c["marina"],
         d.id,
         d.versao,
-        {"tempo_previsto_minutos": 30, "tipo_id": tipo_id(), "prioridade": "media"},
+        {
+            "tempo_previsto_minutos": 30,
+            "tipo_id": tipo_id(),
+            "especialidade_id": especialidade_id(),
+            "prioridade": "media",
+        },
     )
 
 
@@ -122,7 +127,9 @@ def test_conclusao_exige_item_ou_sem_gasto(c):
 def test_tempos_continuam_obrigatorios_com_sem_gasto(c):
     v = ordens.criar_solicitacao(c["sol"], "Pedido sem tempo", "Sem custo.", "media")
     d = ordens.obter_os(c["marina"], v.id)
-    d = ordens.editar_os(c["marina"], d.id, d.versao, {"tipo_id": tipo_id()})
+    d = ordens.editar_os(
+        c["marina"], d.id, d.versao, {"tipo_id": tipo_id(), "especialidade_id": especialidade_id()}
+    )
     d = ordens.definir_sem_gasto(c["marina"], d.id, d.versao, "PREVISTO", True)
     with pytest.raises(ErroValidacao):  # falta o tempo previsto
         ordens.iniciar_execucao(c["marina"], d.id, d.versao)
@@ -363,9 +370,18 @@ def test_migracao_0012_com_dados(banco_vazio):
         )
     command.upgrade(cfg, "0012")
     db.reiniciar()
-    with sessao() as s:
-        o = s.get(OrdemServico, 1)
-        assert (o.sem_gasto_previsto, o.sem_gasto_realizado, o.versao) == (False, False, 3)
+    # Na 0012 o modelo atual (com colunas de migrações posteriores) ainda não serve: lê
+    # pelas tabelas refletidas.
+    m12 = MetaData()
+    m12.reflect(bind=db.obter_engine())
+    os12 = m12.tables["ordens_servico"]
+    with db.obter_engine().connect() as conexao:
+        linha = conexao.execute(
+            select(os12.c.sem_gasto_previsto, os12.c.sem_gasto_realizado, os12.c.versao)
+        ).one()
+    assert (bool(linha[0]), bool(linha[1]), linha[2]) == (False, False, 3)
+    command.upgrade(cfg, "head")
+    db.reiniciar()
     assert [x.numero for x in ordens.listar_sem_itens()] == ["1007-2026-000001"]
     command.downgrade(cfg, "0011")
     db.reiniciar()

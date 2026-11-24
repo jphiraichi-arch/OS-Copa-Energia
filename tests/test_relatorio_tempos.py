@@ -11,7 +11,7 @@ import pytest
 from osapp import formatacao
 from osapp.services import administracao, custos, ordens, relatorios, relogio, status
 from osapp.services.erros import ErroPermissao, ErroValidacao
-from tests.fabricas import NOTA, categoria_id, itens, tipo_id
+from tests.fabricas import NOTA, categoria_id, especialidade_id, itens, tipo_id
 
 SENHA = "senha-ficticia-123"
 SP = ZoneInfo("America/Sao_Paulo")
@@ -62,6 +62,7 @@ def abrir(p, tempo, aberta, urgencia="media", sol="sol", man="man"):
         {
             "tempo_previsto_minutos": 60,
             "tipo_id": tipo_id(),
+            "especialidade_id": especialidade_id(),
             "prioridade": "media",
         },
     )
@@ -142,6 +143,7 @@ def test_exclusoes(p, tempo):
         itens(100),
         60,
         tipo_id=tipo_id(),
+        especialidade_id=especialidade_id(),
         prioridade="baixa",
     )
     iniciar(p, tempo, m, BASE + H)
@@ -155,6 +157,7 @@ def test_exclusoes(p, tempo):
         {
             "tempo_previsto_minutos": 60,
             "tipo_id": tipo_id(),
+            "especialidade_id": especialidade_id(),
             "prioridade": "media",
         },
     )

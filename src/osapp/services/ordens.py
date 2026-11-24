@@ -27,6 +27,7 @@ from osapp.models import OrdemServico, OsEvento, OsItemCusto
 from osapp.models.ordem_servico import INCLUIR_EXCLUIDAS
 from osapp.repositories import (
     CategoriaCustoRepo,
+    EspecialidadeRepo,
     FilialRepo,
     OrdemServicoRepo,
     OsEventoRepo,
@@ -90,10 +91,12 @@ MSG_ULTIMO_ITEM = (
 CAMPO_SEM_GASTO = {"PREVISTO": "sem_gasto_previsto", "REALIZADO": "sem_gasto_realizado"}
 PENDENCIA_TIPO = "tipo de manutenção"
 PENDENCIA_PRIORIDADE = "prioridade"
+PENDENCIA_ESPECIALIDADE = "especialidade"  # prompt 37
+MSG_ESPECIALIDADE = "Escolha uma especialidade ativa."
 
 CAMPOS_TEXTO = ("titulo", "descricao")
 CAMPOS_PREVISTO = ("titulo", "descricao", "tempo_previsto_minutos")  # compatibilidade
-CAMPOS_MANUTENCAO = ("tempo_previsto_minutos", "tipo_id", "prioridade")
+CAMPOS_MANUTENCAO = ("tempo_previsto_minutos", "tipo_id", "prioridade", "especialidade_id")
 CAMPOS_SOLICITACAO = ("titulo", "descricao", "urgencia")
 CAMPOS_REALIZADO = ("inicio_realizado", "fim_realizado", "descricao_realizado")
 CAMPO_FILIAL = "filial_id"
@@ -254,6 +257,8 @@ class OsDetalhe:
     prioridade: str | None = None  # da manutenção
     tipo_id: int | None = None
     tipo_nome: str | None = None
+    especialidade_id: int | None = None  # prompt 37 (nunca no modelo do usuario)
+    especialidade_nome: str | None = None
     nota_conclusao: str | None = None
     aberta_em: datetime | None = None
     inicio_execucao_em: datetime | None = None
@@ -352,6 +357,19 @@ def _validar_tipo(s: Session, valor: object) -> int | None:
     if tipo is None or not tipo.ativo:
         raise ErroValidacao("tipo_id", "Escolha um tipo de manutenção válido.")
     return tipo.id
+
+
+def _validar_especialidade(s: Session, valor: object, atual: int | None = None) -> int | None:
+    """Prompt 37: só especialidade ativa; a desativada continua valendo na OS que já a
+    tem (``atual``)."""
+    if valor is None:
+        return None
+    if _e_int(valor) and valor == atual:
+        return valor
+    especialidade = EspecialidadeRepo(s).obter(valor) if _e_int(valor) else None
+    if especialidade is None or not especialidade.ativo:
+        raise ErroValidacao("especialidade_id", MSG_ESPECIALIDADE)
+    return especialidade.id
 
 
 # --- Busca (uma só função monta a condição; listar_os e o relatório usam) ------------
@@ -477,6 +495,8 @@ def pendencias_para_iniciar(ordem: OrdemServico) -> tuple[str, ...]:
         faltam.append(PENDENCIA_VALOR)
     if ordem.tipo_id is None:
         faltam.append(PENDENCIA_TIPO)
+    if ordem.especialidade_id is None:
+        faltam.append(PENDENCIA_ESPECIALIDADE)
     # Prompt 24: numa solicitação, a prioridade vazia é preenchida com a urgência ao
     # iniciar; por isso não é pendência quando há urgência.
     if ordem.prioridade is None and ordem.urgencia is None:
@@ -596,6 +616,8 @@ def _detalhe(ordem: OrdemServico, ator: Ator) -> OsDetalhe:
         prioridade=ordem.prioridade,
         tipo_id=ordem.tipo_id,
         tipo_nome=ordem.tipo.nome if ordem.tipo else None,
+        especialidade_id=ordem.especialidade_id,
+        especialidade_nome=ordem.especialidade.nome if ordem.especialidade else None,
         nota_conclusao=ordem.nota_conclusao,
         aberta_em=ordem.aberta_em,
         inicio_execucao_em=ordem.inicio_execucao_em,
@@ -815,9 +837,10 @@ def criar_os(
     *,
     tipo_id: int | None = None,
     prioridade: str | None = None,
+    especialidade_id: int | None = None,
 ) -> OsDetalhe:
     """OS completa (origem 'manutencao'): só manutenção e administrador. Previsto, tipo,
-    prioridade são opcionais aqui; iniciar exige o previsto completo.
+    prioridade e especialidade são opcionais aqui; iniciar exige o previsto completo.
     Um evento CRIACAO e um ITEM_ADICIONADO por item, numa só transação."""
     ator = carregar_ator(ator_id)
     if ator.e_usuario:
@@ -850,6 +873,7 @@ def criar_os(
                 tempo_previsto_minutos=tempo,
                 tipo_id=_validar_tipo(s, tipo_id),
                 prioridade=prioridade,
+                especialidade_id=_validar_especialidade(s, especialidade_id),
             )
             _gravar_itens(s, ordem, ator, custos.FASE_PREVISTO, itens, agora)
             s.flush()
@@ -886,6 +910,7 @@ def listar_os(
     pagina: int = 1,
     origem: str | None = None,
     escopo: str | None = ESCOPO_ITENS,
+    especialidade_id: int | None = None,
 ) -> PaginaOs:
     """Lista paginada. O papel usuario recebe ResumoSolicitante, só da própria filial.
 
@@ -899,6 +924,9 @@ def listar_os(
         raise ErroValidacao("status", "Status inválido.")
     if origem is not None and origem not in ORIGENS:
         raise ErroValidacao("origem", "Origem inválida.")
+    if especialidade_id is not None and (ator.e_usuario or not _e_int(especialidade_id)):
+        # Prompt 37: o usuario nunca filtra nem recebe especialidade.
+        raise ErroValidacao("especialidade_id", "Filtro inválido.")
     if not _e_int(pagina) or pagina < 1:
         raise ErroValidacao("pagina", "Página inválida.")
     limite, deslocamento = ITENS_POR_PAGINA + 1, (pagina - 1) * ITENS_POR_PAGINA
@@ -918,6 +946,7 @@ def listar_os(
             limite=limite,
             deslocamento=deslocamento,
             origem=origem,
+            especialidade_id=especialidade_id,
         )
         itens = tuple(
             OsResumo(
@@ -1114,6 +1143,8 @@ def editar_os(ator_id: int, os_id: int, versao: int, alteracoes: dict) -> OsDeta
                     novos[campo] = _validar_tempo(campo, valor)
                 elif campo == "tipo_id":
                     novos[campo] = _validar_tipo(s, valor)
+                elif campo == "especialidade_id":
+                    novos[campo] = _validar_especialidade(s, valor, ordem.especialidade_id)
                 elif campo == "prioridade":
                     novos[campo] = _validar_nivel(campo, valor, obrigatorio=False)
                 elif campo in ("inicio_realizado", "fim_realizado"):
@@ -1136,6 +1167,15 @@ def editar_os(ator_id: int, os_id: int, versao: int, alteracoes: dict) -> OsDeta
                     continue
                 if campo == CAMPO_FILIAL:  # no histórico vai o código da filial, não o id
                     mudancas.append((campo, ordem.filial.codigo, FilialRepo(s).obter(novo).codigo))
+                elif campo == "especialidade_id":  # e o nome da especialidade
+                    repo_esp = EspecialidadeRepo(s)
+                    mudancas.append(
+                        (
+                            campo,
+                            repo_esp.obter(antigo).nome if antigo else None,
+                            repo_esp.obter(novo).nome if novo else None,
+                        )
+                    )
                 elif campo == "tipo_id":  # e o nome do tipo
                     repo_tipo = TipoManutencaoRepo(s)
                     mudancas.append(

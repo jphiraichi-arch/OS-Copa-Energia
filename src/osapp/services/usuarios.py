@@ -44,12 +44,13 @@ logger = logging.getLogger(__name__)
 
 NOME_MAX = 100
 BUSCA_MAX = 100
-CAMPOS_ALTERAVEIS = ("nome", "filial_id", "filiais", "papel", "ativo")
+CAMPOS_ALTERAVEIS = ("nome", "filial_id", "filiais", "papel", "ativo", "especialidades")
 # Senha temporária gerada (prompt 34): sem caracteres parecidos (0/O/o, 1/l/I/i).
 ALFABETO_TEMPORARIA = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
 TAMANHO_TEMPORARIA = 14
 MSG_FILIAL_PADRAO = "A filial padrão precisa ser uma das filiais permitidas."
 MSG_SEM_FILIAL = "Escolha pelo menos uma filial."
+MSG_ESPECIALIDADES = "Só quem é da manutenção tem especialidades."
 MSG_REGRA_SENHA = (
     f"A senha deve ter pelo menos {senhas.SENHA_MIN} caracteres e ser diferente do login."
 )
@@ -81,6 +82,8 @@ class UsuarioDTO:
     filiais_codigos: tuple[str, ...] = ()
     email: str | None = None  # prompt 32 (só para o administrador)
     email_confirmado: bool = False
+    especialidades: tuple[int, ...] = ()  # prompt 37 (só manutenção)
+    especialidades_nomes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -197,6 +200,21 @@ def _filiais(s: Session, filiais: object, padrao: int) -> list[Filial]:
     return sorted((_filial(s, f) for f in set(filiais)), key=lambda f: f.codigo)
 
 
+def _especialidades(s: Session, valor: object) -> list:
+    from osapp.repositories import EspecialidadeRepo
+
+    if not isinstance(valor, list | tuple | set | frozenset) or not all(_e_int(v) for v in valor):
+        raise ErroValidacao("especialidades", "Especialidades inválidas.")
+    repo = EspecialidadeRepo(s)
+    escolhidas = []
+    for i in sorted(set(valor)):
+        e = repo.obter(i)
+        if e is None:
+            raise ErroValidacao("especialidades", "Especialidade não encontrada.")
+        escolhidas.append(e)
+    return escolhidas
+
+
 def _codigos(filiais) -> str:
     return ", ".join(f.codigo for f in sorted(filiais, key=lambda f: f.codigo))
 
@@ -311,6 +329,28 @@ def alterar(s: Session, autor_id: int | None, usuario: Usuario, alteracoes: dict
     for _campo, _novo, rotulo, texto_antigo, texto_novo in mudancas_texto:
         _registrar(s, autor_id, usuario.id, rotulo, texto_antigo, texto_novo, agora)
     mudancas = len(mudancas_texto)
+    # Prompt 37: especialidades só para manutenção; mudar de papel as apaga.
+    novas_esp = None
+    if "especialidades" in alteracoes:
+        novas_esp = _especialidades(s, alteracoes["especialidades"])
+        if novas_esp and papel_final != "manutencao":
+            raise ErroValidacao("especialidades", MSG_ESPECIALIDADES)
+    elif papel_final != "manutencao" and usuario.especialidades:
+        novas_esp = []
+    if novas_esp is not None:
+        antes_esp = list(usuario.especialidades)
+        if {e.id for e in antes_esp} != {e.id for e in novas_esp}:
+            usuario.especialidades = novas_esp
+            _registrar(
+                s,
+                autor_id,
+                usuario.id,
+                "especialidades",
+                ", ".join(e.nome for e in antes_esp) or None,
+                ", ".join(e.nome for e in novas_esp) or None,
+                agora,
+            )
+            mudancas += 1
     if novas_filiais is not None:
         antes = list(usuario.filiais) or [usuario.filial]
         if {f.id for f in antes} != {f.id for f in novas_filiais}:
@@ -362,6 +402,8 @@ def _dto(u: Usuario, notificacao: UsuarioNotificacao | None = None) -> UsuarioDT
         filiais_codigos=tuple(f.codigo for f in filiais),
         email=notificacao.email if notificacao else None,
         email_confirmado=bool(notificacao and notificacao.email_confirmado_em),
+        especialidades=tuple(e.id for e in u.especialidades),
+        especialidades_nomes=tuple(e.nome for e in u.especialidades),
     )
 
 

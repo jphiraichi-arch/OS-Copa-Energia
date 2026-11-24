@@ -9,7 +9,7 @@ from __future__ import annotations
 import flet as ft
 
 from osapp import formatacao
-from osapp.services import notificacoes, ordens, sessoes_lembradas, usuarios
+from osapp.services import especialidades, notificacoes, ordens, sessoes_lembradas, usuarios
 from osapp.services.auth import PAPEIS
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao
 from osapp.ui import rotas, rotulos, theme
@@ -27,6 +27,7 @@ ROTULO_SENHA_TEMPORARIA = "Senha temporária"
 AJUDA_SENHA_TEMPORARIA = "O usuário vai trocar esta senha no primeiro acesso."
 ROTULO_FILIAIS = "Filiais permitidas"
 ROTULO_FILIAL_PADRAO = "Filial padrão"
+ROTULO_ESPECIALIDADES = "Especialidades (só para manutenção)"
 AVISO_SENHA_UMA_VEZ = (
     "Anote e entregue ao usuário. Ela não será mostrada de novo; o usuário vai "
     "trocá-la no primeiro acesso."
@@ -211,7 +212,8 @@ class FormularioUsuario(Tela):
     def _digitado(self) -> tuple:
         login = self.login.value if self.usuario is None else ""
         filiais = tuple(sorted(self.filiais.valor))
-        return (self.nome.value, login, self.filial.value, self.papel.value, filiais)
+        esp = tuple(sorted(self.especialidades.valor))
+        return (self.nome.value, login, self.filial.value, self.papel.value, filiais, esp)
 
     async def carregar(self) -> None:
         ator_id = self.app.sessao.ator_id
@@ -278,7 +280,15 @@ class FormularioUsuario(Tela):
             [ft.DropdownOption(key=p, text=rotulos.papel(p)) for p in PAPEIS],
             u.papel if u else "usuario",
         )
+        # Prompt 37: especialidades (só manutenção; o serviço recusa para outros papéis).
+        lista_esp = await self.app.chamar(especialidades.listar, self.app.sessao.ator_id)
+        self.especialidades = GrupoChips(
+            [(e.id, e.nome) for e in (lista_esp.valor if lista_esp.ok else [])],
+            set(u.especialidades) if u else set(),
+            multipla=True,
+        )
         self.campos = {
+            "especialidades": self.especialidades,
             "nome": self.nome,
             "login": self.login,
             "filial_id": _ErroNaLista(self.filial),
@@ -297,6 +307,8 @@ class FormularioUsuario(Tela):
             self.filiais.controle,
             ft.Row([self.filial]),
         ]
+        if u is not None:
+            campos += [basicos.subtitulo(ROTULO_ESPECIALIDADES), self.especialidades.controle]
         if u is None:
             campos.append(basicos.subtitulo(f"{AJUDA_SENHA_TEMPORARIA} Ela é gerada ao criar."))
         cartoes: list[ft.Control] = [
@@ -484,6 +496,7 @@ class FormularioUsuario(Tela):
                 ("filial_id", int(self.filial.value), u.filial_id),
                 ("papel", self.papel.value, u.papel),
                 ("filiais", sorted(self.filiais.valor), sorted(u.filiais)),
+                ("especialidades", sorted(self.especialidades.valor), sorted(u.especialidades)),
             )
             if valor != antes
         }

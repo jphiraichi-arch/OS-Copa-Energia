@@ -31,7 +31,7 @@ def itens_do_perfil(papel: str) -> tuple[str, ...]:
     """
     itens = ["configuracoes", "alterar_senha"]
     if papel == "admin":
-        itens += ["usuarios", "lixeira", "fila_email", "nova_solicitacao"]
+        itens += ["usuarios", "especialidades", "lixeira", "fila_email", "nova_solicitacao"]
     return (*itens, "sair")
 
 
@@ -41,6 +41,11 @@ _ENTRADAS = {
     "usuarios": (textos.MENU_USUARIOS, ft.Icons.GROUP_OUTLINED, rotas.USUARIOS),
     "lixeira": (textos.MENU_LIXEIRA, ft.Icons.DELETE_OUTLINE, rotas.LIXEIRA),
     "fila_email": (textos.MENU_FILA_EMAIL, ft.Icons.OUTBOX_OUTLINED, rotas.FILA_EMAIL),
+    "especialidades": (
+        textos.MENU_ESPECIALIDADES,
+        ft.Icons.ENGINEERING_OUTLINED,
+        rotas.ESPECIALIDADES,
+    ),
     "nova_solicitacao": (
         textos.MENU_NOVA_SOLICITACAO,
         ft.Icons.ADD_COMMENT_OUTLINED,

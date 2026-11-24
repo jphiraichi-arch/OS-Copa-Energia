@@ -66,6 +66,9 @@ def texto_resumo_mensal(resumo, termo: str, periodo: str) -> str:
     )
 
 
+TEMPOS_POR_ESPECIALIDADE = "Por especialidade"
+
+
 def texto_sem_gasto(bloco) -> str:
     """'Sem gasto: 5 previstas, 3 realizadas' (prompt 31)."""
     p, r = bloco.sem_gasto_previstas, bloco.sem_gasto_realizadas
@@ -324,6 +327,7 @@ class RelatorioTempos(Tela):
                 ),
                 basicos.subtitulo(textos.TEMPOS_NOTA),
                 self._por_urgencia(b),
+                *([self._por_especialidade(b)] if getattr(b, "por_especialidade", ()) else []),
             ]
         else:
             linhas.append(basicos.subtitulo(textos.TEMPOS_VAZIO))
@@ -364,10 +368,36 @@ class RelatorioTempos(Tela):
         )
 
     def _por_urgencia(self, r) -> ft.Control:
-        """Tabela em telas largas; um cartão por urgência no celular."""
+        itens = [
+            (rotulos.nivel(u.urgencia), basicos.selo_nivel(u.urgencia), u.resposta, u.solucao)
+            for u in r.por_urgencia
+        ]
+        return self._tabela_tempos(textos.TEMPOS_POR_URGENCIA, "Urgência", itens)
+
+    def _por_especialidade(self, r) -> ft.Control:
+        """Prompt 37: a mesma tabela, por especialidade (com 'Não informada')."""
+        itens = [
+            (
+                e.especialidade,
+                ft.Text(
+                    e.especialidade,
+                    color=theme.COR_TITULO,
+                    size=theme.FONTE_CORPO,
+                    weight=ft.FontWeight.BOLD,
+                ),
+                e.resposta,
+                e.solucao,
+            )
+            for e in r.por_especialidade
+        ]
+        return self._tabela_tempos(TEMPOS_POR_ESPECIALIDADE, "Especialidade", itens)
+
+    def _tabela_tempos(self, titulo: str, primeira: str, itens) -> ft.Control:
+        """Tabela em telas largas; um cartão por linha no celular. ``itens``: (rótulo,
+        controle do cabeçalho do cartão, resposta, solução)."""
         if self.app._e_largo():
             cabecalho = (
-                "Urgência",
+                primeira,
                 "Resposta (média)",
                 "Resposta (mediana)",
                 "Solução (média)",
@@ -375,17 +405,17 @@ class RelatorioTempos(Tela):
                 "n (resposta / solução)",
             )
             linhas = [_linha_tabela(cabecalho, True)]
-            for u in r.por_urgencia:
+            for rotulo, _cab, resp, sol in itens:
                 linhas.append(ft.Divider(height=1, thickness=1, color=theme.COR_CONTORNO))
                 linhas.append(
                     _linha_tabela(
                         (
-                            rotulos.nivel(u.urgencia),
-                            _tempo(u.resposta.media_segundos),
-                            _tempo(u.resposta.mediana_segundos),
-                            _tempo(u.solucao.media_segundos),
-                            _tempo(u.solucao.mediana_segundos),
-                            f"{u.resposta.n} / {u.solucao.n}",
+                            rotulo,
+                            _tempo(resp.media_segundos),
+                            _tempo(resp.mediana_segundos),
+                            _tempo(sol.media_segundos),
+                            _tempo(sol.mediana_segundos),
+                            f"{resp.n} / {sol.n}",
                         ),
                         False,
                     )
@@ -399,27 +429,25 @@ class RelatorioTempos(Tela):
                     padding=theme.ESPACO_P + 4,
                     content=basicos.coluna(
                         [
-                            ft.Row([basicos.selo_nivel(u.urgencia)]),
+                            ft.Row([cab]),
                             basicos.rotulo_valor(
-                                f"{textos.TEMPOS_RESPOSTA} (n = {u.resposta.n})",
-                                f"média {_tempo(u.resposta.media_segundos)} · "
-                                f"mediana {_tempo(u.resposta.mediana_segundos)}",
+                                f"{textos.TEMPOS_RESPOSTA} (n = {resp.n})",
+                                f"média {_tempo(resp.media_segundos)} · "
+                                f"mediana {_tempo(resp.mediana_segundos)}",
                             ),
                             basicos.rotulo_valor(
-                                f"{textos.TEMPOS_SOLUCAO} (n = {u.solucao.n})",
-                                f"média {_tempo(u.solucao.media_segundos)} · "
-                                f"mediana {_tempo(u.solucao.mediana_segundos)}",
+                                f"{textos.TEMPOS_SOLUCAO} (n = {sol.n})",
+                                f"média {_tempo(sol.media_segundos)} · "
+                                f"mediana {_tempo(sol.mediana_segundos)}",
                             ),
                         ],
                         espaco=theme.ESPACO_P,
                     ),
                 )
-                for u in r.por_urgencia
+                for _rot, cab, resp, sol in itens
             ]
         return basicos.cartao(
-            basicos.coluna(
-                [basicos.titulo(textos.TEMPOS_POR_URGENCIA), *corpo], espaco=theme.ESPACO_P
-            )
+            basicos.coluna([basicos.titulo(titulo), *corpo], espaco=theme.ESPACO_P)
         )
 
     # --- Busca (prompt 22) ------------------------------------------------------------

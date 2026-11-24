@@ -49,6 +49,7 @@ class FormularioOs:
         com_realizado: bool = False,
         tipos=(),
         ao_mudar_planejamento=None,
+        especialidades=(),
         sugerir_prioridade: bool = False,
     ) -> None:
         self.app = app
@@ -82,6 +83,16 @@ class FormularioOs:
             os.tipo_id if os else None,
             ao_mudar=self._avisar_planejamento,
         )
+        # Prompt 37: especialidade (obrigatória para iniciar). As desativadas só aparecem se
+        # forem a da própria OS.
+        opcoes_esp = [(e.id, e.nome) for e in especialidades]
+        if os and os.especialidade_id and os.especialidade_id not in {e.id for e in especialidades}:
+            opcoes_esp.append((os.especialidade_id, os.especialidade_nome or "?"))
+        self.especialidade = GrupoChips(
+            opcoes_esp,
+            os.especialidade_id if os else None,
+            ao_mudar=self._avisar_planejamento,
+        )
         # Prompt 24 (Assumir): sem prioridade escolhida, os chips começam na urgência do
         # solicitante (mesma escala). Esse valor conta como o original: se ninguém mexer,
         # nada é gravado aqui e o serviço copia a urgência ao iniciar (com o evento).
@@ -111,6 +122,8 @@ class FormularioOs:
         self.partes: dict[str, list[ft.Control]] = {
             secoes.SOLICITACAO: [self.titulo, self.descricao, ft.Row([self.filial])],
             secoes.PLANEJAMENTO: [
+                _rotulo_de_grupo("Especialidade"),
+                self.especialidade.controle,
                 _rotulo_de_grupo("Tipo de manutenção"),
                 self.tipo.controle,
                 _rotulo_de_grupo("Prioridade"),
@@ -130,6 +143,7 @@ class FormularioOs:
             "tempo_previsto_minutos": self.tempo.controle,
             "filial_id": _ErroNaLista(self.filial),
             "tipo_id": self.tipo,
+            "especialidade_id": self.especialidade,
             "prioridade": self.prioridade,
         }
 
@@ -212,6 +226,7 @@ class FormularioOs:
             "tempo": self.tempo.controle.value or "",
             "filial": self.filial.value or "",
             "tipo": str(self.tipo.valor or ""),
+            "especialidade": str(self.especialidade.valor or ""),
             "prioridade": self.prioridade.valor or "",
         }
         if self.com_realizado:
@@ -241,6 +256,7 @@ class FormularioOs:
             "tempo_previsto_minutos": self.tempo.valor or None,  # 0:00 = não informado
             "filial_id": int(self.filial.value) if self.filial.value else None,
             "tipo_id": self.tipo.valor,
+            "especialidade_id": self.especialidade.valor,
             "prioridade": self.prioridade.valor,
         }
         if self.texto_editavel:

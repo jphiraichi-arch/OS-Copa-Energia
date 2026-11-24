@@ -33,7 +33,7 @@ from osapp.services import administracao, custos, lixeira, ordens, relatorios
 from osapp.services.erros import ErroPermissao, ErroValidacao
 from osapp.services.linha_do_tempo import Marco, periodo_do_mes, situacao_em, status_em
 from osapp.ui.views.relatorio_tempos import texto_taxa
-from tests.fabricas import categoria_id, tipo_id
+from tests.fabricas import categoria_id, especialidade_id, tipo_id
 from tests.test_relatorio_tempos import SENHA, Relogio
 
 SP = ZoneInfo("America/Sao_Paulo")
@@ -76,7 +76,14 @@ class Cenario:
         v = ordens.criar_solicitacao(self.p["sol"], titulo, "Pedido.", "media")
         d = ordens.obter_os(self.p["man"], v.id)
         d = ordens.editar_os(
-            self.p["man"], d.id, d.versao, {"tempo_previsto_minutos": 60, "tipo_id": tipo_id()}
+            self.p["man"],
+            d.id,
+            d.versao,
+            {
+                "tempo_previsto_minutos": 60,
+                "tipo_id": tipo_id(),
+                "especialidade_id": especialidade_id(),
+            },
         )
         return custos.adicionar_item(
             self.p["man"], d.id, d.versao, "PREVISTO", categoria_id(), item, Decimal("1"), valor

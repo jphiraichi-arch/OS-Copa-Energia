@@ -21,7 +21,7 @@ from osapp.services.erros import (
     ErroPermissao,
     ErroValidacao,
 )
-from tests.fabricas import NOTA, categoria_id, tipo_id
+from tests.fabricas import NOTA, categoria_id, especialidade_id, tipo_id
 
 T0 = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
 INICIO, FIM = T0 - timedelta(hours=3), T0 - timedelta(hours=1)
@@ -39,6 +39,7 @@ def item(valor=1000, quantidade="1", descricao="Item", codigo="OUTROS"):
 def criar(ator_id, itens=None, **extras):
     dados = {
         "tipo_id": tipo_id(),
+        "especialidade_id": especialidade_id(),
         "prioridade": "media",
     }
     dados.update(extras)
@@ -367,6 +368,7 @@ def test_criacao_sem_item_vale_e_item_invalido_e_recusado(cenario):
             ordens.PENDENCIA_TEMPO,
             ordens.PENDENCIA_VALOR,
             ordens.PENDENCIA_TIPO,
+            ordens.PENDENCIA_ESPECIALIDADE,  # prompt 37
             ordens.PENDENCIA_PRIORIDADE,
         )
 

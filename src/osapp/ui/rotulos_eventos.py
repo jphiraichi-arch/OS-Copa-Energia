@@ -79,6 +79,7 @@ CAMPOS: dict[str, tuple[str, Callable[[str], str]]] = {
     "tempo_previsto_minutos": ("Tempo previsto", _minutos),
     "filial_id": ("Filial", _texto),  # gravado como o código da filial
     "tipo_id": ("Tipo de manutenção", _texto),  # gravado como o nome do tipo
+    "especialidade_id": ("Especialidade", _texto),  # prompt 37: gravado como o nome
     "urgencia": ("Urgência", _nivel),
     "prioridade": ("Prioridade", _nivel),
     "origem": ("Origem", _origem),

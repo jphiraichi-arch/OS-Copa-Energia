@@ -7,7 +7,7 @@ from functools import partial
 import flet as ft
 
 from osapp import formatacao
-from osapp.services import custos, ordens
+from osapp.services import custos, especialidades, ordens
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao, ErroValidacao
 from osapp.ui import formularios, rotas, rotulos, secoes, theme
 from osapp.ui import urgencia as urgencia_ui
@@ -216,8 +216,11 @@ class CriarOs(_TelaDeFormulario):
             return
         filiais = await self.app.chamar(ordens.listar_filiais, ator_id)
         categorias = await self.app.chamar(custos.listar_categorias, ator_id)
-        if filiais.ok and categorias.ok:
-            self.formulario = FormularioOs(self.app, filiais.valor, tipos=tipos.valor)
+        lista_esp = await self.app.chamar(especialidades.listar, ator_id)
+        if filiais.ok and categorias.ok and lista_esp.ok:
+            self.formulario = FormularioOs(
+                self.app, filiais.valor, tipos=tipos.valor, especialidades=lista_esp.valor
+            )
             self.previstos = EditorItens(
                 self.app,
                 custos.FASE_PREVISTO,
@@ -244,6 +247,7 @@ class CriarOs(_TelaDeFormulario):
                 ordens.criar_os,
                 tipo_id=valores["tipo_id"],
                 prioridade=valores["prioridade"],
+                especialidade_id=valores["especialidade_id"],
             ),
             self.app.sessao.ator_id,
             valores["titulo"],
@@ -299,7 +303,8 @@ class EditarOs(_TelaDeFormulario):
             os_ = resultado.valor
             filiais = await self.app.chamar(ordens.listar_filiais, ator_id)
             categorias = await self.app.chamar(custos.listar_categorias, ator_id)
-            if filiais.ok and categorias.ok:
+            lista_esp = await self.app.chamar(especialidades.listar, ator_id)
+            if filiais.ok and categorias.ok and lista_esp.ok:
                 self.os = os_
                 self.formulario = FormularioOs(
                     self.app,
@@ -308,6 +313,7 @@ class EditarOs(_TelaDeFormulario):
                     com_realizado=os_.acoes.pode_editar_realizado,
                     tipos=tipos.valor,
                     sugerir_prioridade=self.sugerir_prioridade,
+                    especialidades=lista_esp.valor,
                 )
                 self.editores = [
                     EditorItens(

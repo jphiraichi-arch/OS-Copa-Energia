@@ -8,7 +8,7 @@ from osapp.models import Usuario
 from osapp.services import ordens, relatorios, relogio, status
 from osapp.services.erros import ErroAutenticacao, ErroPermissao, ErroValidacao
 from osapp.services.relatorios import RelatorioBasico, gerar_relatorio, limites_do_mes
-from tests.fabricas import NOTA, itens, novo_usuario, tipo_id
+from tests.fabricas import NOTA, especialidade_id, itens, novo_usuario, tipo_id
 
 MAIO = datetime(2026, 5, 20, 15, 0, tzinfo=UTC)
 
@@ -39,6 +39,7 @@ def dados(cenario, monkeypatch):
             60,
             filial_id,
             tipo_id=tipo_id(),
+            especialidade_id=especialidade_id(),
             prioridade="media",
         )
         d = ordens.iniciar_execucao(executor, d.id, d.versao)
@@ -77,6 +78,7 @@ def dados(cenario, monkeypatch):
         itens(100),
         30,
         tipo_id=tipo_id(),
+        especialidade_id=especialidade_id(),
         prioridade="media",
     )
     ordens.iniciar_execucao(c["pedro"], d.id, d.versao)
@@ -218,6 +220,7 @@ def test_no_maximo_cinco_maiores_desvios(cenario, monkeypatch):
             itens(1000),
             60,
             tipo_id=tipo_id(),
+            especialidade_id=especialidade_id(),
             prioridade="media",
         )
         d = ordens.iniciar_execucao(cenario["admin"], d.id, d.versao)

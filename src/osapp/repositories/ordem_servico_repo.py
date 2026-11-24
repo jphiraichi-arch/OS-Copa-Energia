@@ -65,12 +65,15 @@ class OrdemServicoRepo:
         limite: int = 50,
         deslocamento: int = 0,
         origem: str | None = None,
+        especialidade_id: int | None = None,
     ) -> list[OrdemServico]:
         """Lista da mais nova para a mais antiga, com filtros opcionais.
 
         ``condicao``: a condição de busca montada por services/ordens.condicao_busca.
         """
         consulta = _filtrar(select(OrdemServico), filial_id, status, condicao, origem)
+        if especialidade_id is not None:  # prompt 37
+            consulta = consulta.where(OrdemServico.especialidade_id == especialidade_id)
         consulta = (
             consulta.order_by(OrdemServico.criado_em.desc(), OrdemServico.id.desc())
             .limit(limite)
@@ -130,6 +133,16 @@ class OrdemServicoRepo:
         if condicao is not None:
             consulta = consulta.where(condicao)
         return [tuple(linha) for linha in self._s.execute(consulta.order_by(OrdemServico.id))]
+
+    def especialidades(self, os_ids) -> dict[int, int | None]:
+        """id -> especialidade_id, como está agora (prompt 37)."""
+        ids = list(os_ids)
+        if not ids:
+            return {}
+        consulta = select(OrdemServico.id, OrdemServico.especialidade_id).where(
+            OrdemServico.id.in_(ids)
+        )
+        return dict(self._s.execute(consulta).all())
 
     def sem_gasto(self, os_ids) -> dict[int, tuple[bool, bool]]:
         """id -> (sem_gasto_previsto, sem_gasto_realizado), como estão agora (prompt 31)."""
