@@ -97,15 +97,25 @@ Toda função de serviço começa por `carregar_ator`; usuário inativo é recus
 
 - Papéis só pelo campo `papel` (usuario, manutencao, admin); não existe coluna booleana
   de administrador (a propriedade derivada chama-se `e_admin`).
-- PREVISTO: manutenção da filial da ordem ou administrador incluem, alteram e removem
-  enquanto a ordem não está concluída; depois da conclusão, só o administrador. Opcional
-  enquanto ABERTA; iniciar exige pelo menos 1 e, daí em diante, pelo menos 1 fica.
-- REALIZADO: chega com a conclusão (pelo menos 1), pelo executor ou administrador; depois,
-  só o administrador altera; antes da conclusão ninguém grava. Ordem cancelada: ninguém.
+- Cada fase (previsto e realizado) tem exatamente uma de duas coisas: pelo menos um item,
+  OU a marca 'Sem gasto' (`sem_gasto_previsto`, `sem_gasto_realizado`) — nunca as duas
+  (prompt 31; substitui 'pelo menos um item'). Iniciar exige o previsto assim; concluir,
+  o realizado. Faltando as duas: 'Adicione um item ou marque Sem gasto.'
+- PREVISTO: manutenção da filial da ordem ou administrador incluem, alteram, removem e
+  marcam 'Sem gasto' enquanto a ordem não está concluída; depois da conclusão, só o
+  administrador. Opcional enquanto ABERTA; a partir de Em execução a fase sempre tem item
+  ou 'Sem gasto' (remover o último item só por `trocar_para_sem_gasto`).
+- REALIZADO: chega com a conclusão (itens ou 'Sem gasto'), pelo executor ou
+  administrador; depois, só o administrador altera; antes da conclusão ninguém grava.
+  Ordem cancelada: ninguém.
+- Marcar 'Sem gasto' exige a fase sem itens; incluir um item desmarca. Toda mudança da
+  marca vai para o histórico, na mesma transação. As marcas são informação de custo: o
+  papel usuario nunca as recebe.
 - `criar_os` (manutenção e administrador) aceita lista vazia de itens previstos e tempo
-  vazio; `criar_solicitacao` não tem itens. `concluir_os` exige itens realizados e a nota.
+  vazio; `criar_solicitacao` não tem itens. `concluir_os` exige itens realizados ou
+  `sem_gasto_realizado`, os instantes realizados e a nota.
 - `previsto_completo()` é a única verificação para iniciar: tempo previsto, pelo menos 1
-  item previsto, tipo e prioridade (numa solicitação, a prioridade vazia é preenchida
+  item previsto ou 'Sem gasto', tipo e prioridade (numa solicitação, a prioridade vazia é preenchida
   com a urgência ao iniciar — prompt 24). Não existe equipamento em lugar nenhum.
 - O papel usuario nunca recebe itens, totais ou nada derivado deles: nem na lista, no
   detalhe, na busca (não busca nos itens), nas sugestões ou nos relatórios.

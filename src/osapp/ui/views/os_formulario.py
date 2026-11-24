@@ -138,6 +138,8 @@ class _TelaDeFormulario(Tela):
     def _resumo_itens(self) -> str:
         """'PREVISTO: R$ 1.250,00' (subtotal ao vivo da fase prevista)."""
         previsto = next((e for e in self.editores if e.fase == custos.FASE_PREVISTO), None)
+        if previsto is not None and previsto.sem_gasto:
+            return "SEM GASTO"
         total = previsto.resumo().total_previsto_centavos if previsto else 0
         return f"PREVISTO: {formatacao.formatar_brl(total)}"
 
@@ -317,6 +319,9 @@ class EditarOs(_TelaDeFormulario):
                         somente_leitura=not os_.acoes.pode_editar_itens_previstos,
                         ao_gravar=partial(self._gravar_item, custos.FASE_PREVISTO),
                         filial_de=lambda: os_.filial_id,
+                        com_sem_gasto=True,
+                        sem_gasto=os_.sem_gasto_previsto,
+                        ao_sem_gasto=partial(self._gravar_sem_gasto, custos.FASE_PREVISTO),
                     )
                 ]
                 if os_.acoes.pode_editar_itens_realizados:
@@ -329,6 +334,9 @@ class EditarOs(_TelaDeFormulario):
                             titulo=TITULO_REALIZADOS,
                             ao_gravar=partial(self._gravar_item, custos.FASE_REALIZADO),
                             filial_de=lambda: os_.filial_id,
+                            com_sem_gasto=True,
+                            sem_gasto=os_.sem_gasto_realizado,
+                            ao_sem_gasto=partial(self._gravar_sem_gasto, custos.FASE_REALIZADO),
                         )
                     )
                 self._mostrar_formulario()
@@ -338,6 +346,35 @@ class EditarOs(_TelaDeFormulario):
                 "Não foi possível abrir o formulário.", rotas.HOME, "Voltar para a lista"
             )
         self._atualizar()
+
+    async def _gravar_sem_gasto(self, fase: str, valor: bool, trocar: bool) -> bool:
+        """'Sem gasto' da fase (prompt 31): marcar, desmarcar, ou remover os itens e
+        marcar (trocar_para_sem_gasto, depois da confirmação da tela)."""
+        if trocar:
+            chamada = (ordens.trocar_para_sem_gasto, self.app.sessao.ator_id, self.os_id)
+            argumentos = (self.os.versao, fase)
+        else:
+            chamada = (ordens.definir_sem_gasto, self.app.sessao.ator_id, self.os_id)
+            argumentos = (self.os.versao, fase, valor)
+        resultado = await self.app.chamar(
+            *chamada,
+            *argumentos,
+            erros_tratados=(ErroConflito, ErroPermissao, ErroNaoEncontrado, ErroValidacao),
+        )
+        editor = next(e for e in self.editores if e.fase == fase)
+        if resultado.ok:
+            self.os = resultado.valor
+            for e in self.editores:
+                e.definir_itens(formularios.itens_da_fase(self.os.itens, e.fase))
+            self.app.avisar("Sem gasto marcado." if valor else "Sem gasto desmarcado.")
+            return True
+        if isinstance(resultado.erro, ErroValidacao):
+            editor.marcar_erro(resultado.erro.mensagem)
+        elif isinstance(resultado.erro, ErroConflito):
+            self._avisar_conflito()
+        else:
+            self.app.avisar(self.app.MENSAGEM_GENERICA)
+        return False
 
     async def _gravar_item(self, fase: str, operacao: str, antes, depois) -> bool:
         """Cada mudança de item é gravada na hora pelos serviços de item; a tela recarrega."""
@@ -497,6 +534,8 @@ class AssumirOs(EditarOs):
                 # O serviço recusou: mostra o que falta (texto do próprio serviço).
                 self.pendencias.value = iniciado.erro.mensagem
                 self.pendencias.visible = True
+                if iniciado.erro.campo == "itens_previstos":  # prompt 31: na seção de itens
+                    self.editores[0].marcar_erro(iniciado.erro.mensagem)
             elif isinstance(iniciado.erro, ErroConflito):
                 self._avisar_conflito()
             else:

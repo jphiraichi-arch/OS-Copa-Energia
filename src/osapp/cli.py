@@ -138,6 +138,20 @@ def _definir_papel(args) -> str:
     return "Papel alterado."
 
 
+def _listar_sem_itens(_args) -> str:
+    """Só leitura: ordens que precisam de revisão antes de marcar 'Sem gasto'."""
+    achados = ordens.listar_sem_itens()
+    if not achados:
+        return "Nenhuma ordem sem itens numa fase que exige item ou Sem gasto."
+    linhas = [f"{a.numero} ({a.status}): sem itens no {a.fase}" for a in achados]
+    return "\n".join([*linhas, f"{len(achados)} caso(s). Nada foi alterado."])
+
+
+def _marcar_sem_gasto(args) -> str:
+    numero = ordens.marcar_sem_gasto(args.responsavel, args.numero, args.fase)
+    return f"OS {numero}: {args.fase} marcado Sem gasto."
+
+
 def _reclassificar_origem(args) -> str:
     r = ordens.reclassificar_origem(args.responsavel, args.numero, args.origem, args.aplicar)
     if r.aplicada:
@@ -230,6 +244,21 @@ def criar_parser() -> argparse.ArgumentParser:
     p.add_argument("--responsavel", required=True, help="Login do administrador")
     p.add_argument("--aplicar", action="store_true", help="Aplica de fato (padrão: só mostra)")
     p.set_defaults(func=_reclassificar_origem)
+
+    p = sub.add_parser(
+        "listar-sem-itens",
+        help="Lista ordens em execução ou depois sem itens numa fase (só leitura)",
+    )
+    p.set_defaults(func=_listar_sem_itens)
+
+    p = sub.add_parser(
+        "marcar-sem-gasto",
+        help="Marca Sem gasto numa fase sem itens de uma ordem antiga (administrador)",
+    )
+    p.add_argument("numero")
+    p.add_argument("fase", choices=("previsto", "realizado"))
+    p.add_argument("--responsavel", required=True, help="Login do administrador")
+    p.set_defaults(func=_marcar_sem_gasto)
 
     p = sub.add_parser(
         "limpar-tentativas",

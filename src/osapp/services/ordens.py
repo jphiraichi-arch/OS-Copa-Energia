@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, exists, or_
+from sqlalchemy import and_, exists, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
@@ -24,6 +24,7 @@ from osapp.busca import normalizar_busca
 from osapp.config import carregar_config
 from osapp.db import sessao
 from osapp.models import OrdemServico, OsEvento, OsItemCusto
+from osapp.models.ordem_servico import INCLUIR_EXCLUIDAS
 from osapp.repositories import (
     CategoriaCustoRepo,
     FilialRepo,
@@ -79,7 +80,14 @@ NOTA_MIN = 5
 NOTA_MAX = 500
 
 PENDENCIA_TEMPO = "tempo previsto"
-PENDENCIA_VALOR = "custos previstos (pelo menos um item)"
+PENDENCIA_VALOR = "custos previstos (um item ou Sem gasto)"
+# Prompt 31: cada fase tem itens OU a marca 'Sem gasto' (nunca as duas coisas).
+MSG_SEM_GASTO = "Adicione um item ou marque Sem gasto."
+MSG_SEM_GASTO_COM_ITENS = "Para marcar Sem gasto, a fase não pode ter itens."
+MSG_ULTIMO_ITEM = (
+    "Esta fase precisa de um item ou de Sem gasto. Para ficar sem itens, marque Sem gasto."
+)
+CAMPO_SEM_GASTO = {"PREVISTO": "sem_gasto_previsto", "REALIZADO": "sem_gasto_realizado"}
 PENDENCIA_TIPO = "tipo de manutenção"
 PENDENCIA_PRIORIDADE = "prioridade"
 
@@ -253,6 +261,8 @@ class OsDetalhe:
     cancelada_em: datetime | None = None
     cancelada_por_nome: str | None = None
     pendencias_para_iniciar: tuple[str, ...] = ()  # vazio = previsto completo
+    sem_gasto_previsto: bool = False  # prompt 31: fase prevista sem gasto
+    sem_gasto_realizado: bool = False  # prompt 31: fase realizada sem gasto
 
 
 # --- Validação ------------------------------------------------------------------------
@@ -460,7 +470,10 @@ def pendencias_para_iniciar(ordem: OrdemServico) -> tuple[str, ...]:
     faltam = []
     if ordem.tempo_previsto_minutos is None:
         faltam.append(PENDENCIA_TEMPO)
-    if not any(i.fase == custos.FASE_PREVISTO for i in ordem.itens):
+    # Prompt 31: pelo menos um item previsto OU a fase marcada Sem gasto.
+    if not ordem.sem_gasto_previsto and not any(
+        i.fase == custos.FASE_PREVISTO for i in ordem.itens
+    ):
         faltam.append(PENDENCIA_VALOR)
     if ordem.tipo_id is None:
         faltam.append(PENDENCIA_TIPO)
@@ -590,6 +603,8 @@ def _detalhe(ordem: OrdemServico, ator: Ator) -> OsDetalhe:
         cancelada_em=ordem.cancelada_em,
         cancelada_por_nome=ordem.cancelada_por.nome if ordem.cancelada_por else None,
         pendencias_para_iniciar=pendencias_para_iniciar(ordem),
+        sem_gasto_previsto=bool(ordem.sem_gasto_previsto),
+        sem_gasto_realizado=bool(ordem.sem_gasto_realizado),
     )
 
 
@@ -1172,6 +1187,8 @@ def iniciar_execucao(ator_id: int, os_id: int, versao: int) -> OsDetalhe:
                 raise _negar(ator, f"iniciar OS em status {ordem.status}")
             _conferir_versao(ordem, versao)
             faltam = pendencias_para_iniciar(ordem)
+            if faltam == (PENDENCIA_VALOR,):
+                raise ErroValidacao("itens_previstos", MSG_SEM_GASTO)
             if faltam:
                 raise ErroValidacao(
                     "previsto", "Para iniciar a execução, preencha: " + ", ".join(faltam) + "."
@@ -1243,9 +1260,13 @@ def concluir_os(
     fim_realizado: datetime,
     descricao_realizado: str,
     nota_conclusao: str,
+    sem_gasto_realizado: bool = False,
 ) -> OsDetalhe:
     """EM_EXECUCAO -> CONCLUIDA: o executor ou o administrador, com o realizado (itens,
-    início, fim, descrição) e a nota para o solicitante. Grava concluida_em."""
+    início, fim, descrição) e a nota para o solicitante. Grava concluida_em.
+
+    Prompt 31: no lugar dos itens realizados, ``sem_gasto_realizado=True`` (nunca os dois;
+    nenhum dos dois: 'Adicione um item ou marque Sem gasto.')."""
     ator = carregar_ator(ator_id)
     try:
         with sessao() as s:
@@ -1254,7 +1275,16 @@ def concluir_os(
                 raise _negar(ator, f"concluir OS em status {ordem.status}")
             _conferir_versao(ordem, versao)
             agora = relogio.agora()
-            itens = custos.validar_itens_de_entrada(s, itens_realizados, "itens_realizados")
+            if not isinstance(sem_gasto_realizado, bool):
+                raise ErroValidacao("sem_gasto_realizado", "Valor inválido.")
+            if sem_gasto_realizado:
+                if itens_realizados:
+                    raise ErroValidacao("itens_realizados", MSG_SEM_GASTO_COM_ITENS)
+                itens = []
+            elif not itens_realizados:
+                raise ErroValidacao("itens_realizados", MSG_SEM_GASTO)
+            else:
+                itens = custos.validar_itens_de_entrada(s, itens_realizados, "itens_realizados")
             realizado = {
                 "inicio_realizado": _validar_instante("inicio_realizado", inicio_realizado),
                 "fim_realizado": _validar_instante("fim_realizado", fim_realizado),
@@ -1289,7 +1319,10 @@ def concluir_os(
                     None,
                     _como_texto(valor),
                 )
-            _gravar_itens(s, ordem, ator, custos.FASE_REALIZADO, itens, agora)
+            if sem_gasto_realizado:
+                _registrar_sem_gasto(s, ator, ordem, custos.FASE_REALIZADO, True, agora)
+            else:
+                _gravar_itens(s, ordem, ator, custos.FASE_REALIZADO, itens, agora)
             s.flush()
             s.refresh(ordem)
             logger.info("OS concluída: os_id=%s usuario_id=%s.", ordem.id, ator.usuario_id)
@@ -1375,6 +1408,9 @@ def _alterar_itens(
                 entrada = custos.ItemEntrada(**dados)
                 validado = custos.validar_itens_de_entrada(s, [entrada], "item")
                 _marcar_alterada(ordem, agora)
+                if getattr(ordem, CAMPO_SEM_GASTO[fase]):
+                    # Prompt 31: item numa fase Sem gasto desmarca a fase (com evento).
+                    _registrar_sem_gasto(s, ator, ordem, fase, False, agora)
                 _gravar_itens(s, ordem, ator, fase, validado, agora)
 
             elif operacao == "editar":
@@ -1414,11 +1450,10 @@ def _alterar_itens(
             else:  # remover
                 # Previsto em OS ABERTA pode ficar vazio (iniciar cobra o previsto completo);
                 # depois disso, e no realizado, a fase mantém pelo menos um item.
+                # Prompt 31: para ficar sem itens, use trocar_para_sem_gasto.
                 livre = fase == custos.FASE_PREVISTO and ordem.status == _status.ABERTA
                 if not livre and len(da_fase) <= 1:
-                    raise ErroValidacao(
-                        "itens", "A Ordem de Serviço precisa de pelo menos um item nesta fase."
-                    )
+                    raise ErroValidacao("itens", MSG_ULTIMO_ITEM)
                 texto = custos.texto_do_item(
                     item.categoria.nome,
                     item.descricao,
@@ -1443,6 +1478,113 @@ def _alterar_itens(
             logger.info(
                 "Item de custo (%s): os_id=%s usuario_id=%s.", operacao, ordem.id, ator.usuario_id
             )
+            return _detalhe(ordem, ator)
+    except StaleDataError:
+        raise ErroConflito() from None
+
+
+# --- Sem gasto por fase (prompt 31) ------------------------------------------------------
+
+
+def _registrar_sem_gasto(s, ator, ordem, fase: str, valor: bool, agora) -> None:
+    """Muda a marca da fase e grava o evento (valor antigo e novo), na mesma transação."""
+    campo = CAMPO_SEM_GASTO[fase]
+    antigo = bool(getattr(ordem, campo))
+    if antigo == valor:
+        return
+    setattr(ordem, campo, valor)
+    registrar_evento(
+        s,
+        ordem.id,
+        ator.usuario_id,
+        TIPO_EDICAO,
+        agora,
+        campo,
+        _como_texto(antigo).lower(),
+        _como_texto(valor).lower(),
+    )
+
+
+def _fase_exige_conteudo(ordem: OrdemServico, fase: str) -> bool:
+    """Regra 7: previsto a partir de Em execução; realizado a partir de Concluída."""
+    if fase == custos.FASE_PREVISTO:
+        return ordem.status != _status.ABERTA
+    return _status.encerrado(ordem.status)
+
+
+def _carregar_para_sem_gasto(s, ator, os_id, versao, fase):
+    ordem = _carregar_visivel(s, ator, os_id)
+    fase = custos.validar_fase(fase)
+    # As mesmas pessoas que podem mexer nos itens da fase (prompt 13).
+    if not _pode_editar_itens(ator, ordem, fase):
+        raise _negar(ator, f"marcar Sem gasto {fase}")
+    _conferir_versao(ordem, versao)
+    return ordem, fase
+
+
+def definir_sem_gasto(ator_id: int, os_id: int, versao: int, fase: str, valor: bool):
+    """Marca ou desmarca 'Sem gasto' numa fase. Marcar exige a fase sem itens; desmarcar
+    uma fase que precisa de conteúdo (regra 7) e não tem itens é recusado."""
+    ator = carregar_ator(ator_id)
+    if not isinstance(valor, bool):
+        raise ErroValidacao("sem_gasto", "Valor inválido.")
+    try:
+        with sessao() as s:
+            ordem, fase = _carregar_para_sem_gasto(s, ator, os_id, versao, fase)
+            tem_itens = any(i.fase == fase for i in ordem.itens)
+            if valor and tem_itens:
+                raise ErroValidacao("sem_gasto", MSG_SEM_GASTO_COM_ITENS)
+            if not valor and not tem_itens and _fase_exige_conteudo(ordem, fase):
+                raise ErroValidacao("sem_gasto", MSG_SEM_GASTO)
+            if bool(getattr(ordem, CAMPO_SEM_GASTO[fase])) == valor:
+                return _detalhe(ordem, ator)
+            agora = relogio.agora()
+            _marcar_alterada(ordem, agora)
+            _registrar_sem_gasto(s, ator, ordem, fase, valor, agora)
+            s.flush()
+            s.refresh(ordem)
+            return _detalhe(ordem, ator)
+    except StaleDataError:
+        raise ErroConflito() from None
+
+
+def trocar_para_sem_gasto(ator_id: int, os_id: int, versao: int, fase: str):
+    """Remove todos os itens da fase e marca 'Sem gasto', numa só transação: um evento
+    ITEM_REMOVIDO por item e um para a marca. (A tela pede confirmação antes.)"""
+    ator = carregar_ator(ator_id)
+    try:
+        with sessao() as s:
+            ordem, fase = _carregar_para_sem_gasto(s, ator, os_id, versao, fase)
+            agora = relogio.agora()
+            campo = CAMPO_SEM_GASTO[fase]
+            antigo = bool(getattr(ordem, campo))
+            # A marca muda junto com as outras colunas da ordem: um só UPDATE (uma versão).
+            _marcar_alterada(ordem, agora)
+            setattr(ordem, campo, True)
+            for item in [i for i in ordem.itens if i.fase == fase]:
+                registrar_evento(
+                    s,
+                    ordem.id,
+                    ator.usuario_id,
+                    custos.TIPO_ITEM_REMOVIDO,
+                    agora,
+                    f"item {item.id}",
+                    custos.texto_do_item(
+                        item.categoria.nome,
+                        item.descricao,
+                        item.quantidade,
+                        item.valor_unitario_centavos,
+                    ),
+                    None,
+                )
+                s.delete(item)
+            if not antigo:
+                registrar_evento(
+                    s, ordem.id, ator.usuario_id, TIPO_EDICAO, agora, campo, "false", "true"
+                )
+            s.flush()
+            s.refresh(ordem)
+            logger.info("Sem gasto (%s): os_id=%s usuario_id=%s.", fase, ordem.id, ator.usuario_id)
             return _detalhe(ordem, ator)
     except StaleDataError:
         raise ErroConflito() from None
@@ -1493,5 +1635,82 @@ def reclassificar_origem(
             )
             logger.info("Origem reclassificada: os_id=%s usuario_id=%s.", ordem.id, responsavel.id)
             return Reclassificacao(ordem.numero, atual, origem, True)
+    except StaleDataError:
+        raise ErroConflito() from None
+
+
+# --- Correção de ordens antigas sem itens (prompt 31, CLI) ------------------------------
+
+
+@dataclass(frozen=True)
+class OrdemSemItens:
+    numero: str
+    status: str
+    fase: str  # 'previsto' ou 'realizado'
+
+
+def listar_sem_itens() -> list[OrdemSemItens]:
+    """Só leitura: ordens que já quebram a regra 'itens ou Sem gasto' (gravadas antes do
+    prompt 31): em execução ou depois sem item previsto, e concluídas sem item realizado,
+    sem a marca. Inclui as da lixeira."""
+    achados = []
+    with sessao() as s:
+        consulta = (
+            select(OrdemServico)
+            .where(OrdemServico.status != _status.ABERTA)
+            .order_by(OrdemServico.id)
+            .execution_options(**{INCLUIR_EXCLUIDAS: True})
+        )
+        for o in s.scalars(consulta):
+            fases = {i.fase for i in o.itens}
+            if (
+                o.status != _status.CANCELADA
+                and not o.sem_gasto_previsto
+                and custos.FASE_PREVISTO not in fases
+            ):
+                achados.append(OrdemSemItens(o.numero, o.status, "previsto"))
+            if (
+                _status.encerrado(o.status)
+                and not o.sem_gasto_realizado
+                and custos.FASE_REALIZADO not in fases
+            ):
+                achados.append(OrdemSemItens(o.numero, o.status, "realizado"))
+    return achados
+
+
+def marcar_sem_gasto(login_responsavel: str, numero: str, fase: str) -> str:
+    """Marca 'Sem gasto' numa fase sem itens de uma ordem antiga. Só administrador ativo;
+    um evento EDICAO no histórico. Devolve o número da ordem."""
+    fase = {"previsto": custos.FASE_PREVISTO, "realizado": custos.FASE_REALIZADO}.get(fase)
+    if fase is None:
+        raise ErroValidacao("fase", "Fase inválida. Use previsto ou realizado.")
+    try:
+        with sessao() as s:
+            responsavel = (
+                UsuarioRepo(s).obter_por_login(login_responsavel.strip())
+                if isinstance(login_responsavel, str)
+                else None
+            )
+            if responsavel is None or not responsavel.ativo or responsavel.papel != "admin":
+                raise ErroPermissao()
+            ordem = (
+                s.scalars(
+                    select(OrdemServico)
+                    .where(OrdemServico.numero == (numero or "").strip())
+                    .execution_options(**{INCLUIR_EXCLUIDAS: True})
+                ).one_or_none()
+                if isinstance(numero, str)
+                else None
+            )
+            if ordem is None:
+                raise ErroNaoEncontrado()
+            if any(i.fase == fase for i in ordem.itens):
+                raise ErroValidacao("sem_gasto", MSG_SEM_GASTO_COM_ITENS)
+            agora = relogio.agora()
+            ator = carregar_ator(responsavel.id)
+            _marcar_alterada(ordem, agora)
+            _registrar_sem_gasto(s, ator, ordem, fase, True, agora)
+            logger.info("Sem gasto marcado (CLI): os_id=%s fase=%s.", ordem.id, fase)
+            return ordem.numero
     except StaleDataError:
         raise ErroConflito() from None

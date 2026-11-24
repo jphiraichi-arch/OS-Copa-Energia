@@ -11,7 +11,7 @@ from osapp.ui import formularios, historico, rotas, secoes, theme
 from osapp.ui.components import basicos
 from osapp.ui.components.campos import CampoHora
 from osapp.ui.components.editor_itens import EditorItens
-from osapp.ui.components.secao import secao
+from osapp.ui.components.secao import SecaoCard, status_pill
 from osapp.ui.views.base import Tela
 from osapp.ui.views.detalhe import MENSAGEM_CONFLITO
 from osapp.ui.views.os_formulario import TITULO_REALIZADOS, AlvoDeErro
@@ -93,6 +93,7 @@ class ConcluirOs(Tela):
             titulo=TITULO_REALIZADOS,
             ao_mudar=self._atualizar_previa,
             filial_de=lambda: d.filial_id,
+            com_sem_gasto=True,  # prompt 31: no lugar dos itens realizados
         )
         self.inicio_data = self._campo("Início - data (dd/mm/aaaa)", hoje, **data)
         self.inicio_hora = CampoHora("Início - hora", ao_mudar=self._atualizar_previa)
@@ -132,26 +133,11 @@ class ConcluirOs(Tela):
             solicitacao=d.origem == ordens.ORIGEM_SOLICITACAO,
             pode_concluir=d.acoes.pode_concluir,
         )
+        self.secao_conclusao = self._montar_secao(lista)
         self.conteudo.controls = [
             basicos.titulo("Concluir Ordem de Serviço", theme.FONTE_SAUDACAO),
             basicos.cartao(self._resumo_previsto(d)),
-            secao(
-                secoes.numero(lista, secoes.CONCLUSAO),
-                ft.Icons.TASK_ALT,
-                secoes.TITULOS[secoes.CONCLUSAO],
-                [
-                    self.realizados.controle,
-                    basicos.botao_secundario(ROTULO_COPIAR, ft.Icons.COPY, self._copiar),
-                    self.inicio_data,
-                    self.inicio_hora.controle,
-                    self.fim_data,
-                    self.fim_hora.controle,
-                    self.descricao,
-                    self.nota,
-                    self.aviso,
-                ],
-                obrigatoria=True,
-            ),
+            self.secao_conclusao.controle,
             basicos.cartao(
                 basicos.coluna(
                     [basicos.titulo("Prévia da diferença"), self.previa],
@@ -162,6 +148,25 @@ class ConcluirOs(Tela):
         ]
         self._calcular_previa()
         self._inicial = self._digitado()
+
+    def _montar_secao(self, lista) -> SecaoCard:
+        return SecaoCard(
+            secoes.numero(lista, secoes.CONCLUSAO),
+            ft.Icons.TASK_ALT,
+            secoes.TITULOS[secoes.CONCLUSAO],
+            [
+                self.realizados.controle,
+                basicos.botao_secundario(ROTULO_COPIAR, ft.Icons.COPY, self._copiar),
+                self.inicio_data,
+                self.inicio_hora.controle,
+                self.fim_data,
+                self.fim_hora.controle,
+                self.descricao,
+                self.nota,
+                self.aviso,
+            ],
+            obrigatoria=True,
+        )
 
     def _resumo_previsto(self, d) -> ft.Control:
         linhas: list[ft.Control] = [
@@ -252,6 +257,10 @@ class ConcluirOs(Tela):
         self.previa.controls = linhas
 
     def _atualizar_previa(self) -> None:
+        # Pill da seção: 'SEM GASTO' quando a fase realizada está marcada (prompt 31).
+        self.secao_conclusao.definir_pill(
+            status_pill("SEM GASTO", "neutro") if self.realizados.sem_gasto else None
+        )
         self._calcular_previa()
         try:
             self.previa.update()
@@ -310,6 +319,7 @@ class ConcluirOs(Tela):
                 valores["fim"],
                 valores["descricao"],
                 valores["nota"],
+                self.realizados.sem_gasto,
                 campos=self.campos,
                 erros_tratados=(ErroConflito, ErroPermissao, ErroNaoEncontrado),
             )

@@ -143,7 +143,7 @@ def test_regra_04_papel_e_a_unica_fonte_do_papel():
 
 def test_regra_08_usuario_nunca_recebe_itens_nem_totais(c):
     d = _no_status(c, st.CONCLUIDA)
-    sensivel = re.compile(r"iten|custo|previsto|realizado|total|centavos|valor", re.I)
+    sensivel = re.compile(r"iten|custo|previsto|realizado|total|centavos|valor|gasto", re.I)
     for modelo in (ordens.OsVisaoSolicitante, ordens.ResumoSolicitante):
         assert not [f for f in modelo.__dataclass_fields__ if sensivel.search(f)]
     v = ordens.obter_os(c["sol"], d.id)

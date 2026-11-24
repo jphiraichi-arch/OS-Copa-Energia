@@ -87,7 +87,12 @@ CAMPOS: dict[str, tuple[str, Callable[[str], str]]] = {
     "descricao_realizado": ("Descrição do que foi feito", _texto),
     "nota_conclusao": ("Nota para o solicitante", _texto),
     "numero_sap": ("Nº SAP", _texto),
-    "exclusao": ("Exclusão", _texto),  # EXCLUSAO e RESTAURACAO (prompt 24): o motivo
+    "exclusao": ("Exclusão", _texto),
+    "sem_gasto_previsto": ("Sem gasto (previsto)", _booleano),  # prompt 31
+    "sem_gasto_realizado": (
+        "Sem gasto (realizado)",
+        _booleano,
+    ),  # EXCLUSAO e RESTAURACAO (prompt 24): o motivo
     # Campos que saíram do modelo (eventos antigos continuam legíveis)
     "valor_previsto_centavos": ("Valor previsto (legado)", _centavos),
     "valor_realizado_centavos": ("Valor realizado (legado)", _centavos),

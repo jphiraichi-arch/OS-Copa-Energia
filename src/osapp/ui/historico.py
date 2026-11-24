@@ -70,6 +70,8 @@ def frase(evento) -> str:
 
 
 IGUAL = "Igual ao previsto"
+NAO_PREVISTO = "(não previsto)"
+SEM_GASTO = "sem gasto"
 ACIMA = "acima do previsto"
 ABAIXO = "abaixo do previsto"
 
@@ -87,31 +89,48 @@ def texto_diferenca_valor(diferenca_centavos: int, percentual: float | None) -> 
     """Diferença de dinheiro em palavras (Detalhe, relatório, prévia da conclusão).
 
     'R$ 120,00 acima do previsto (+12%)'; 'R$ 120,00 abaixo do previsto (\u221212%)';
-    'Igual ao previsto'. O percentual leva o sinal; o valor, não. Sem previsto (0), o
-    percentual é omitido.
+    'Igual ao previsto'. O percentual leva o sinal; o valor, não.
+    Prompt 31 — previsto 0 (o percentual chega como None, nunca há divisão por zero):
+    realizado > 0 -> '+R$ 150,00 (não previsto)'; realizado 0 -> 'R$ 0,00 — sem gasto'.
     """
+    if percentual is None:
+        return _sem_previsto(diferenca_centavos)
     if diferenca_centavos == 0:
         return IGUAL
     valor = formatacao.formatar_brl(abs(diferenca_centavos))
     palavras = ACIMA if diferenca_centavos > 0 else ABAIXO
-    if percentual is None:
-        return f"{valor} {palavras}"
     return f"{valor} {palavras} ({formatacao.formatar_percentual(percentual, sinal=True)})"
+
+
+def _sem_previsto(diferenca_centavos: int) -> str:
+    """Previsto 0: a diferença é o próprio realizado (nunca negativa)."""
+    if diferenca_centavos == 0:
+        return f"{formatacao.formatar_brl(0)} — {SEM_GASTO}"
+    return f"+{formatacao.formatar_brl(abs(diferenca_centavos))} {NAO_PREVISTO}"
 
 
 def texto_diferenca_compacta(diferenca_centavos: int, percentual: float | None) -> str:
     """Linhas de categoria da tabela de custos: só valor e percentual, sem palavras.
 
     '+R$ 120,00 (+12%)'; '\u2212R$ 120,00 (\u221212%)'; 'R$ 0,00'.
+    Previsto 0 (percentual None): as mesmas frases de texto_diferenca_valor.
     """
-    valor = formatacao.formatar_brl(abs(diferenca_centavos))
-    if diferenca_centavos > 0:
-        valor = f"+{valor}"
-    elif diferenca_centavos < 0:
-        valor = f"{formatacao.MENOS}{valor}"
-    if percentual is None or diferenca_centavos == 0:
+    if percentual is None:
+        return _sem_previsto(diferenca_centavos)
+    valor = valor_com_sinal(diferenca_centavos)
+    if diferenca_centavos == 0:
         return valor
     return f"{valor} ({formatacao.formatar_percentual(percentual, sinal=True)})"
+
+
+def valor_com_sinal(diferenca_centavos: int) -> str:
+    """'+R$ 120,00', '\u2212R$ 120,00' ou 'R$ 0,00' (só nas linhas de categoria)."""
+    valor = formatacao.formatar_brl(abs(diferenca_centavos))
+    if diferenca_centavos > 0:
+        return f"+{valor}"
+    if diferenca_centavos < 0:
+        return f"{formatacao.MENOS}{valor}"
+    return valor
 
 
 def etiqueta_diferenca(diferenca: int) -> str | None:

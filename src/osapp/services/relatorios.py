@@ -582,6 +582,10 @@ class BlocoMensal:
     por_urgencia: tuple[TemposPorUrgencia, ...]
     custos: CustosBusca
     busca: ResumoDaBusca | None  # só com termo
+    # Prompt 31 (marcas como estão agora): das ordens do bloco, quantas têm o previsto
+    # Sem gasto, e das concluídas no fim do período, quantas têm o realizado Sem gasto.
+    sem_gasto_previstas: int = 0
+    sem_gasto_realizadas: int = 0
 
 
 @dataclass(frozen=True)
@@ -613,7 +617,7 @@ def _no_periodo(instante: datetime | None, inicio: datetime | None, fim: datetim
     return instante is not None and (inicio is None or instante >= inicio) and instante < fim
 
 
-def _bloco(repo, populacao, situacoes, ids_busca, termo, status, inicio, fim):
+def _bloco(repo, populacao, situacoes, ids_busca, termo, status, inicio, fim, sem_gasto=None):
     """Um bloco (mês ou acumulado). ``populacao``: linhas de solicitacoes_ate sem a busca;
     ``ids_busca``: ids que correspondem ao termo (None sem termo)."""
 
@@ -664,7 +668,12 @@ def _bloco(repo, populacao, situacoes, ids_busca, termo, status, inicio, fim):
         if termo
         else None
     )
+    marcas = sem_gasto or {}
     bloco = BlocoMensal(
+        sem_gasto_previstas=sum(1 for m in medidas if marcas.get(m[0], (False, False))[0]),
+        sem_gasto_realizadas=sum(
+            1 for m in medidas if m[5] == _status.CONCLUIDA and marcas.get(m[0], (False, False))[1]
+        ),
         inicio=inicio,
         fim=fim,
         fluxo=fluxo,
@@ -726,11 +735,28 @@ def relatorio_mensal(
         for os_id, data_hora, tipo, valor_novo in repo.marcos_ate(filial, fim):
             marcos[os_id].append(linha_do_tempo.Marco(data_hora, tipo, valor_novo))
         situacoes = {p[0]: linha_do_tempo.situacao_em(marcos[p[0]], fim) for p in populacao}
+        sem_gasto = repo.sem_gasto(p[0] for p in populacao)
         bloco_mes, linhas_do_mes = _bloco(
-            repo, populacao, situacoes, ids_busca, termo_limpo, status_escolhidos, inicio, fim
+            repo,
+            populacao,
+            situacoes,
+            ids_busca,
+            termo_limpo,
+            status_escolhidos,
+            inicio,
+            fim,
+            sem_gasto,
         )
         acumulado, _ = _bloco(
-            repo, populacao, situacoes, ids_busca, termo_limpo, status_escolhidos, None, fim
+            repo,
+            populacao,
+            situacoes,
+            ids_busca,
+            termo_limpo,
+            status_escolhidos,
+            None,
+            fim,
+            sem_gasto,
         )
         lista = _resultado_busca(
             repo, termo_limpo or "", escopo, linhas_do_mes, len(linhas_do_mes), pagina

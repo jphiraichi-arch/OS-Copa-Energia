@@ -31,6 +31,13 @@ class LinhaCusto:
     percentual: str | None = None  # categoria: '(+12%)', numa linha própria
 
 
+def _valor_da_categoria(diferenca: int, percentual: float | None) -> str:
+    """Linha 1 da Diferença: o valor com sinal; sem previsto, a frase inteira (prompt 31)."""
+    if percentual is None:
+        return historico.texto_diferenca_compacta(diferenca, None)
+    return historico.valor_com_sinal(diferenca)
+
+
 def _percentual(diferenca: int, percentual: float | None) -> str | None:
     """'(+12%)' da linha de categoria (o mesmo de texto_diferenca_compacta), ou None."""
     if percentual is None or diferenca == 0:
@@ -54,7 +61,7 @@ def linhas(resumo, com_realizado: bool) -> list[LinhaCusto]:
                 realizado=formatacao.formatar_brl(c.realizado_centavos)
                 if com_realizado
                 else SEM_VALOR,
-                diferenca=historico.texto_diferenca_compacta(c.diferenca_centavos, None)
+                diferenca=_valor_da_categoria(c.diferenca_centavos, c.diferenca_percentual)
                 if com_realizado
                 else SEM_VALOR,
                 etiqueta=historico.etiqueta_diferenca(c.diferenca_centavos)

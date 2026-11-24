@@ -156,10 +156,13 @@ class Detalhe(Tela):
                         ft.Icons.RECEIPT_LONG,
                         titulo,
                         [
+                            *self._marcas_sem_gasto(d),
                             self._custos(d),
                             *[self._itens(d, fase) for fase in custos.FASES if _tem_fase(d, fase)],
                         ],
-                        pill=status_pill(
+                        pill=status_pill("SEM GASTO", "neutro")
+                        if d.sem_gasto_previsto
+                        else status_pill(
                             "PREVISTO: "
                             + formatacao.formatar_brl(d.resumo_custos.total_previsto_centavos),
                             "info",
@@ -170,6 +173,16 @@ class Detalhe(Tela):
                 cartoes.append(self._conclusao(n, d))
         cartoes += [self._datas(d), self._historico(eventos)]
         return cartoes
+
+    @staticmethod
+    def _marcas_sem_gasto(d) -> list[ft.Control]:
+        """Fases marcadas 'Sem gasto' (prompt 31), em texto."""
+        linhas = []
+        if d.sem_gasto_previsto:
+            linhas.append(basicos.rotulo_valor("Previsto", "Sem gasto"))
+        if d.sem_gasto_realizado:
+            linhas.append(basicos.rotulo_valor("Realizado", "Sem gasto"))
+        return linhas
 
     def _planejamento(self, numero: int, d) -> ft.Control:
         tempo = (

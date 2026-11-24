@@ -66,6 +66,12 @@ def texto_resumo_mensal(resumo, termo: str, periodo: str) -> str:
     )
 
 
+def texto_sem_gasto(bloco) -> str:
+    """'Sem gasto: 5 previstas, 3 realizadas' (prompt 31)."""
+    p, r = bloco.sem_gasto_previstas, bloco.sem_gasto_realizadas
+    return f"Sem gasto: {p} prevista{'s' if p != 1 else ''}, {r} realizada{'s' if r != 1 else ''}"
+
+
 def nome_do_mes(ano: int, mes: int) -> str:
     """'Novembro de 2026'."""
     return textos.nome_do_mes(ano, mes).capitalize()
@@ -322,6 +328,7 @@ class RelatorioTempos(Tela):
         else:
             linhas.append(basicos.subtitulo(textos.TEMPOS_VAZIO))
         linhas.append(self._custos_busca(b.custos))
+        linhas.append(basicos.subtitulo(texto_sem_gasto(b)))
         return secao(numero, ft.Icons.INSERT_CHART_OUTLINED, titulo, linhas)
 
     async def _abrir_mensal(self, _e=None) -> None:

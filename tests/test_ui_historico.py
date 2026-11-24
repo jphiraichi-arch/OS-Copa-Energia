@@ -142,8 +142,8 @@ def test_valores_inesperados_nao_quebram():
         (2000, 20.0, "R$\u00a020,00 acima do previsto (+20%)"),
         (-2500, -25.0, "R$\u00a025,00 abaixo do previsto (\u221225%)"),
         (0, 0.0, "Igual ao previsto"),
-        (5000, None, "R$\u00a050,00 acima do previsto"),  # previsto zero: sem percentual
-        (0, None, "Igual ao previsto"),
+        (5000, None, "+R$\u00a050,00 (não previsto)"),  # prompt 31: previsto zero
+        (0, None, "R$\u00a00,00 — sem gasto"),  # prompt 31: nada previsto nem gasto
         (-20000, -66.67, "R$\u00a0200,00 abaixo do previsto (\u221266,7%)"),
         (123456789, 1234.5, "R$\u00a01.234.567,89 acima do previsto (+1234,5%)"),
     ],

@@ -77,8 +77,9 @@ def test_diferenca_de_tempo(minutos, esperado):
         (12000, 12.0, f"R${NBSP}120,00 acima do previsto (+12%)"),
         (-12000, -12.0, f"R${NBSP}120,00 abaixo do previsto ({MENOS}12%)"),
         (0, 0.0, "Igual ao previsto"),
-        (0, None, "Igual ao previsto"),
-        (5000, None, f"R${NBSP}50,00 acima do previsto"),  # previsto 0: sem percentual
+        # Prompt 31: previsto 0 (percentual None).
+        (0, None, f"R${NBSP}0,00 — sem gasto"),
+        (5000, None, f"+R${NBSP}50,00 (não previsto)"),
         (-9_999_999_999, -100.0, f"R${NBSP}99.999.999,99 abaixo do previsto ({MENOS}100%)"),
     ],
 )
@@ -92,7 +93,8 @@ def test_diferenca_compacta_das_categorias():
         f"{MENOS}R${NBSP}120,00 ({MENOS}12%)"
     )
     assert historico.texto_diferenca_compacta(0, 0.0) == f"R${NBSP}0,00"
-    assert historico.texto_diferenca_compacta(500, None) == f"+R${NBSP}5,00"
+    assert historico.texto_diferenca_compacta(500, None) == f"+R${NBSP}5,00 (não previsto)"
+    assert historico.texto_diferenca_compacta(0, None) == f"R${NBSP}0,00 — sem gasto"
     assert historico.etiqueta_diferenca(1) == "acima"
     assert historico.etiqueta_diferenca(-1) == "abaixo"
     assert historico.etiqueta_diferenca(0) is None

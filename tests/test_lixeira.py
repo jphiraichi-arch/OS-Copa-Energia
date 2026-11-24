@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 
 from osapp import db
 from osapp.db import sessao
-from osapp.models import OrdemServico, OsEvento
+from osapp.models import OrdemServico
 from osapp.models.ordem_servico import INCLUIR_EXCLUIDAS
 from osapp.services import administracao, custos, lixeira, ordens, relatorios
 from osapp.services.auth import carregar_ator
@@ -424,13 +424,20 @@ def test_migracao_0011_com_dados(banco_vazio):
         )
     command.upgrade(cfg, "0011")
     db.reiniciar()
-    with sessao() as s:
-        ordem = s.get(OrdemServico, 1)
-        assert ordem is not None and ordem.excluida_em is None  # continua visível
-        assert s.scalars(select(OsEvento.observacao)).all() == [None]
-    lixeira.excluir_os(1, 1, 1, MOTIVO)
-    with sessao() as s:
-        assert s.get(OrdemServico, 1) is None
+    # Na 0011 o modelo atual (com as colunas da 0012) ainda não serve: lê e grava pelas
+    # tabelas refletidas, como a lixeira gravaria.
+    m = MetaData()
+    m.reflect(bind=db.obter_engine())
+    os_, ev = m.tables["ordens_servico"], m.tables["os_eventos"]
+    with db.obter_engine().begin() as c:
+        assert c.execute(select(os_.c.excluida_em)).scalars().all() == [None]  # visível
+        assert c.execute(select(ev.c.observacao)).scalars().all() == [None]
+        c.execute(os_.update().values(excluida_em=t0, excluida_por_id=1, motivo_exclusao=MOTIVO))
+        c.execute(
+            ev.insert().values(
+                os_id=1, usuario_id=1, data_hora=t0, tipo="EXCLUSAO", valor_novo=MOTIVO
+            )
+        )
     command.downgrade(cfg, "0010")
     db.reiniciar()
     m = MetaData()

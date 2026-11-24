@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text, event, func
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text, event, false, func
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship, with_loader_criteria
 
 from osapp.busca import normalizar_busca
@@ -93,6 +93,9 @@ class OrdemServico(Base):
     excluida_em: Mapped[datetime | None] = mapped_column(DataHoraUTC())
     excluida_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
     motivo_exclusao: Mapped[str | None] = mapped_column(Text)
+    # --- Prompt 31: fase sem gasto (no lugar de itens). Nunca junto com itens da fase. --
+    sem_gasto_previsto: Mapped[bool] = mapped_column(default=False, server_default=false())
+    sem_gasto_realizado: Mapped[bool] = mapped_column(default=False, server_default=false())
 
     # Trava otimista: o ORM inclui "WHERE versao = ?" em cada UPDATE e incrementa o valor.
     __mapper_args__ = {"version_id_col": versao}

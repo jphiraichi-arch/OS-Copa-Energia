@@ -413,7 +413,11 @@ def test_iniciar_exige_o_previsto_completo(pessoas, falta, pendencia):
     assert d.pendencias_para_iniciar == (pendencia,) and not d.acoes.pode_iniciar
     with pytest.raises(ErroValidacao) as info:
         ordens.iniciar_execucao(pessoas["man"], d.id, d.versao)
-    assert info.value.campo == "previsto" and pendencia in info.value.mensagem
+    if falta == "itens":  # prompt 31: só falta o item -> a mensagem da seção de itens
+        assert info.value.campo == "itens_previstos"
+        assert info.value.mensagem == ordens.MSG_SEM_GASTO
+    else:
+        assert info.value.campo == "previsto" and pendencia in info.value.mensagem
     assert foto(d.id)[0] == status.ABERTA
 
 

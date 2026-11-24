@@ -1131,6 +1131,8 @@ linha 'por urgência'); mudança de um texto que afeta a busca (título, descri�
 descrição de item); e — além das previstas no prompt — mudança de itens de custo depois
 do período (o administrador pode alterar itens de ordem concluída: os custos do mês
 passado mudam) e o cartão 'Solicitações em aberto', que é sempre a situação de agora.
+Prompt 31: também uma mudança de 'Sem gasto' depois do período (as marcas são lidas como
+estão agora, não refeitas pelo histórico).
 
 ## Prompt 26 — valores numa linha, tabela de custos, histórico legível (23/11/2026)
 
@@ -1169,3 +1171,31 @@ passado mudam) e o cartão 'Solicitações em aberto', que é sempre a situaçã
   ganhou a seção 'Itens de custo'.
 - Testes: `tests/test_reconciliacao.py`, um por regra ainda sem teste próprio, inclusive a
   matriz de itens com usuario (solicitante e outro) e ordem cancelada (56 casos).
+
+
+## Prompt 31 — 'Sem gasto' por fase (24/11/2026)
+
+- Migração `0012`: `ordens_servico.sem_gasto_previsto` e `sem_gasto_realizado` (booleanos,
+  não nulos, padrão falso). Não muda ordens existentes. Testada para cima e para baixo com
+  dados.
+- Serviços (`ordens.py`): `definir_sem_gasto`, `trocar_para_sem_gasto` (remove os itens e
+  marca, numa transação e numa versão; um evento por item e um da marca);
+  `concluir_os(..., sem_gasto_realizado=False)`; `pendencias_para_iniciar` aceita item ou
+  marca; `iniciar_execucao` responde 'Adicione um item ou marque Sem gasto.' quando é a
+  única pendência (com outras, a lista de pendências de sempre); incluir item desmarca
+  (com evento); remover o último item a partir de Em execução é recusado. Permissões das
+  marcas = as dos itens da fase. Histórico: campos `sem_gasto_previsto`/`_realizado`
+  ('Sem gasto (previsto)'/'(realizado)', Sim/Não).
+- Textos de diferença: previsto 0 e realizado > 0 -> '+R$ X (não previsto)'; os dois 0 ->
+  'R$ 0,00 — sem gasto'; nas linhas de categoria, no Total, na prévia da conclusão e no
+  relatório. Todo percentual passa por `custos.percentual` (None com base 0).
+- Relatório mensal: Sem gasto conta como R$ 0; cada bloco mostra 'Sem gasto: N previstas,
+  M realizadas' (realizadas: concluídas no fim do período com o realizado Sem gasto).
+- Telas: caixa 'Sem gasto' no editor de itens (Alterar/Assumir: previsto e, para o
+  administrador depois da conclusão, realizado; Concluir: realizado). Marcada: somem a
+  lista e o botão de incluir, e a pill vira 'SEM GASTO'; com itens, pergunta 'Remover os
+  N itens e marcar Sem gasto?'. A recusa ao iniciar ou concluir aparece na seção dos
+  itens. Detalhe mostra 'Previsto/Realizado: Sem gasto'. Na criação (Nova Ordem de
+  Serviço) a opção não aparece: `criar_os` não recebe a marca; marca-se depois.
+- CLI: `listar-sem-itens` (só leitura) e `marcar-sem-gasto NUMERO previsto|realizado
+  --responsavel LOGIN` (administrador; exige a fase sem itens).

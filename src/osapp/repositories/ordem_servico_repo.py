@@ -131,6 +131,16 @@ class OrdemServicoRepo:
             consulta = consulta.where(condicao)
         return [tuple(linha) for linha in self._s.execute(consulta.order_by(OrdemServico.id))]
 
+    def sem_gasto(self, os_ids) -> dict[int, tuple[bool, bool]]:
+        """id -> (sem_gasto_previsto, sem_gasto_realizado), como estão agora (prompt 31)."""
+        ids = list(os_ids)
+        if not ids:
+            return {}
+        consulta = select(
+            OrdemServico.id, OrdemServico.sem_gasto_previsto, OrdemServico.sem_gasto_realizado
+        ).where(OrdemServico.id.in_(ids))
+        return {i: (bool(p), bool(r)) for i, p, r in self._s.execute(consulta)}
+
     def marcos_ate(self, filial_id: int | None, fim: datetime) -> list:
         """(os_id, data_hora, tipo, valor_novo) dos eventos CRIACAO e STATUS antes de
         ``fim`` das mesmas solicitações de solicitacoes_ate (sem a busca)."""

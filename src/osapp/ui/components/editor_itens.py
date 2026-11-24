@@ -31,6 +31,8 @@ ROTULO_ADICIONAR = "Adicionar item"
 TITULO_NOVO = "Novo item de custo"
 TITULO_EDITAR = "Alterar item de custo"
 SEM_ITENS = "Nenhum item incluído."
+ROTULO_SEM_GASTO = "Sem gasto"
+TEXTO_SEM_GASTO = "Fase marcada Sem gasto: nenhum custo."
 ROTULO_TOTAL = "Total"
 SUGESTAO_MIN_CARACTERES = 2
 SUGESTAO_PAUSA_S = 0.3  # pausa na digitação antes de buscar sugestões
@@ -54,8 +56,17 @@ class EditorItens:
         ao_gravar: Gravar | None = None,
         ao_mudar: Callable[[], None] | None = None,
         filial_de: Callable[[], int | None] | None = None,
+        com_sem_gasto: bool = False,
+        sem_gasto: bool = False,
+        ao_sem_gasto: Callable[[bool, bool], Awaitable[bool]] | None = None,
     ) -> None:
+        """``com_sem_gasto`` mostra a opção 'Sem gasto' (prompt 31). Modo gravado:
+        ``ao_sem_gasto(valor, trocar)`` chama o serviço (trocar = remover os itens e marcar)
+        e devolve True se gravou. Modo local: a marca fica na tela até o botão gravar."""
         self.app = app
+        self.com_sem_gasto = com_sem_gasto
+        self._sem_gasto = sem_gasto
+        self._ao_sem_gasto = ao_sem_gasto
         # Filial das sugestões de descrição (prompt 22); None: sem sugestões.
         self.filial_de = filial_de
         self.fase = fase
@@ -76,6 +87,14 @@ class EditorItens:
     def itens(self) -> list[formularios.ItemLocal]:
         return list(self._itens)
 
+    @property
+    def sem_gasto(self) -> bool:
+        return self._sem_gasto
+
+    def definir_sem_gasto(self, valor: bool) -> None:
+        self._sem_gasto = valor
+        self._redesenhar()
+
     def definir_itens(self, itens: list[formularios.ItemLocal]) -> None:
         self._itens = list(itens)
         self._redesenhar()
@@ -83,6 +102,8 @@ class EditorItens:
     def acrescentar_copias(self, itens: list[formularios.ItemLocal]) -> None:
         """Acrescenta cópias não gravadas (botão 'Copiar itens previstos')."""
         copias = formularios.copiar_itens(itens, self.fase, 0)
+        if copias:
+            self._sem_gasto = False  # itens e Sem gasto nunca juntos
         for copia in copias:
             self._itens.append(_com_chave(copia, self._nova_chave()))
         self._redesenhar()
@@ -121,6 +142,24 @@ class EditorItens:
 
     def _montar(self) -> None:
         controles: list[ft.Control] = [basicos.titulo(self.titulo, theme.FONTE_CORPO + 2)]
+        if self.com_sem_gasto:
+            controles.append(
+                ft.Checkbox(
+                    label=ROTULO_SEM_GASTO,
+                    value=self._sem_gasto,
+                    disabled=self.somente_leitura,
+                    active_color=theme.COR_PRIMARIO,
+                    label_style=ft.TextStyle(color=theme.COR_TITULO, size=theme.FONTE_CORPO),
+                    on_change=lambda e: self.app.page.run_task(
+                        self._ao_mudar_sem_gasto, bool(e.control.value)
+                    ),
+                )
+            )
+        if self._sem_gasto:
+            # Marcada: sem lista nem botão de incluir (prompt 31).
+            controles += [basicos.subtitulo(TEXTO_SEM_GASTO), self.erro]
+            self.controle.controls = controles
+            return
         if not self._itens:
             controles.append(basicos.subtitulo(SEM_ITENS))
         por_categoria: dict[int, list[formularios.ItemLocal]] = {}
@@ -231,6 +270,36 @@ class EditorItens:
                 ),
             ]
         return ft.Row(controles, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+
+    async def _ao_mudar_sem_gasto(self, valor: bool) -> None:
+        if valor and self._itens:
+            n = len(self._itens)
+
+            async def trocar() -> None:
+                await self._aplicar_sem_gasto(True, trocar=True)
+
+            self._redesenhar()  # volta a caixa até a confirmação
+            self.app.confirmar(
+                "Marcar Sem gasto?",
+                f"Remover os {n} itens e marcar Sem gasto?",
+                "Remover e marcar",
+                trocar,
+                rotulo_cancelar="Voltar",
+            )
+            return
+        await self._aplicar_sem_gasto(valor, trocar=False)
+
+    async def _aplicar_sem_gasto(self, valor: bool, trocar: bool) -> None:
+        if self._ao_sem_gasto is not None:  # modo gravado: o serviço decide
+            if not await self._ao_sem_gasto(valor, trocar):
+                self._redesenhar()  # recusado: a caixa volta ao estado anterior
+                return
+        elif trocar:
+            self._itens = []
+        self._sem_gasto = valor
+        self.marcar_erro(None)
+        self._redesenhar()
+        self._avisar_mudanca()
 
     def _redesenhar(self) -> None:
         self._montar()
