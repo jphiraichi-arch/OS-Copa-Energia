@@ -1436,3 +1436,12 @@ estão agora, não refeitas pelo histórico).
   `on_tap_link`).
 - CLI: `validar-guia` (confere o arquivo e lista telas/papéis sem texto).
 - Testes: `tests/test_guia.py`.
+
+
+## Prompt 40 — notas de desenho da Fase B (25/11/2026)
+
+- `docs/ROADMAP.md`: B1 fotos, B2 comentários e notas internas, B3 aviso ao
+  solicitante, B4 confirmação depois de Concluída, B5 planos preventivos, B6 QR codes e o
+  filtro de avisos por especialidade — o que cada um precisa, o que já existe, o que
+  bloqueia, riscos e tamanho. Seis refatorações pequenas propostas (R1 a R6), NÃO
+  aplicadas: esperam aprovação. Nenhum código, modelo, migração ou tela mudou.
