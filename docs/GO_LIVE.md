@@ -239,6 +239,16 @@ no Perfil; o usuário o remove em 'Remover e-mail' (os envios pendentes dele sã
 - [ ] Aparelho perdido: o usuário (Perfil > Aparelhos conectados > 'Sair de todos os
       aparelhos') ou o administrador (tela do usuário > 'Desconectar aparelhos').
 
+## 13. Backup (prompt 36)
+
+- [ ] Chaves do age geradas no computador do responsável; chave privada offline em dois
+      lugares; chave pública em `OS_BACKUP_CHAVE_PUBLICA` (docs/BACKUP.md, item 1).
+- [ ] Bucket S3 de OUTRO provedor (ou pasta num servidor da empresa) e chave de acesso só
+      desse bucket.
+- [ ] Job diário agendado (Render Cron Job pago, ou timer do systemd no servidor).
+- [ ] Primeira execução manual conferida.
+- [ ] **Teste de restauração feito e registrado em docs/BACKUP.md antes do piloto.**
+
 ## Pendências conhecidas
 
 - Confirmar no Render (com `OS_DEPURAR_CABECALHOS_IP=1` por alguns minutos) de onde vem a

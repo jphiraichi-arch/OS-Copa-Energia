@@ -20,6 +20,10 @@ dependencies = [
 postgres = [
     "psycopg[binary]>=3.2",
 ]
+# Prompt 36: só para scripts/backup.py com destino 's3' (armazenamento de outro provedor).
+backup = [
+    "boto3>=1.34",
+]
 dev = [
     "pytest>=8",
     "ruff>=0.6",

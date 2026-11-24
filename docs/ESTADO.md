@@ -1331,3 +1331,30 @@ estão agora, não refeitas pelo histórico).
   'Desconectar aparelhos' (administrador).
 - CLI: `limpar-sessoes-lembradas`.
 - Testes: `tests/test_lembrar.py`.
+
+
+## Prompt 36 — backups diários criptografados fora do provedor do banco (25/11/2026)
+
+- Inspeção: a versão do servidor de produção precisa ser lida por quem tem acesso
+  (`psql "$URL" -X -A -t -c "SHOW server_version;"`, docs/BACKUP.md). Aqui há `pg_dump`
+  16.15 e `age` 1.1.1. A imagem do app não tem `pg_dump`; a do job
+  (`docker/backup.Dockerfile`) instala o cliente do repositório oficial do PostgreSQL
+  (`PG_MAJOR`, padrão 17, que lê servidores 16 e 17). Onde agendar: Render Cron Job (pago:
+  mínimo de US$ 1/mês, agenda em UTC, até 12 h por execução) ou, num servidor da empresa,
+  timer do systemd/cron. O código não depende de nenhum.
+- `scripts/backup.py`: `pg_dump -Fc | age -r <chave pública>` (nada sem criptografia no
+  disco, nada inteiro na memória), SHA-256, manifesto JSON, envio (`s3` com boto3 —
+  extra `.[backup]` — ou `pasta`), retenção (`OS_BACKUP_RETENCAO_DIAS`, padrão 30; o mais
+  recente bem-sucedido nunca sai), temporários apagados sempre, saída diferente de zero e
+  alerta (prompt 33) na falha. A senha do banco vai ao pg_dump pelo ambiente
+  (PGPASSWORD), não pela linha de comando.
+- `scripts/restaurar.py`: baixa, confere SHA-256 e tamanho ANTES de decriptar, decripta
+  com a chave privada indicada na hora, `pg_restore` num banco vazio; recusa a URL de
+  produção sem `--permitir-producao` e a confirmação digitada.
+- docs/BACKUP.md (o quê, quando, onde, retenção, guarda da chave privada, agendamento,
+  restauração, teste de restauração com tabela para registrar, metas: até 1 dia de
+  perda; tempo de restauração medido no teste). `.gitignore`: `*.dump`, `*.dump.age`,
+  `*.manifest.json`, `*.agekey`, `*.age`.
+- Código do app, modelos e migrações: sem mudança.
+- Testes: `tests/test_backup.py` (puros sempre; ida e volta, arquivo corrompido e falha
+  do pg_dump com PostgreSQL + age: rodaram aqui, 10 passaram).

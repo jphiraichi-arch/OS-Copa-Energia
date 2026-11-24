@@ -9,3 +9,10 @@ dist/
 .env
 *.db
 *.sqlite3
+
+# Backups e chaves (prompt 36): nunca no repositório.
+*.dump
+*.dump.age
+*.manifest.json
+*.agekey
+*.age
