@@ -102,5 +102,7 @@ def test_logotipo_vai_no_pacote_instalado():
 
     config = tomllib.loads((RAIZ / "pyproject.toml").read_text(encoding="utf-8"))
     assert "assets/*.png" in config["tool"]["setuptools"]["package-data"]["osapp"]
-    main = (RAIZ / "src" / "osapp" / "main.py").read_text(encoding="utf-8")
+    main = "".join(  # prompt 33: o app ASGI fica em asgi.py
+        (RAIZ / "src" / "osapp" / n).read_text(encoding="utf-8") for n in ("main.py", "asgi.py")
+    )
     assert main.count("assets_dir=str(PASTA_ASSETS)") == 2  # desenvolvimento e ASGI

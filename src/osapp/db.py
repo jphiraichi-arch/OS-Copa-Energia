@@ -5,10 +5,15 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from sqlalchemy import Engine, MetaData, create_engine, event, func, select
+from sqlalchemy import Engine, MetaData, create_engine, event, func, literal, select
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from osapp.config import carregar_config
+from osapp.config import (
+    RECICLAR_CONEXAO_PADRAO,
+    TIMEOUT_CONEXAO_PADRAO,
+    Config,
+    carregar_config,
+)
 
 CONVENCAO_DE_NOMES = {
     "ix": "ix_%(column_0_label)s",
@@ -41,15 +46,23 @@ def _preparar_conexao_sqlite(conexao_dbapi, _registro) -> None:
     cursor.close()
 
 
-def criar_engine(url: str) -> Engine:
-    """Cria um engine para a URL. No SQLite, liga as chaves estrangeiras em cada conexão."""
+def criar_engine(url: str, config: Config | None = None) -> Engine:
+    """Cria um engine para a URL. No SQLite, liga as chaves estrangeiras em cada conexão.
+
+    PostgreSQL: testa a conexão antes de usar (pool_pre_ping), a renova a cada
+    OS_DB_RECICLAR_CONEXAO_SEGUNDOS (padrão 300; servidores e proxies de banco costumam
+    encerrar conexões paradas) e desiste de conectar depois de
+    OS_DB_TIMEOUT_CONEXAO_SEGUNDOS (padrão 10). URL padrão do SQLAlchemy; nada
+    específico de um provedor.
+    """
     if url.startswith("sqlite"):
         engine = create_engine(url)
         event.listen(engine, "connect", _preparar_conexao_sqlite)
         return engine
-    # Bancos em rede (PostgreSQL): testa a conexão antes de usar e a renova de tempos em
-    # tempos, porque bancos de nuvem encerram conexões paradas.
-    return create_engine(url, pool_pre_ping=True, pool_recycle=300)
+    reciclar = config.db_reciclar_conexao_s if config else RECICLAR_CONEXAO_PADRAO
+    timeout = config.db_timeout_conexao_s if config else TIMEOUT_CONEXAO_PADRAO
+    argumentos = {"connect_timeout": timeout} if url.startswith("postgresql") else {}
+    return create_engine(url, pool_pre_ping=True, pool_recycle=reciclar, connect_args=argumentos)
 
 
 _engine: Engine | None = None
@@ -60,7 +73,8 @@ def obter_engine() -> Engine:
     """Engine único do processo, criado na primeira chamada a partir de OS_DATABASE_URL."""
     global _engine, _fabrica
     if _engine is None:
-        _engine = criar_engine(carregar_config().database_url)
+        config = carregar_config()
+        _engine = criar_engine(config.database_url, config)
         _fabrica = sessionmaker(bind=_engine, expire_on_commit=False)
     return _engine
 
@@ -117,3 +131,11 @@ def trava_de_inicializacao(engine: Engine) -> Iterator[None]:
         finally:
             conexao.execute(select(func.pg_advisory_unlock(TRAVA_DE_INICIALIZACAO)))
             conexao.commit()
+
+
+def banco_responde() -> bool:
+    """Saúde: um ``SELECT 1`` numa conexão do pool. Nenhuma outra consulta (o
+    pool_pre_ping, quando a conexão sai do pool, é o único extra). Levanta exceção se
+    o banco não responder; quem chama limita o tempo."""
+    with obter_engine().connect() as conexao:
+        return conexao.execute(select(literal(1))).scalar() == 1

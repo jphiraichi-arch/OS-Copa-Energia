@@ -18,17 +18,15 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
-import os
 from datetime import datetime, timedelta
 
-from dotenv import load_dotenv
-
+from osapp import config
 from osapp.config import ConfigError
 from osapp.db import sessao
 from osapp.models.tentativa_login import TIPO_IP, TIPO_LOGIN, TentativaLogin
 from osapp.repositories import TentativaLoginRepo
 
-VARIAVEL_SEGREDO = "OS_HMAC_SEGREDO"
+VARIAVEL_SEGREDO = config.VAR_HMAC
 SEGREDO_MIN = 32  # caracteres
 
 FALHAS_LIVRES_LOGIN = 3
@@ -37,8 +35,8 @@ DIAS_DE_RETENCAO = 30  # contador de login sem atividade expira depois disso
 
 # Por IP: operadoras de celular usam CGNAT (muita gente atrás do mesmo IP). O limite é
 # bem mais alto que o do login e o teto da espera é curto: o IP nunca fica bloqueado.
-VARIAVEL_FALHAS_IP = "OS_LIMITE_FALHAS_IP"
-VARIAVEL_ATRASO_IP = "OS_ATRASO_MAX_IP_SEGUNDOS"
+VARIAVEL_FALHAS_IP = config.VAR_FALHAS_IP
+VARIAVEL_ATRASO_IP = config.VAR_ATRASO_IP
 FALHAS_LIVRES_IP_PADRAO = 100
 ATRASO_MAX_IP_PADRAO = 60  # segundos
 JANELA_IP = timedelta(minutes=15)  # contador de IP sem falha há mais que isso expira
@@ -54,8 +52,7 @@ logger = logging.getLogger(__name__)
 
 def segredo() -> bytes:
     """O segredo do HMAC. Ausente ou curto levanta ConfigError (o app não deve iniciar)."""
-    load_dotenv()
-    valor = os.environ.get(VARIAVEL_SEGREDO, "")
+    valor = config.segredo_hmac()
     if len(valor) < SEGREDO_MIN:
         raise ConfigError(
             f"Variável de ambiente obrigatória ausente ou curta: {VARIAVEL_SEGREDO} "
@@ -84,28 +81,14 @@ def chave_do_ip(ip: str | None) -> str:
 # --- Limites por IP (configuráveis) ----------------------------------------------------
 
 
-def _inteiro_positivo(nome: str, padrao: int) -> int:
-    load_dotenv()
-    bruto = os.environ.get(nome, "").strip()
-    if not bruto:
-        return padrao
-    try:
-        valor = int(bruto)
-    except ValueError:
-        raise ConfigError(f"{nome} inválida: {bruto!r} não é um número inteiro.") from None
-    if valor <= 0:
-        raise ConfigError(f"{nome} inválida: deve ser maior que zero.")
-    return valor
-
-
 def falhas_livres_ip() -> int:
     """Falhas de um IP (na janela de 15 min) antes de começar a espera. Padrão 100."""
-    return _inteiro_positivo(VARIAVEL_FALHAS_IP, FALHAS_LIVRES_IP_PADRAO)
+    return config.limite_falhas_ip(FALHAS_LIVRES_IP_PADRAO)
 
 
 def atraso_maximo_ip() -> timedelta:
     """Teto da espera por IP. Padrão 60 s."""
-    return timedelta(seconds=_inteiro_positivo(VARIAVEL_ATRASO_IP, ATRASO_MAX_IP_PADRAO))
+    return timedelta(seconds=config.atraso_max_ip_segundos(ATRASO_MAX_IP_PADRAO))
 
 
 def validar_configuracao() -> None:

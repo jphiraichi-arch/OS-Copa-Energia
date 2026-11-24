@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
-from osapp.models import EmailFila, OrdemServico, Usuario, UsuarioNotificacao
+from osapp.models import (
+    AlertaDia,
+    AlertaErro,
+    EmailFila,
+    OrdemServico,
+    Usuario,
+    UsuarioNotificacao,
+)
 from osapp.models.notificacao import FILA_CANCELADO, FILA_ENVIANDO, FILA_PENDENTE
 from osapp.models.ordem_servico import INCLUIR_EXCLUIDAS
 
@@ -138,3 +145,40 @@ class EmailFilaRepo:
             .execution_options(synchronize_session=False)
         )
         return resultado.rowcount or 0
+
+
+class AlertaRepo:
+    """Contadores dos alertas de erro grave (prompt 33)."""
+
+    def __init__(self, sessao: Session) -> None:
+        self._s = sessao
+
+    def erro_para_alterar(self, impressao: str) -> AlertaErro | None:
+        return self._s.scalars(
+            select(AlertaErro).where(AlertaErro.impressao == impressao).with_for_update()
+        ).one_or_none()
+
+    def dia_para_alterar(self, dia: date) -> AlertaDia | None:
+        return self._s.scalars(
+            select(AlertaDia).where(AlertaDia.dia == dia).with_for_update()
+        ).one_or_none()
+
+    def adicionar(self, registro) -> None:
+        self._s.add(registro)
+        self._s.flush()
+
+    def admins_com_email_confirmado(self) -> list[tuple[int, str]]:
+        """(usuario_id, email) dos administradores ativos com endereço confirmado."""
+        return list(
+            self._s.execute(
+                select(Usuario.id, UsuarioNotificacao.email)
+                .join(UsuarioNotificacao, UsuarioNotificacao.usuario_id == Usuario.id)
+                .where(
+                    Usuario.ativo.is_(True),
+                    Usuario.papel == "admin",
+                    UsuarioNotificacao.email.is_not(None),
+                    UsuarioNotificacao.email_confirmado_em.is_not(None),
+                )
+                .order_by(Usuario.id)
+            ).all()
+        )

@@ -6,13 +6,12 @@ Armazenamento: dinheiro em centavos (int), durações em minutos (int), instante
 
 from __future__ import annotations
 
-import os
 import re
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from osapp.config import TZ_PADRAO
+from osapp import config
 
 NBSP = "\u00a0"  # espaço que não quebra: une as partes de um valor
 MENOS = "\u2212"  # sinal de menos tipográfico (percentuais com sinal)
@@ -29,7 +28,7 @@ def _exigir_int(valor: object, nome: str) -> int:
 
 
 def _fuso(tz: str | None) -> ZoneInfo:
-    return ZoneInfo(tz or os.environ.get("OS_TZ") or TZ_PADRAO)
+    return ZoneInfo(tz or config.fuso())
 
 
 def _no_fuso(dt: datetime, tz: str | None) -> datetime:

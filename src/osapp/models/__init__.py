@@ -1,5 +1,6 @@
 """Modelos ORM. Importar este pacote registra as tabelas em ``Base.metadata``."""
 
+from osapp.models.alerta import AlertaDia, AlertaErro
 from osapp.models.custos import CategoriaCusto, OsItemCusto
 from osapp.models.filial import Filial
 from osapp.models.notificacao import EmailFila, UsuarioNotificacao
@@ -12,6 +13,8 @@ from osapp.models.usuario import Usuario
 from osapp.models.usuario_evento import UsuarioEvento
 
 __all__ = [
+    "AlertaDia",
+    "AlertaErro",
     "CategoriaCusto",
     "EmailFila",
     "Filial",

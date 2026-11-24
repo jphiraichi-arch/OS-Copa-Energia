@@ -1246,3 +1246,32 @@ estão agora, não refeitas pelo histórico).
 - Testes: `tests/test_notificacoes_email.py` (destinatários, código, limites, cabeçalhos,
   SMTP fora do ar, corpo sem custos, OS excluída, permissões, retenção, migração, dois
   trabalhadores no PostgreSQL).
+
+
+## Prompt 33 — portabilidade, /saude, alertas de erro grave (24/11/2026)
+
+- Inspeção: o código já não tinha URL, host nem porta de provedor. Dependências de
+  hospedagem encontradas e removidas: o cabeçalho `True-Client-Ip` era aceito sempre (vira
+  `OS_CABECALHO_IP_CLIENTE`, vazio por padrão: atrás de um nginx próprio o cliente poderia
+  escrevê-lo); `pool_recycle=300` fixo (vira `OS_DB_RECICLAR_CONEXAO_SEGUNDOS`); sem tempo
+  limite de conexão (novo `OS_DB_TIMEOUT_CONEXAO_SEGUNDOS`, padrão 10). Nada dependia do
+  pooler do banco hospedado. Fora de `src/`: `render.yaml` (Blueprint, só da hospedagem
+  atual) e `docker/iniciar.sh` (`PORT`, convenção comum de contêiner).
+- `config.py` é o único módulo que lê o ambiente (teste por AST). Lista completa em
+  docs/CONFIGURACAO.md e `.env.example` (teste confere que toda variável está nos dois).
+- `GET /saude` (`osapp/saude.py`, registrado em `osapp/asgi.py` antes do app Flet, que
+  responde a tudo em '/'): `SELECT 1` com limite de 2 s; verificações simultâneas
+  compartilham a mesma consulta. 200 `{"status":"ok","banco":"ok"}` / 503
+  `{"status":"erro","banco":"erro"}`; `Cache-Control: no-store`; GET e HEAD.
+  `criar_app_asgi(main)` saiu de `main.py` para `osapp/asgi.py` (importável sem efeitos).
+- Alertas (`services/alertas.py`): handler de logging (ERROR/CRITICAL) instalado na
+  partida do servidor; impressão = tipo da exceção + arquivo (duas últimas partes do
+  caminho) + linha; 1 por impressão por hora e 20 e-mails por dia (dia de Brasília), com
+  contadores no banco (migração `0014`: `alertas_erro`, `alertas_dia`; `email_fila.tipo`
+  aceita `alerta_erro`). E-mail para administradores ativos com endereço confirmado; rota
+  da tela vinda de `alertas.ROTA` (definida em `App.chamar`). `emit` só enfileira em
+  memória; uma thread grava; nada da thread nem do módulo vira alerta.
+- Guia da mudança para servidor próprio: docs/IMPLANTACAO_LOCAL.md.
+- Achado fora do escopo (não mudado): o app Flet montado (`flet.fastapi.app`) publica
+  `/openapi.json` e `/docs` com as rotas internas do Flet (upload, oauth). As opções do
+  FastAPI externo foram desligadas, mas as do app interno não têm parâmetro documentado.

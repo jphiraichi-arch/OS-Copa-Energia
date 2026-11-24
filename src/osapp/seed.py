@@ -8,9 +8,9 @@ fictícios de exemplo só com OS_SEED_EXEMPLOS=1. A senha vem de OS_SEED_SENHA
 from __future__ import annotations
 
 import logging
-import os
 import sys
 
+from osapp import config
 from osapp.config import ConfigError
 from osapp.db import obter_engine, trava_de_inicializacao
 from osapp.logs import configurar_logging
@@ -76,7 +76,7 @@ def main() -> int:
     except ConfigError as exc:
         print(f"Erro de configuração: {exc}", file=sys.stderr)
         return 1
-    senha = os.environ.get("OS_SEED_SENHA", "")
+    senha = config.seed_senha()
     motivo = motivo_para_pular(senha)
     if motivo is not None:
         # Nunca em silêncio: a linha de ERRO fica no log de inicialização.
@@ -88,7 +88,7 @@ def main() -> int:
     try:
         # Instâncias que sobem juntas rodam o seed uma de cada vez.
         with trava_de_inicializacao(obter_engine()):
-            criados = executar(senha, exemplos=os.environ.get("OS_SEED_EXEMPLOS", "") == "1")
+            criados = executar(senha, exemplos=config.seed_exemplos())
     except ErroValidacao as exc:
         logger.error("Seed NÃO executado: %s", exc.mensagem)
         return 1

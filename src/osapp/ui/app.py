@@ -14,7 +14,7 @@ from typing import Any
 import flet as ft
 
 from osapp.config import Config
-from osapp.services import ordens, relogio
+from osapp.services import alertas, ordens, relogio
 from osapp.services.erros import ErroAutenticacao, ErroValidacao
 from osapp.ui import navegacao, rotas, textos, theme
 from osapp.ui import sessao as sessao_ui
@@ -451,6 +451,8 @@ class App:
         - Qualquer outro erro: mensagem genérica para o usuário e traceback no log.
         O texto de uma exceção nunca é mostrado ao usuário (exceto ErroValidacao).
         """
+        resolvida = rotas.resolver(self._rota_mostrada)
+        alertas.ROTA.set(resolvida[0] if resolvida else None)  # prompt 33: rota no alerta
         agora = relogio.agora()
         if exige_sessao:
             if not sessao_ui.autenticada(self.sessao, agora):

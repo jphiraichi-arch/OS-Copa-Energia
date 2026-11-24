@@ -137,7 +137,9 @@ def test_fonte_embutida_registrada_e_no_pacote():
     pacote = tomllib.loads((RAIZ / "pyproject.toml").read_text("utf-8"))
     dados = pacote["tool"]["setuptools"]["package-data"]["osapp"]
     assert "assets/fonts/*.ttf" in dados and "assets/fonts/OFL.txt" in dados
-    main = (RAIZ / "src" / "osapp" / "main.py").read_text("utf-8")
+    main = "".join(  # prompt 33: o app ASGI fica em asgi.py
+        (RAIZ / "src" / "osapp" / n).read_text(encoding="utf-8") for n in ("main.py", "asgi.py")
+    )
     assert main.count("no_cdn=True") == 2  # desenvolvimento e ASGI: nada de CDN
 
 

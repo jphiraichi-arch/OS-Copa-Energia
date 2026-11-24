@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from starlette.websockets import WebSocket
 
-from osapp import cli, rede
+from osapp import cli, config, rede
 from osapp.config import ConfigError
 from osapp.db import sessao
 from osapp.models import TentativaLogin
@@ -174,7 +174,7 @@ def test_redefinir_senha_zera_a_espera(usuarios, tempo):
 
 
 def test_limites_por_ip_padrao_e_configuraveis(monkeypatch):
-    monkeypatch.setattr(protecao_login, "load_dotenv", lambda: None)
+    monkeypatch.setattr(config, "load_dotenv", lambda *a, **k: None)
     monkeypatch.delenv("OS_LIMITE_FALHAS_IP", raising=False)
     monkeypatch.delenv("OS_ATRASO_MAX_IP_SEGUNDOS", raising=False)
     assert protecao_login.falhas_livres_ip() == 100  # bem acima das 3 do login
@@ -272,7 +272,7 @@ def test_chave_depende_do_segredo(monkeypatch):
 
 @pytest.mark.parametrize("valor", ["", "curto"])
 def test_segredo_ausente_ou_curto_impede_iniciar(monkeypatch, valor):
-    monkeypatch.setattr(protecao_login, "load_dotenv", lambda: None)
+    monkeypatch.setattr(config, "load_dotenv", lambda *a, **k: None)
     monkeypatch.setenv("OS_HMAC_SEGREDO", valor)
     with pytest.raises(ConfigError, match="OS_HMAC_SEGREDO"):
         protecao_login.segredo()
@@ -358,6 +358,7 @@ def test_comando_manual_continua(usuarios, tempo, capsys):
 
 REDES = rede.ler_redes(None)  # padrão: 10.0.0.0/8 + loopback
 RENDER = "10.204.1.7"  # um endereço interno do proxy (fictício)
+TCI = "true-client-ip"  # prompt 33: só quando OS_CABECALHO_IP_CLIENTE o nomeia
 
 
 @pytest.mark.parametrize(
@@ -392,7 +393,15 @@ RENDER = "10.204.1.7"  # um endereço interno do proxy (fictício)
     ],
 )
 def test_resolver_ip(par, cabecalhos, esperado):
-    assert rede.resolver_ip(par, cabecalhos, REDES) == esperado
+    assert rede.resolver_ip(par, cabecalhos, REDES, TCI) == esperado
+
+
+def test_sem_cabecalho_configurado_so_o_xff_vale():
+    """Prompt 33: sem OS_CABECALHO_IP_CLIENTE, True-Client-Ip vindo do cliente é ignorado
+    (atrás de um nginx próprio, o cliente poderia escrevê-lo)."""
+    cab = {"true-client-ip": "198.51.100.7", "x-forwarded-for": "203.0.113.9"}
+    assert rede.resolver_ip(RENDER, cab, REDES) == "203.0.113.9"
+    assert rede.resolver_ip(RENDER, cab, REDES, "x-real-ip") == "203.0.113.9"
 
 
 def test_redes_confiaveis():
@@ -425,7 +434,7 @@ async def _pela_porta(cabecalhos, par=RENDER, depurar=False, tipo="websocket"):
         "client": (par, 50000),
         "scheme": "ws" if tipo == "websocket" else "http",
     }
-    await rede.ResolverIpCliente(app, REDES, depurar)(scope, None, None)
+    await rede.ResolverIpCliente(app, REDES, depurar, TCI)(scope, None, None)
     return visto
 
 

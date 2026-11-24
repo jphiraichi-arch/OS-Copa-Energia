@@ -2,7 +2,9 @@
 
 Ordem de decisão, só quando a conexão direta vem de um proxy confiável
 (OS_PROXIES_CONFIAVEIS; padrão 10.0.0.0/8 mais loopback):
-1. ``True-Client-Ip`` (Render e Cloudflare), se for um IP válido;
+1. o cabeçalho de OS_CABECALHO_IP_CLIENTE (por exemplo ``True-Client-Ip``, que alguns
+   proxies e CDNs preenchem), se estiver configurado e trouxer um IP válido. Vazio
+   (padrão): este passo não existe;
 2. ``X-Forwarded-For`` lido da DIREITA para a ESQUERDA, pulando endereços confiáveis:
    o primeiro não confiável é o cliente. A entrada mais à esquerda nunca é usada por
    ser a primeira (o cliente pode escrevê-la);
@@ -17,13 +19,14 @@ from __future__ import annotations
 
 import ipaddress
 import logging
-import os
 from collections.abc import Iterable
+
+from osapp import config
 
 logger = logging.getLogger(__name__)
 
-VARIAVEL_PROXIES = "OS_PROXIES_CONFIAVEIS"
-VARIAVEL_DEPURACAO = "OS_DEPURAR_CABECALHOS_IP"
+VARIAVEL_PROXIES = config.VAR_PROXIES
+VARIAVEL_DEPURACAO = config.VAR_DEPURAR_IP
 PROXIES_PADRAO = "10.0.0.0/8"
 LOOPBACK = ("127.0.0.0/8", "::1/128")
 CABECALHOS_DE_DEPURACAO = (
@@ -81,14 +84,21 @@ def confiavel(ip: str | None, redes: Iterable[Rede]) -> bool:
     return any(endereco in rede for rede in redes)
 
 
-def resolver_ip(par: str | None, cabecalhos: dict[str, str], redes: tuple[Rede, ...]) -> str | None:
-    """IP do cliente. ``par``: endereço da conexão direta; ``cabecalhos``: nomes minúsculos."""
+def resolver_ip(
+    par: str | None,
+    cabecalhos: dict[str, str],
+    redes: tuple[Rede, ...],
+    cabecalho_cliente: str | None = None,
+) -> str | None:
+    """IP do cliente. ``par``: endereço da conexão direta; ``cabecalhos``: nomes minúsculos;
+    ``cabecalho_cliente``: nome (minúsculo) do cabeçalho com o IP do cliente, se houver."""
     direto = ip_valido(par)
     if not confiavel(direto, redes):
         return direto  # não veio de proxy confiável: cabeçalhos ignorados
-    verdadeiro = ip_valido(cabecalhos.get("true-client-ip"))
-    if verdadeiro:
-        return verdadeiro
+    if cabecalho_cliente:
+        verdadeiro = ip_valido(cabecalhos.get(cabecalho_cliente))
+        if verdadeiro:
+            return verdadeiro
     entradas = [e for e in cabecalhos.get("x-forwarded-for", "").split(",") if e.strip()]
     for entrada in reversed(entradas):
         ip = ip_valido(entrada)
@@ -102,11 +112,20 @@ def resolver_ip(par: str | None, cabecalhos: dict[str, str], redes: tuple[Rede, 
 class ResolverIpCliente:
     """Middleware ASGI: aplica ``resolver_ip`` a pedidos HTTP e WebSocket."""
 
-    def __init__(self, app, redes: tuple[Rede, ...] | None = None, depurar: bool | None = None):
+    def __init__(
+        self,
+        app,
+        redes: tuple[Rede, ...] | None = None,
+        depurar: bool | None = None,
+        cabecalho_cliente: str | None = None,
+    ):
         self.app = app
-        self.redes = redes if redes is not None else ler_redes(os.environ.get(VARIAVEL_PROXIES))
+        self.redes = redes if redes is not None else ler_redes(config.proxies_confiaveis())
+        self.cabecalho_cliente = (
+            cabecalho_cliente.lower() if cabecalho_cliente else config.cabecalho_ip_cliente()
+        )
         if depurar is None:
-            depurar = os.environ.get(VARIAVEL_DEPURACAO, "") == "1"
+            depurar = config.depurar_cabecalhos_ip()
         self.depurar = depurar
         if depurar:
             logger.warning(
@@ -126,7 +145,7 @@ class ResolverIpCliente:
                 # Cabeçalhos repetidos se juntam na ordem (como o X-Forwarded-For pede).
                 anterior = cabecalhos.get(chave)
                 cabecalhos[chave] = texto if anterior is None else f"{anterior}, {texto}"
-            ip = resolver_ip(par, cabecalhos, self.redes)
+            ip = resolver_ip(par, cabecalhos, self.redes, self.cabecalho_cliente)
             if self.depurar:
                 logger.warning(
                     "Depuração de IP: tipo=%s par=%s escolhido=%s cabeçalhos=%s",

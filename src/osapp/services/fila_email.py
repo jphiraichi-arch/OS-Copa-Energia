@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import random
 import smtplib
 import ssl
@@ -38,6 +37,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 
+from osapp import config
 from osapp.db import sessao
 from osapp.models.notificacao import (
     FILA_CANCELADO,
@@ -108,12 +108,10 @@ class ConfigSmtp:
 def ler_config_smtp() -> ConfigSmtp | None:
     """A configuração do SMTP, ou None se faltar ou estiver inválida (o motivo, sem
     valores, vai para o log)."""
-    host = os.environ.get(VAR_HOST, "").strip()
-    porta_txt = os.environ.get(VAR_PORTA, "").strip()
-    remetente = email_mensagem.normalizar_email(os.environ.get(VAR_REMETENTE, ""))
-    tls = os.environ.get(VAR_TLS, "").strip().lower()
-    usuario = os.environ.get(VAR_USUARIO, "").strip() or None
-    senha = os.environ.get(VAR_SENHA) or None
+    bruto = config.smtp()
+    host, porta_txt, tls = bruto.host, bruto.porta, bruto.tls
+    remetente = email_mensagem.normalizar_email(bruto.remetente)
+    usuario, senha = bruto.usuario, bruto.senha
     if not host or not porta_txt or remetente is None or not tls:
         return None
     problema = None
@@ -132,10 +130,7 @@ def ler_config_smtp() -> ConfigSmtp | None:
 
 
 def max_tentativas() -> int:
-    texto = os.environ.get(VAR_MAX_TENTATIVAS, "").strip()
-    if texto.isdigit() and int(texto) > 0:
-        return int(texto)
-    return MAX_TENTATIVAS_PADRAO
+    return config.email_max_tentativas(MAX_TENTATIVAS_PADRAO)
 
 
 def espera(tentativas: int, sorteio: Callable[[], float] = random.random) -> timedelta:

@@ -20,13 +20,13 @@ from __future__ import annotations
 
 import hmac
 import logging
-import os
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+from osapp import config
 from osapp.db import sessao
 from osapp.models import EmailFila, UsuarioNotificacao
 from osapp.models.notificacao import (
@@ -43,7 +43,7 @@ from osapp.services.permissoes import exigir_admin, pode_acessar_filial_do_papel
 
 logger = logging.getLogger(__name__)
 
-VARIAVEL_BASE_URL = "OS_BASE_URL"
+VARIAVEL_BASE_URL = config.VAR_BASE_URL
 
 CODIGO_DIGITOS = 6
 CODIGO_VALIDADE = timedelta(minutes=15)
@@ -360,7 +360,7 @@ def enfileirar_nova_solicitacao(
     """Uma linha por destinatário, na sessão (transação) da própria OS. Nunca fala com
     o SMTP. O endereço é copiado para a linha neste instante. Devolve quantas linhas."""
     agora = relogio.agora()
-    base_url = os.environ.get(VARIAVEL_BASE_URL, "").strip() or None
+    base_url = config.base_url()
     assunto = email_mensagem.assunto_nova_solicitacao(
         dados.filial_codigo, dados.urgencia, dados.titulo
     )

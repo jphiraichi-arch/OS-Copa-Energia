@@ -75,6 +75,12 @@ Se o IP do cliente não puder ser determinado, o app usa um limite comum chamado
 | `OS_SEED_SENHA` | só na primeira subida | Senha inicial do `admin` criado pelo seed. Remover depois. |
 | `OS_SEED_EXEMPLOS` | **não usar em produção** | Cria usuários fictícios de exemplo. |
 | `PORT` | não | Porta do servidor no contêiner (padrão 8000). |
+| `OS_DB_RECICLAR_CONEXAO_SEGUNDOS` | não (padrão 300) | Renovação das conexões do pool (prompt 33). |
+| `OS_DB_TIMEOUT_CONEXAO_SEGUNDOS` | não (padrão 10) | Tempo máximo para abrir conexão com o banco (prompt 33). |
+| `OS_CABECALHO_IP_CLIENTE` | não (vazio) | Cabeçalho com o IP do cliente que o proxy **sobrescreve** (ex.: `True-Client-Ip`). Antes do prompt 33 esse cabeçalho era usado sempre; agora só quando configurado. |
+| `OS_ALERTAS_EMAIL` | não (padrão 1) | `0` deixa os alertas de erro grave só no log (prompt 33). |
+
+Lista completa e única: docs/CONFIGURACAO.md (e `.env.example`).
 | `OS_SMTP_HOST` | só para e-mail | Servidor SMTP da conta remetente (prompt 32). Sem as variáveis de SMTP o app funciona e os avisos ficam pendentes na fila (um aviso no log por hora). |
 | `OS_SMTP_PORTA` | só para e-mail | 587 (STARTTLS) ou 465 (SSL). |
 | `OS_SMTP_TLS` | só para e-mail | `starttls` ou `ssl`. (`nenhum` só é aceito com host `localhost`, para o coletor local de testes.) |
@@ -210,6 +216,19 @@ no Perfil; o usuário o remove em 'Remover e-mail' (os envios pendentes dele sã
   empresa aprovar a hospedagem definitiva.
 - [ ] Produção usa **PostgreSQL**. SQLite num contêiner perde os dados a cada reinício: o
       `docker/iniciar.sh` se recusa a iniciar com `OS_DATABASE_URL` em SQLite.
+
+## 11. Saúde, monitor externo e alertas (prompt 33)
+
+- [ ] Health check da hospedagem apontando para `/saude` (no Render: Settings > Health
+      Check Path = `/saude`; hoje o `render.yaml` diz `/`).
+- [ ] Monitor externo de disponibilidade (qualquer serviço de uptime, ou o da TI): HTTP
+      GET `https://<endereço>/saude` a cada 1 a 5 minutos, esperando código 200 e o texto
+      `"ok"`, alerta depois de 2 falhas seguidas para o e-mail/telefone do responsável.
+      Nota: em plano gratuito que adormece o serviço, a primeira verificação depois de
+      parado demora (o serviço acorda).
+- [ ] Alertas de erro grave: chegam aos administradores com e-mail confirmado no Perfil
+      (no máximo 1 por erro por hora e 20 por dia). Dependem do SMTP (item 3, E-mail).
+- [ ] Mudança para servidor próprio: docs/IMPLANTACAO_LOCAL.md.
 
 ## Pendências conhecidas
 
