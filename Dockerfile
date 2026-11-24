@@ -9,6 +9,7 @@ WORKDIR /app
 COPY pyproject.toml README.md alembic.ini ./
 COPY src ./src
 COPY migrations ./migrations
+COPY docs/guia ./docs/guia
 COPY docker/iniciar.sh /usr/local/bin/iniciar
 
 RUN pip install '.[postgres]' \

@@ -61,6 +61,12 @@ variável corrigir.
 | `OS_EMAIL_MAX_TENTATIVAS` | não | `6` | Tentativas de envio antes de a mensagem ficar como 'falhou'. |
 | `OS_ALERTAS_EMAIL` | não | `1` | `0` desliga o e-mail dos alertas de erro grave (ficam só no log). |
 
+## Guia rápido (prompt 39)
+
+| Variável | Obrigatória | Padrão | Significado |
+|---|---|---|---|
+| `OS_GUIA_ARQUIVO` | não | `docs/guia/guia.yaml` | Arquivo do guia do botão '?'. Editado no servidor, vale sem reiniciar (docs/guia/COMO_EDITAR.md). |
+
 ## Fora do app
 
 | Variável | Onde | Significado |

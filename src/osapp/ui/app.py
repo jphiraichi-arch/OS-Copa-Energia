@@ -13,12 +13,13 @@ from typing import Any
 
 import flet as ft
 
+from osapp import guia
 from osapp.config import Config
 from osapp.services import alertas, ordens, relogio, sessoes_lembradas
 from osapp.services.erros import ErroAutenticacao, ErroValidacao
 from osapp.ui import navegacao, rotas, textos, theme
 from osapp.ui import sessao as sessao_ui
-from osapp.ui.components import cabecalho
+from osapp.ui.components import basicos, cabecalho
 from osapp.ui.components.banner import banner
 from osapp.ui.views.base import Tela
 from osapp.ui.views.concluir import ConcluirOs
@@ -416,12 +417,19 @@ class App:
         self._largo = self._e_largo()
         if rota in (rotas.LOGIN, rotas.TROCAR_SENHA):  # sem navegação
             self._barra_inferior = None
+            ajuda = self._botao_ajuda(rota, theme.COR_PRIMARIO)
+            conteudo = self._tela.conteudo
+            if ajuda is not None:
+                conteudo = ft.Column(
+                    [ft.Row([ajuda], alignment=ft.MainAxisAlignment.END), conteudo],
+                    spacing=0,
+                )
             view = ft.View(
                 route=rota,
                 padding=0,
                 bgcolor=theme.COR_FUNDO_PAGINA,
                 scroll=ft.ScrollMode.AUTO,
-                controls=[ft.SafeArea(content=self._tela.conteudo)],
+                controls=[ft.SafeArea(content=conteudo)],
             )
         else:
             view = self._view_com_casca(rota)
@@ -458,6 +466,7 @@ class App:
             codigo_filial=self.sessao.filial_codigo,
             on_voltar=self.voltar,
             mostrar_voltar=rotas.rota_anterior(rota) is not None,
+            ajuda=self._botao_ajuda(rota),
         )
         ativo = navegacao.destino_ativo(self.sessao.papel, rota)
         self._barra_inferior = ft.NavigationBar(
@@ -485,6 +494,61 @@ class App:
                 )
             ],
         )
+
+    # --- Guia rápido (prompt 39) ---------------------------------------------------------
+
+    def _botao_ajuda(self, rota: str, cor=None) -> ft.Control | None:
+        """O '?' só aparece se o guia tem texto da tela para o papel (ou 'todos')."""
+        resolvida = rotas.resolver(rota)
+        entrada = guia.entrada(resolvida[0], self.sessao.papel) if resolvida else None
+        if entrada is None:
+            return None
+        return cabecalho.botao_ajuda(lambda _e: self.mostrar_ajuda(entrada), cor)
+
+    def mostrar_ajuda(self, entrada) -> None:
+        """Folha de baixo no celular, diálogo na tela larga. Os links do texto aparecem,
+        mas nunca são abertos sozinhos (sem auto_follow_links nem on_tap_link)."""
+        texto = ft.Markdown(
+            entrada.texto,
+            selectable=True,
+            extension_set=ft.MarkdownExtensionSet.COMMON_MARK,
+            auto_follow_links=False,
+        )
+
+        def fechar(_e=None) -> None:
+            self.page.pop_dialog()
+
+        botao_fechar = ft.TextButton(
+            content="Fechar",
+            style=theme.estilo_botao_texto(),
+            height=theme.ALVO_TOQUE_MIN,
+            on_click=fechar,
+        )
+        if self._e_largo():
+            self.page.show_dialog(
+                ft.AlertDialog(
+                    bgcolor=theme.COR_CARTAO,
+                    title=ft.Text(entrada.titulo, color=theme.COR_TITULO),
+                    content=ft.Container(width=theme.LARGURA_MAX_LOGIN, content=texto),
+                    actions=[botao_fechar],
+                )
+            )
+        else:
+            self.page.show_dialog(
+                ft.BottomSheet(
+                    bgcolor=theme.COR_CARTAO,
+                    show_drag_handle=True,
+                    scrollable=True,
+                    content=ft.Container(
+                        padding=theme.ESPACO_M,
+                        content=ft.Column(
+                            [basicos.titulo(entrada.titulo), texto, botao_fechar],
+                            tight=True,
+                            spacing=theme.ESPACO_P,
+                        ),
+                    ),
+                )
+            )
 
     def _ao_redimensionar(self, _e) -> None:
         # Faixa e grades mudam entre celular e tela larga ao cruzar theme.LARGURA_CELULAR_MAX.

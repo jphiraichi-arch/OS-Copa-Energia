@@ -51,6 +51,8 @@ VAR_SMTP_TLS = "OS_SMTP_TLS"
 VAR_BASE_URL = "OS_BASE_URL"
 VAR_EMAIL_MAX_TENTATIVAS = "OS_EMAIL_MAX_TENTATIVAS"
 VAR_ALERTAS = "OS_ALERTAS_EMAIL"
+VAR_GUIA = "OS_GUIA_ARQUIVO"
+GUIA_PADRAO = "docs/guia/guia.yaml"
 
 _dotenv_lido = False
 
@@ -250,3 +252,9 @@ def alertas_por_email() -> bool:
     """OS_ALERTAS_EMAIL: '0' desliga o e-mail dos alertas de erro grave (só log).
     Padrão: ligado."""
     return _texto(VAR_ALERTAS) != "0"
+
+
+def guia_arquivo() -> str:
+    """OS_GUIA_ARQUIVO: caminho do guia rápido (prompt 39). Padrão: docs/guia/guia.yaml,
+    relativo à pasta em que o app roda."""
+    return _texto(VAR_GUIA) or GUIA_PADRAO

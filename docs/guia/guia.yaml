@@ -1,0 +1,246 @@
+# Guia rápido do Sistema de OS (prompt 39) — o texto do botão '?' de cada tela.
+#
+# COMO EDITAR (sem programar):
+# - Cada tela tem um nome (por exemplo `home`) e, dentro dele, um bloco por papel:
+#   `usuario`, `manutencao`, `admin`, ou `todos` (vale para quem não tem bloco próprio).
+# - Cada bloco tem `titulo` (uma linha) e `texto` (de 3 a 8 linhas curtas, em Markdown:
+#   **negrito**, listas com "- "). Mantenha o recuo (espaços) igual ao dos exemplos.
+# - Para a tela não ter ajuda para um papel, não escreva o bloco dele (e, se quiser
+#   registrar que é de propósito, ponha o nome da tela na lista `sem_ajuda` no fim).
+# - Depois de editar, confira: `python -m osapp.cli validar-guia`. Se o arquivo tiver um
+#   erro, o app continua usando a última versão válida e avisa no log.
+# - Mais detalhes: docs/guia/COMO_EDITAR.md.
+
+telas:
+  login:
+    todos:
+      titulo: Entrar no sistema
+      texto: |
+        Digite o **usuário** e a **senha** que o administrador passou.
+        - No primeiro acesso o sistema pede uma senha nova (pelo menos 10 caracteres).
+        - **Lembrar de mim por 7 dias**: não pede a senha neste aparelho por 7 dias.
+        - **Não marque em aparelhos compartilhados.**
+        Esqueceu a senha? Peça ao administrador para redefinir.
+
+  trocar_senha:
+    todos:
+      titulo: Trocar a senha
+      texto: |
+        Sua senha é temporária: escolha uma nova antes de continuar.
+        - Pelo menos 10 caracteres, diferente do seu usuário.
+        - Não use a mesma senha de outros sistemas.
+
+  home:
+    usuario:
+      titulo: Minhas solicitações
+      texto: |
+        Aqui ficam as solicitações da sua filial e a situação de cada uma.
+        - Toque numa solicitação para ver os detalhes.
+        - Use **Nova OS** (barra de baixo) para pedir um serviço.
+        - A busca procura no título e na descrição.
+    manutencao:
+      titulo: Ordens de Serviço
+      texto: |
+        A lista das ordens das suas filiais, das mais novas para as mais antigas.
+        - **Solicitações abertas** mostra o que espera atendimento (emergencial primeiro).
+        - Filtre por situação ou por especialidade; toque numa ordem para abri-la.
+        - As etiquetas mostram o prazo: **No prazo**, **Vence em...** ou **Atrasada**.
+    admin:
+      titulo: Ordens de Serviço
+      texto: |
+        A lista de todas as filiais (escolha uma filial no filtro, se quiser).
+        - **Solicitações abertas** mostra o que espera atendimento.
+        - Filtre por situação, especialidade ou filial; toque numa ordem para abri-la.
+        - As etiquetas mostram o prazo do SLA.
+
+  solicitacao_nova:
+    todos:
+      titulo: Nova solicitação
+      texto: |
+        Peça um serviço de manutenção (mecânica, elétrica, predial ou utilidades).
+        - Escreva um **título** curto e descreva o problema e o local.
+        - Escolha a **urgência** com cuidado: ela define o prazo de atendimento.
+        - Pedidos de informática não são feitos aqui.
+
+  os_nova:
+    todos:
+      titulo: Nova Ordem de Serviço
+      texto: |
+        Uma ordem criada pela própria manutenção (sem solicitante).
+        - Preencha título e descrição; o planejamento pode ficar para depois.
+        - Inclua os itens previstos ou marque **Sem gasto**.
+        - Para iniciar, a ordem precisa do planejamento completo.
+
+  os_detalhe:
+    usuario:
+      titulo: Sua solicitação
+      texto: |
+        A situação do seu pedido e a resposta da manutenção.
+        - Enquanto estiver **Aberta**, você pode alterar ou cancelar.
+        - Depois de concluída, aparece a nota da manutenção.
+    manutencao:
+      titulo: Ordem de Serviço
+      texto: |
+        Tudo sobre a ordem: solicitação, planejamento, custos e histórico.
+        - **Assumir** para planejar e iniciar; **Concluir** quando terminar.
+        - O histórico mostra quem mudou o quê e quando.
+    admin:
+      titulo: Ordem de Serviço
+      texto: |
+        Tudo sobre a ordem: solicitação, planejamento, custos e histórico.
+        - Você pode editar uma ordem concluída e mandar para a Lixeira.
+        - O histórico mostra quem mudou o quê e quando.
+
+  os_assumir:
+    todos:
+      titulo: Assumir a ordem
+      texto: |
+        Planeje o atendimento e inicie a execução.
+        - Escolha **especialidade**, **tipo**, **prioridade** e o **tempo previsto**.
+        - Inclua os itens previstos ou marque **Sem gasto**.
+        - **Salvar e iniciar** passa a ordem para Em execução.
+
+  os_editar:
+    todos:
+      titulo: Alterar a ordem
+      texto: |
+        Mude o planejamento ou os itens desta ordem.
+        - Cada mudança fica registrada no histórico.
+        - Salve antes de sair: o sistema avisa se houver mudanças não salvas.
+
+  os_solicitacao:
+    todos:
+      titulo: Alterar a solicitação
+      texto: |
+        Corrija o título, a descrição ou a urgência enquanto a ordem está Aberta.
+        - Mudar a urgência muda o prazo de atendimento.
+        - Depois que a manutenção inicia, só o administrador altera.
+
+  os_concluir:
+    todos:
+      titulo: Concluir a ordem
+      texto: |
+        Registre o que foi feito.
+        - Informe início e fim reais e a descrição do serviço.
+        - Inclua os itens realizados ou marque **Sem gasto**.
+        - Escreva a nota para o solicitante.
+
+  relatorios:
+    todos:
+      titulo: Relatórios
+      texto: |
+        Tempos de resposta e de solução, custos e prazos.
+        - Escolha o período e, se quiser, uma busca.
+        - **Relatório mensal** traz o mês e o acumulado.
+
+  relatorios_mensal:
+    todos:
+      titulo: Relatório mensal
+      texto: |
+        O mês escolhido e o acumulado até o fim dele.
+        - Mostra abertas, concluídas, tempos, custos e % dentro do SLA.
+        - As quebras por urgência e por especialidade ajudam a ver onde atrasa.
+
+  perfil:
+    todos:
+      titulo: Perfil
+      texto: |
+        Seus dados e as opções da sua conta.
+        - **Alterar senha** e **Aparelhos conectados** (sair dos aparelhos lembrados).
+        - **Sair** encerra a sessão neste aparelho.
+    manutencao:
+      titulo: Perfil
+      texto: |
+        Seus dados e as opções da sua conta.
+        - **Notificações por e-mail**: cadastre e confirme o e-mail para receber avisos.
+        - **Aparelhos conectados**: saia dos aparelhos lembrados.
+        - **Sair** encerra a sessão neste aparelho.
+    admin:
+      titulo: Perfil
+      texto: |
+        Seus dados e a administração do sistema.
+        - **Usuários**, **Especialidades**, **SLA**, **Lixeira** e **Fila de e-mails**.
+        - **Notificações por e-mail** e **Aparelhos conectados**.
+
+  alterar_senha:
+    todos:
+      titulo: Alterar senha
+      texto: |
+        Digite a senha atual e a nova (pelo menos 10 caracteres).
+        - A nova senha não pode ser igual ao seu usuário.
+        - Ao trocar, os aparelhos lembrados pedem a senha de novo.
+
+  configuracoes:
+    todos:
+      titulo: Configurações
+      texto: |
+        Informações da sua conta e do aplicativo.
+        - Seu nome, usuário, papel e filial.
+        - Para mudar esses dados, fale com o administrador.
+
+  usuarios:
+    admin:
+      titulo: Usuários
+      texto: |
+        Todos os usuários do sistema.
+        - Busque por nome ou login; filtre por papel, filial e situação.
+        - **Novo usuário** cria a conta com uma senha temporária gerada.
+
+  usuario_novo:
+    admin:
+      titulo: Novo usuário
+      texto: |
+        Crie a conta: nome, login, papel, filiais permitidas e a filial padrão.
+        - A senha temporária aparece **uma vez**: anote e entregue ao usuário.
+        - No primeiro acesso, o usuário escolhe a própria senha.
+
+  usuario:
+    admin:
+      titulo: Usuário
+      texto: |
+        Altere papel, filiais e especialidades.
+        - **Redefinir senha** gera uma senha temporária nova (mostrada uma vez).
+        - **Desconectar aparelhos** e **Desativar** valem na hora.
+
+  lixeira:
+    admin:
+      titulo: Lixeira
+      texto: |
+        Ordens excluídas (somem para todos).
+        - Abra uma para ver o motivo da exclusão.
+        - **Restaurar** devolve a ordem, se foi engano.
+
+  lixeira_detalhe:
+    admin:
+      titulo: Ordem na lixeira
+      texto: |
+        O motivo da exclusão e quem excluiu.
+        - **Restaurar** devolve a ordem à lista, como estava.
+        - O histórico registra a exclusão e a restauração.
+
+  fila_email:
+    admin:
+      titulo: Fila de e-mails
+      texto: |
+        A situação dos e-mails do sistema.
+        - Veja quantos estão pendentes, enviados ou com falha.
+        - **Reenviar** tenta de novo um e-mail que falhou.
+
+  especialidades:
+    admin:
+      titulo: Especialidades
+      texto: |
+        A lista de especialidades da manutenção.
+        - Crie, renomeie, reordene ou desative.
+        - Desativada não entra em ordens novas, mas fica nas antigas.
+
+  sla:
+    admin:
+      titulo: SLA
+      texto: |
+        Prazos de início e de solução por filial e urgência.
+        - Valem para ordens abertas depois da mudança; as antigas não mudam.
+        - Um dia = 24 horas de relógio.
+
+# Telas sem ajuda de propósito (por papel). Vazio: todas as telas têm ajuda.
+sem_ajuda: []

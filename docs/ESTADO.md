@@ -1409,3 +1409,30 @@ estão agora, não refeitas pelo histórico).
   Perfil > SLA (`/perfil/sla`, administrador): uma seção por filial, uma linha por
   urgência, início e solução com a máscara de duração (H:MM, até 999 h).
 - Testes: `tests/test_sla.py`.
+
+
+## Prompt 39 — guia rápido: '?' em cada tela (25/11/2026)
+
+- Inspeção (telas e papéis, de `ui/rotas.TABELA`): login, trocar_senha, home,
+  solicitacao_nova, os_detalhe, perfil, alterar_senha, configuracoes — todos;
+  os_nova, os_assumir, os_editar, os_concluir, relatorios, relatorios_mensal —
+  manutenção e administrador; os_solicitacao — usuario (a própria, Aberta) e
+  administrador; usuarios, usuario_novo, usuario, lixeira, lixeira_detalhe, fila_email,
+  especialidades, sla — administrador. A tabela fica em `guia.TELAS_POR_PAPEL` (só para
+  conferência; quem decide é o serviço).
+- `docs/guia/guia.yaml` (UTF-8, editável): tela -> papel (ou `todos`) -> `titulo` e
+  `texto` (Markdown, 3 a 8 linhas); `sem_ajuda` para ausências de propósito. Primeira
+  versão para todas as telas e papéis; o login cita 'Lembrar de mim' e 'Não marque em
+  aparelhos compartilhados'. `docs/guia/COMO_EDITAR.md`.
+- `osapp/guia.py`: validação (telas e papéis conhecidos, campos, tamanho), cache com
+  releitura pela data de modificação, arquivo inválido mantém a última versão e avisa no
+  log; ordem: papel -> 'todos' -> nada ('?' some); sem papel (login) só 'todos'.
+  Caminho: `OS_GUIA_ARQUIVO` (padrão `docs/guia/guia.yaml`). PyYAML passa a ser
+  dependência declarada; o Dockerfile copia `docs/guia`.
+- Botão '?' (`cabecalho.botao_ajuda`, 48 px, rótulo acessível 'Ajuda desta tela') na
+  barra superior de toda tela com texto, e no canto do login e da troca obrigatória de
+  senha. Abre `ft.BottomSheet` no celular e `ft.AlertDialog` na tela larga, com
+  `ft.Markdown` (links mostrados, nunca abertos sozinhos: sem `auto_follow_links` nem
+  `on_tap_link`).
+- CLI: `validar-guia` (confere o arquivo e lista telas/papéis sem texto).
+- Testes: `tests/test_guia.py`.

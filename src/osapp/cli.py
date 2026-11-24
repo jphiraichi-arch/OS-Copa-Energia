@@ -55,6 +55,27 @@ def _limpar_sessoes_lembradas(_args) -> str:
     return f"'Lembrar de mim': {apagadas} registro(s) expirado(s) ou revogado(s) apagado(s)."
 
 
+def _validar_guia(_args) -> str:
+    """Confere docs/guia/guia.yaml (ou OS_GUIA_ARQUIVO) e lista telas e papéis sem texto."""
+    from pathlib import Path
+
+    from osapp import config, guia
+
+    caminho = Path(config.guia_arquivo())
+    try:
+        g = guia.carregar_arquivo(caminho)
+    except guia.GuiaInvalido as exc:
+        raise ErroValidacao("guia", f"Guia inválido ({caminho}): {exc}") from None
+    faltam = guia.faltando(g, guia.TELAS_POR_PAPEL)
+    linhas = [f"Guia válido: {caminho} ({len(g.telas)} telas)."]
+    if faltam:
+        linhas.append(f"{len(faltam)} tela(s)/papel(is) sem texto (o '?' fica escondido):")
+        linhas += [f"  - {x}" for x in faltam]
+    else:
+        linhas.append("Todas as telas e papéis têm texto.")
+    return "\n".join(linhas)
+
+
 def _criar_filial(args) -> str:
     filial = administracao.criar_filial(
         _perguntar(args.codigo, "Código"), _perguntar(args.nome, "Nome")
@@ -306,6 +327,9 @@ def criar_parser() -> argparse.ArgumentParser:
         help="Apaga tokens 'lembrar de mim' expirados ou revogados há mais de 30 dias",
     )
     p.set_defaults(func=_limpar_sessoes_lembradas)
+
+    p = sub.add_parser("validar-guia", help="Confere o guia rápido (botão '?')")
+    p.set_defaults(func=_validar_guia)
 
     p = sub.add_parser("redefinir-senha", help="Redefine a senha e zera o atraso do login")
     p.add_argument("--login")

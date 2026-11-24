@@ -52,10 +52,30 @@ def _botao_icone(icone: ft.IconData, dica: str, on_click=None, visivel=True) -> 
     )
 
 
+ROTULO_AJUDA = "Ajuda desta tela"
+
+
+def botao_ajuda(on_click, cor=None) -> ft.IconButton:
+    """Prompt 39: o '?' (48 px, rótulo acessível 'Ajuda desta tela')."""
+    return ft.IconButton(
+        icon=ft.Icon(
+            ft.Icons.HELP_OUTLINE,
+            semantics_label=ROTULO_AJUDA,
+            color=cor or theme.COR_SOBRE_CABECALHO,
+            size=theme.TAMANHO_ICONE,
+        ),
+        tooltip=ROTULO_AJUDA,
+        width=theme.ALVO_TOQUE_MIN,
+        height=theme.ALVO_TOQUE_MIN,
+        on_click=on_click,
+    )
+
+
 def barra(
     codigo_filial: str = "F000",
     on_voltar=None,
     mostrar_voltar: bool = True,
+    ajuda: ft.Control | None = None,
 ) -> ft.Control:
     """Barra superior fina: voltar, logotipo e o chip da filial (sem menu: a navegação
     fica na barra inferior, e Configurações e Sair ficam em Perfil)."""
@@ -91,7 +111,12 @@ def barra(
                         tight=True,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
                     ),
-                    chip_filial,
+                    ft.Row(
+                        [*([ajuda] if ajuda is not None else []), chip_filial],
+                        spacing=theme.ESPACO_P // 2,
+                        tight=True,
+                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
