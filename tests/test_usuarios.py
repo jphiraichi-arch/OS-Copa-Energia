@@ -72,9 +72,9 @@ def test_quem_nao_e_admin_recebe_erro_de_permissao_em_tudo(p, quem):
         lambda a: usuarios.listar_usuarios(a),
         lambda a: usuarios.obter_usuario(a, alvo),
         lambda a: usuarios.listar_eventos_usuario(a, alvo),
-        lambda a: usuarios.criar_usuario(a, "Novo", "novo.login", 1, "usuario", TEMP),
+        lambda a: usuarios.criar_usuario(a, "Novo", "novo.login", 1, "usuario"),
         lambda a: usuarios.alterar_usuario(a, alvo, 1, {"nome": "X"}),
-        lambda a: usuarios.redefinir_senha(a, alvo, 1, TEMP),
+        lambda a: usuarios.redefinir_senha(a, alvo, 1),
     ]
     for chamada in chamadas:
         with pytest.raises(ErroPermissao):
@@ -85,7 +85,8 @@ def test_quem_nao_e_admin_recebe_erro_de_permissao_em_tudo(p, quem):
 
 
 def test_criar_usuario_com_senha_temporaria(p):
-    novo = usuarios.criar_usuario(p["admin"], " Rui Silva ", "Rui.Silva", p["f2"], "usuario", TEMP)
+    criado = usuarios.criar_usuario(p["admin"], " Rui Silva ", "Rui.Silva", p["f2"], "usuario")
+    novo, temp = criado.usuario, criado.senha_temporaria
     assert (novo.nome, novo.login, novo.filial_codigo, novo.papel, novo.ativo) == (
         "Rui Silva",
         "rui.silva",
@@ -95,14 +96,14 @@ def test_criar_usuario_com_senha_temporaria(p):
     )
     assert novo.deve_trocar_senha is True
     assert eventos(novo.id) == [(p["admin"], "criacao", None, "rui.silva | 2001 | usuario")]
-    assert autenticar("RUI.SILVA", TEMP).deve_trocar_senha is True
+    assert autenticar("RUI.SILVA", temp).deve_trocar_senha is True
 
 
 @pytest.mark.parametrize("login", ["rui.silva", "RUI.SILVA", "  Rui.Silva  "])
 def test_login_repetido_sem_diferenciar_maiusculas_e_recusado(p, login):
-    usuarios.criar_usuario(p["admin"], "Rui", "Rui.Silva", 1, "usuario", TEMP)
+    usuarios.criar_usuario(p["admin"], "Rui", "Rui.Silva", 1, "usuario")
     with pytest.raises(ErroConflito):
-        usuarios.criar_usuario(p["admin"], "Outro Rui", login, 1, "manutencao", TEMP)
+        usuarios.criar_usuario(p["admin"], "Outro Rui", login, 1, "manutencao")
 
 
 @pytest.mark.parametrize(
@@ -110,8 +111,9 @@ def test_login_repetido_sem_diferenciar_maiusculas_e_recusado(p, login):
     [("curta-123", "novo.login"), ("novo.login", "novo.login"), ("NOVO.LOGIN", "novo.login")],
 )
 def test_regra_de_senha_na_criacao(p, senha, login):
-    with pytest.raises(ErroValidacao) as info:
-        usuarios.criar_usuario(p["admin"], "Novo", login, 1, "usuario", senha)
+    """Senha digitada (linha de comando); na tela ela é gerada (prompt 34)."""
+    with pytest.raises(ErroValidacao) as info, sessao() as s:
+        usuarios.criar(s, None, "Novo", login, 1, "usuario", senha)
     assert info.value.mensagem == usuarios.MSG_REGRA_SENHA
 
 
@@ -124,7 +126,13 @@ def test_um_evento_por_campo_alterado(p):
         p["admin"],
         d.id,
         d.versao,
-        {"nome": "Mário Souza", "filial_id": p["f2"], "papel": "usuario", "ativo": True},
+        {
+            "nome": "Mário Souza",
+            "filial_id": p["f2"],
+            "filiais": [p["f2"]],
+            "papel": "usuario",
+            "ativo": True,
+        },
     )
     assert (depois.nome, depois.filial_codigo, depois.papel, depois.versao) == (
         "Mário Souza",
@@ -134,8 +142,9 @@ def test_um_evento_por_campo_alterado(p):
     )
     assert eventos(d.id)[1:] == [  # depois da criação (pela linha de comando)
         (p["admin"], "nome", "Mário", "Mário Souza"),
-        (p["admin"], "filial", "1007", "2001"),
+        (p["admin"], "filial padrão", "1007", "2001"),
         (p["admin"], "papel", "manutencao", "usuario"),
+        (p["admin"], "filiais", "1007", "2001"),  # prompt 34
     ]
     with pytest.raises(ErroConflito):  # versão antiga
         usuarios.alterar_usuario(p["admin"], d.id, d.versao, {"nome": "Outro"})
@@ -181,7 +190,8 @@ def test_desativado_e_recusado_na_proxima_chamada(p):
 
 def test_redefinir_senha_e_troca_obrigatoria(p):
     d = dto(p, "usu")
-    depois = usuarios.redefinir_senha(p["admin"], d.id, d.versao, TEMP)
+    gerada = usuarios.redefinir_senha(p["admin"], d.id, d.versao)
+    depois, TEMP = gerada.usuario, gerada.senha_temporaria  # noqa: N806
     assert depois.deve_trocar_senha is True
     with pytest.raises(ErroAutenticacao):
         autenticar("sonia.usu", SENHA)  # a antiga não vale mais
@@ -223,7 +233,7 @@ def test_trocar_propria_senha_recusa(p, atual, nova, campo):
 
 def test_historico_nunca_guarda_senha_nem_hash(p):
     d = dto(p, "usu")
-    usuarios.redefinir_senha(p["admin"], d.id, d.versao, TEMP)
+    TEMP = usuarios.redefinir_senha(p["admin"], d.id, d.versao).senha_temporaria  # noqa: N806
     usuarios.trocar_propria_senha(p["usu"], TEMP, NOVA)
     with sessao() as s:
         hash_atual = s.get(Usuario, p["usu"]).senha_hash

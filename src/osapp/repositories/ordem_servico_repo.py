@@ -108,7 +108,7 @@ class OrdemServicoRepo:
             OrdemServico.aberta_em < fim,
         )
         if filial_id is not None:
-            consulta = consulta.where(OrdemServico.filial_id == filial_id)
+            consulta = consulta.where(na_filial(filial_id))
         if condicao is not None:
             consulta = consulta.where(condicao)
         return [tuple(linha) for linha in self._s.execute(consulta.order_by(OrdemServico.id))]
@@ -126,7 +126,7 @@ class OrdemServicoRepo:
             OrdemServico.titulo,
         ).where(OrdemServico.origem == "solicitacao", OrdemServico.aberta_em < fim)
         if filial_id is not None:
-            consulta = consulta.where(OrdemServico.filial_id == filial_id)
+            consulta = consulta.where(na_filial(filial_id))
         if condicao is not None:
             consulta = consulta.where(condicao)
         return [tuple(linha) for linha in self._s.execute(consulta.order_by(OrdemServico.id))]
@@ -155,7 +155,7 @@ class OrdemServicoRepo:
             )
         )
         if filial_id is not None:
-            consulta = consulta.where(OrdemServico.filial_id == filial_id)
+            consulta = consulta.where(na_filial(filial_id))
         consulta = consulta.order_by(OsEvento.os_id, OsEvento.data_hora, OsEvento.id)
         return [tuple(linha) for linha in self._s.execute(consulta)]
 
@@ -165,7 +165,7 @@ class OrdemServicoRepo:
             OrdemServico.origem == "solicitacao", OrdemServico.status == "ABERTA"
         )
         if filial_id is not None:
-            consulta = consulta.where(OrdemServico.filial_id == filial_id)
+            consulta = consulta.where(na_filial(filial_id))
         if condicao is not None:
             consulta = consulta.where(condicao)
         return list(self._s.scalars(consulta))
@@ -270,7 +270,7 @@ class OrdemServicoRepo:
         """Quantidade de OS em cada status agora (filial_id None = todas as filiais)."""
         consulta = select(OrdemServico.status, func.count()).group_by(OrdemServico.status)
         if filial_id is not None:
-            consulta = consulta.where(OrdemServico.filial_id == filial_id)
+            consulta = consulta.where(na_filial(filial_id))
         return {status: total for status, total in self._s.execute(consulta).all()}
 
     def contar_criadas(self, filial_id: int | None, inicio: datetime, fim: datetime) -> int:
@@ -281,7 +281,7 @@ class OrdemServicoRepo:
             .where(OrdemServico.criado_em >= inicio, OrdemServico.criado_em < fim)
         )
         if filial_id is not None:
-            consulta = consulta.where(OrdemServico.filial_id == filial_id)
+            consulta = consulta.where(na_filial(filial_id))
         return int(self._s.scalar(consulta) or 0)
 
     def listar_concluidas(
@@ -294,7 +294,7 @@ class OrdemServicoRepo:
             OrdemServico.concluida_em < fim,
         )
         if filial_id is not None:
-            consulta = consulta.where(OrdemServico.filial_id == filial_id)
+            consulta = consulta.where(na_filial(filial_id))
         consulta = consulta.order_by(OrdemServico.concluida_em, OrdemServico.id)
         return list(self._s.scalars(consulta))
 
@@ -322,10 +322,17 @@ COLUNAS_SOLICITANTE = (
 )
 
 
+def na_filial(filial_id):
+    """Condição de filial: um id ou (prompt 34) uma tupla de ids (filiais permitidas)."""
+    if isinstance(filial_id, tuple | list | set | frozenset):
+        return OrdemServico.filial_id.in_(tuple(filial_id))
+    return OrdemServico.filial_id == filial_id
+
+
 def _filtrar(consulta, filial_id, status, condicao, origem):
     """Filtros comuns; ``condicao`` é a busca já montada pelo serviço (ou None)."""
     if filial_id is not None:
-        consulta = consulta.where(OrdemServico.filial_id == filial_id)
+        consulta = consulta.where(na_filial(filial_id))
     if status is not None:
         consulta = consulta.where(OrdemServico.status == status)
     if origem is not None:

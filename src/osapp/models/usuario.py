@@ -1,10 +1,19 @@
 from __future__ import annotations
 
-from sqlalchemy import CheckConstraint, ForeignKey, String, false, true
+from sqlalchemy import CheckConstraint, Column, ForeignKey, String, Table, false, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from osapp.db import Base
 from osapp.models.filial import Filial
+
+# Prompt 34 (regra do prompt 28): filiais permitidas de cada usuário. A filial padrão
+# (usuarios.filial_id) é sempre uma delas.
+usuario_filiais = Table(
+    "usuario_filiais",
+    Base.metadata,
+    Column("usuario_id", ForeignKey("usuarios.id"), primary_key=True),
+    Column("filial_id", ForeignKey("filiais.id"), primary_key=True),
+)
 
 
 class Usuario(Base):
@@ -32,7 +41,14 @@ class Usuario(Base):
     # Trava otimista: edições com versão desatualizada são recusadas.
     __mapper_args__ = {"version_id_col": versao}
 
-    filial: Mapped[Filial] = relationship()
+    filial: Mapped[Filial] = relationship()  # filial padrão
+    filiais: Mapped[list[Filial]] = relationship(secondary=usuario_filiais, order_by=Filial.codigo)
+
+    @property
+    def filiais_ids(self) -> tuple[int, ...]:
+        """Filiais permitidas (sempre com a padrão, mesmo num banco antigo sem a linha)."""
+        ids = {f.id for f in self.filiais} | {self.filial_id}
+        return tuple(sorted(ids))
 
     @property
     def e_admin(self) -> bool:

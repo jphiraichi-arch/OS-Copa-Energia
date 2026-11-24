@@ -42,6 +42,13 @@ class Ator:
     papel: str  # 'usuario', 'manutencao' ou 'admin'
     is_gerente: bool = False
     deve_trocar_senha: bool = False  # senha temporária: trocar antes de qualquer tela
+    # Prompt 34: filiais permitidas (inclui a padrão, ``filial_id``). O administrador
+    # acessa todas de qualquer forma (permissoes.pode_acessar_filial).
+    filiais_permitidas: tuple[int, ...] = ()
+
+    @property
+    def filiais(self) -> tuple[int, ...]:
+        return self.filiais_permitidas or (self.filial_id,)
 
     @property
     def e_admin(self) -> bool:
@@ -66,6 +73,7 @@ def _ator_de(usuario: Usuario) -> Ator:
         papel=usuario.papel,
         is_gerente=usuario.is_gerente and usuario.papel != PAPEL_ADMIN,
         deve_trocar_senha=usuario.deve_trocar_senha,
+        filiais_permitidas=usuario.filiais_ids,
     )
 
 

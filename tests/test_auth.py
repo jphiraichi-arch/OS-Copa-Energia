@@ -65,7 +65,9 @@ def test_login_correto_devolve_o_ator(usuarios):
     ator = autenticar("  Marina.TESTE ", SENHA)
     with sessao() as s:
         f1 = s.query(Filial).filter_by(codigo="F001").one().id
-    assert ator == Ator(usuarios["marina"], "Marina Teste", f1, "F001", "manutencao")
+    assert ator == Ator(
+        usuarios["marina"], "Marina Teste", f1, "F001", "manutencao", filiais_permitidas=(f1,)
+    )
     assert autenticar("admin", SENHA).e_admin is True
     assert autenticar("carlos.exemplo", SENHA).filial_codigo == "F002"
 

@@ -341,15 +341,16 @@ def desativar_de_usuario(ator_id: int, usuario_id: object) -> NotificacoesDoUsua
 
 def recebe(
     papel: str,
-    filial_usuario: int,
+    filiais_usuario,
     urgencia_minima: str,
     filial_os: int,
     urgencia_os: str,
 ) -> bool:
-    """Regra de destinatário (além de ativo, confirmado e com notificações ligadas)."""
+    """Regra de destinatário (além de ativo, confirmado e com notificações ligadas).
+    ``filiais_usuario``: as filiais permitidas (prompt 34) ou um id."""
     if papel not in PAPEIS_COM_EMAIL:
         return False
-    if not pode_acessar_filial_do_papel(papel, filial_usuario, filial_os):
+    if not pode_acessar_filial_do_papel(papel, filiais_usuario, filial_os):
         return False
     return ORDEM_URGENCIA.get(urgencia_os, -1) >= ORDEM_URGENCIA[urgencia_minima]
 
@@ -371,7 +372,7 @@ def enfileirar_nova_solicitacao(
         if usuario.id == solicitante_id:
             continue
         if not recebe(
-            usuario.papel, usuario.filial_id, n.urgencia_minima, filial_id, dados.urgencia
+            usuario.papel, usuario.filiais_ids, n.urgencia_minima, filial_id, dados.urgencia
         ):
             continue
         fila.adicionar(

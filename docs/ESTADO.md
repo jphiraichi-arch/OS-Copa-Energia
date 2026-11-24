@@ -1275,3 +1275,35 @@ estão agora, não refeitas pelo histórico).
 - Achado fora do escopo (não mudado): o app Flet montado (`flet.fastapi.app`) publica
   `/openapi.json` e `/docs` com as rotas internas do Flet (upload, oauth). As opções do
   FastAPI externo foram desligadas, mas as do app interno não têm parâmetro documentado.
+
+
+## Prompt 34 — gestão de usuários completa para o piloto (25/11/2026)
+
+- Inspeção (regra: antes): 1 criar — existia, com uma filial e senha digitada pelo
+  administrador (testada); 2 editar — existia sem filiais permitidas (testada); 3
+  desativar/reativar e recusa na próxima ação — existia e testada; 4 senha gerada —
+  faltava; 5 troca obrigatória antes de qualquer tela — existia e testada (guarda de
+  rotas, inclusive rota digitada); 6 último administrador — existia e testada; 7
+  usuarios_eventos sem senha/hash — existia e testada; 8 lista com busca e filtros —
+  existia, sem filiais nem e-mail; 9 gancho do prompt 35 — faltava.
+- Filiais permitidas (regra do prompt 28, que não tinha sido recebido): migração `0015`,
+  tabela `usuario_filiais` (par único), preenchida com a filial atual de cada usuário;
+  `usuarios.filial_id` passa a ser a 'filial padrão', sempre uma das permitidas.
+  `Ator.filiais`; `pode_acessar_filial`, listas, contagens, detalhe, criação de OS,
+  relatório mensal (manutenção), sugestões de itens e destinatários de e-mail usam as
+  permitidas. Sem filtro, a lista de quem não é administrador mostra todas as permitidas
+  (`OrdemServicoRepo` aceita um id ou uma tupla). Administrador continua com todas.
+- Senha temporária GERADA (`usuarios.gerar_senha_temporaria`: 14 caracteres do módulo
+  secrets, sem 0/O/o/1/l/I/i, com maiúscula, minúscula e dígito) ao criar e ao redefinir
+  pela tela; devolvida uma vez em `SenhaGerada` (repr mascarado) e mostrada num diálogo
+  'Já anotei'; só o hash é gravado; `deve_trocar_senha`; nada em log. A linha de comando
+  continua pedindo a senha com getpass (mesmas funções internas).
+- `services/sessoes_lembradas.revogar_sessoes_lembradas(usuario_id)`: chamada na
+  redefinição, na troca da própria senha e na desativação; não faz nada até o prompt 35.
+- Tela de usuários: 'Filiais permitidas' (chips, pelo menos uma) e 'Filial padrão'
+  (lista; escolher uma padrão a inclui nas permitidas); criar sem campo de senha;
+  'Redefinir senha' confirma e mostra a senha gerada; a lista mostra papel, filiais com
+  a padrão marcada, situação e o e-mail (prompt 32) com '(não confirmado)'.
+- Eventos: 'filial' passou a se chamar 'filial padrão'; novo campo 'filiais' (códigos).
+- Testes: `tests/test_usuarios_completo.py`; `tests/test_usuarios.py` ajustado às
+  senhas geradas.

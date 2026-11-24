@@ -410,7 +410,7 @@ def condicao_busca(termo: object, escopo: str, ator: Ator):
 
 
 def _manutencao_da_filial(ator: Ator, ordem) -> bool:
-    return ator.e_manutencao and ator.filial_id == ordem.filial_id
+    return ator.e_manutencao and ordem.filial_id in ator.filiais
 
 
 def _solicitante(ator: Ator, ordem) -> bool:
@@ -541,7 +541,7 @@ def _carregar_para_escrita(s: Session, ator: Ator, os_id: object) -> OrdemServic
     if not ator.e_usuario:
         return _carregar_visivel(s, ator, os_id)
     ordem = OrdemServicoRepo(s).obter_sem_relacoes(os_id) if _e_int(os_id) else None
-    if ordem is None or ordem.filial_id != ator.filial_id:
+    if ordem is None or ordem.filial_id not in ator.filiais:
         raise ErroNaoEncontrado()
     return ordem
 
@@ -727,7 +727,7 @@ def _filial_de_destino(ator: Ator, filial_id: object, acao: str) -> int:
     """Filial travada na do ator; só o administrador escolhe outra."""
     if filial_id is not None and not _e_int(filial_id):
         raise ErroValidacao("filial_id", "Filial inválida.")
-    if not ator.e_admin and filial_id is not None and filial_id != ator.filial_id:
+    if not ator.e_admin and filial_id is not None and filial_id not in ator.filiais:
         raise _negar(ator, f"{acao} em outra filial")
     return ator.filial_id if filial_id is None else filial_id
 
@@ -872,7 +872,7 @@ def obter_os(ator_id: int, os_id: int):
     with sessao() as s:
         if ator.e_usuario:
             linha = OrdemServicoRepo(s).visao_solicitante(os_id) if _e_int(os_id) else None
-            if linha is None or linha["filial_id"] != ator.filial_id:
+            if linha is None or linha["filial_id"] not in ator.filiais:
                 raise ErroNaoEncontrado()
             return _visao_solicitante(linha, ator)
         return _detalhe(_carregar_visivel(s, ator, os_id), ator)
@@ -964,15 +964,19 @@ def listar_eventos(ator_id: int, os_id: int) -> list[EventoDTO]:
         ]
 
 
-def _filial_da_lista(ator: Ator, filial_id: object, acao: str) -> int | None:
+def _filial_da_lista(ator: Ator, filial_id: object, acao: str) -> int | tuple[int, ...] | None:
     """Filial efetiva de listas e contagens: administrador escolhe (None = todas); os
-    demais, só a própria (pedir outra é ErroPermissao)."""
+    demais, uma das permitidas ou (None) todas as permitidas; pedir outra é
+    ErroPermissao."""
     if filial_id is not None and not _e_int(filial_id):
         raise ErroValidacao("filial_id", "Filial inválida.")
     if ator.e_admin:
         return filial_id
-    if filial_id is None or filial_id == ator.filial_id:
-        return ator.filial_id
+    if filial_id is None:
+        # Prompt 34: todas as filiais permitidas (uma só: o próprio id).
+        return ator.filiais[0] if len(ator.filiais) == 1 else ator.filiais
+    if filial_id in ator.filiais:
+        return filial_id
     raise _negar(ator, acao)
 
 
@@ -994,6 +998,9 @@ def contadores(ator_id: int, filial_id: int | None = None) -> Contadores:
         por_status = OrdemServicoRepo(s).contar_por_status(filtro)
         if filtro is None:
             rotulo = TODAS_AS_FILIAIS
+        elif isinstance(filtro, tuple):
+            codigos = [f.codigo for f in (FilialRepo(s).obter(i) for i in filtro) if f]
+            rotulo = "Filiais " + ", ".join(sorted(codigos))
         else:
             filial = FilialRepo(s).obter(filtro)
             if filial is None:
@@ -1008,11 +1015,11 @@ def contadores(ator_id: int, filial_id: int | None = None) -> Contadores:
 
 
 def listar_filiais(ator_id: int) -> list[FilialDTO]:
-    """Administrador recebe todas as filiais; os demais, apenas a própria."""
+    """Administrador recebe todas as filiais; os demais, as permitidas."""
     ator = carregar_ator(ator_id)
     with sessao() as s:
         repo = FilialRepo(s)
-        filiais = repo.listar() if ator.e_admin else [repo.obter(ator.filial_id)]
+        filiais = repo.listar() if ator.e_admin else [repo.obter(i) for i in ator.filiais]
         return [FilialDTO(f.id, f.codigo, f.nome) for f in filiais if f is not None]
 
 

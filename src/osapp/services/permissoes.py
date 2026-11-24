@@ -11,15 +11,20 @@ def exigir_admin(ator: Ator) -> None:
         raise ErroPermissao()
 
 
-def pode_acessar_filial_do_papel(papel: str, filial_do_usuario: int, filial_id: int) -> bool:
-    """Administrador acessa qualquer filial; os demais, apenas a própria. (Usada também
-    sem um Ator carregado, por exemplo para escolher os destinatários de um e-mail.)"""
-    return papel == "admin" or filial_do_usuario == filial_id
+def pode_acessar_filial_do_papel(papel: str, filiais_do_usuario, filial_id: int) -> bool:
+    """Administrador acessa qualquer filial; os demais, só as filiais permitidas
+    (prompts 28 e 34). Usada também sem um Ator carregado, por exemplo para escolher os
+    destinatários de um e-mail. ``filiais_do_usuario``: um id ou uma coleção de ids."""
+    if papel == "admin":
+        return True
+    if isinstance(filiais_do_usuario, int):
+        return filiais_do_usuario == filial_id
+    return filial_id in filiais_do_usuario
 
 
 def pode_acessar_filial(ator: Ator, filial_id: int) -> bool:
-    """Administrador acessa qualquer filial; os demais, apenas a própria."""
-    return pode_acessar_filial_do_papel(ator.papel, ator.filial_id, filial_id)
+    """Administrador acessa qualquer filial; os demais, só as permitidas."""
+    return pode_acessar_filial_do_papel(ator.papel, ator.filiais, filial_id)
 
 
 def pode_usar_lixeira(ator: Ator) -> bool:
@@ -31,9 +36,9 @@ def pode_ver_relatorio_mensal(ator: Ator, filial_id: int | None) -> bool:
     """Relatório mensal, com custos (decisão de 21/11/2026).
 
     Administrador: qualquer filial e o consolidado (``filial_id`` None).
-    Manutenção: só a própria filial. Papel usuario: nunca. O sinalizador de gerente não
-    muda mais o acesso.
+    Manutenção: só as filiais permitidas (prompt 34). Papel usuario: nunca. O
+    sinalizador de gerente não muda mais o acesso.
     """
     if ator.e_admin:
         return True
-    return ator.e_manutencao and filial_id == ator.filial_id
+    return ator.e_manutencao and filial_id in ator.filiais

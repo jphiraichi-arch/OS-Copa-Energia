@@ -3,8 +3,11 @@
 Regras:
 - Só um administrador cria, altera (nome, filial, papel, ativo) e redefine a senha de
   usuários, em qualquer filial. Usuários nunca são apagados: são desativados.
-- Senha: pelo menos 10 caracteres e diferente do login. A senha criada ou redefinida pelo
-  administrador é temporária: o usuário a troca no próximo login.
+- Senha: pelo menos 10 caracteres e diferente do login. Na tela, a senha de um usuário
+  novo ou redefinida é GERADA pelo sistema (prompt 34), mostrada uma vez ao
+  administrador e temporária: o usuário a troca no próximo login. A linha de comando
+  continua pedindo a senha (getpass).
+- Filiais permitidas (prompts 28 e 34): um ou mais; a filial padrão é uma delas.
 - Precisa existir sempre pelo menos um administrador ativo: o último não perde o papel
   nem se desativa.
 - Toda mudança grava uma linha por campo em usuarios_eventos (só inserção). Para senha,
@@ -15,6 +18,7 @@ Regras:
 from __future__ import annotations
 
 import logging
+import secrets
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -23,10 +27,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
 from osapp.db import sessao
-from osapp.models import Filial, Usuario, UsuarioEvento
+from osapp.models import Filial, Usuario, UsuarioEvento, UsuarioNotificacao
 from osapp.models.tentativa_login import TIPO_LOGIN
 from osapp.repositories import FilialRepo, TentativaLoginRepo, UsuarioRepo
-from osapp.services import protecao_login, relogio, senhas
+from osapp.services import protecao_login, relogio, senhas, sessoes_lembradas
 from osapp.services.auth import LOGIN_MAX, PAPEIS, carregar_ator
 from osapp.services.erros import (
     ErroConflito,
@@ -40,7 +44,12 @@ logger = logging.getLogger(__name__)
 
 NOME_MAX = 100
 BUSCA_MAX = 100
-CAMPOS_ALTERAVEIS = ("nome", "filial_id", "papel", "ativo")
+CAMPOS_ALTERAVEIS = ("nome", "filial_id", "filiais", "papel", "ativo")
+# Senha temporária gerada (prompt 34): sem caracteres parecidos (0/O/o, 1/l/I/i).
+ALFABETO_TEMPORARIA = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
+TAMANHO_TEMPORARIA = 14
+MSG_FILIAL_PADRAO = "A filial padrão precisa ser uma das filiais permitidas."
+MSG_SEM_FILIAL = "Escolha pelo menos uma filial."
 MSG_REGRA_SENHA = (
     f"A senha deve ter pelo menos {senhas.SENHA_MIN} caracteres e ser diferente do login."
 )
@@ -48,7 +57,12 @@ MSG_ULTIMO_ADMIN = "É preciso manter pelo menos um administrador ativo."
 SENHA_REDEFINIDA = "senha redefinida"
 SENHA_ALTERADA = "senha alterada"
 
-_ROTULO_CAMPO = {"filial_id": "filial", "ativo": "ativo", "nome": "nome", "papel": "papel"}
+_ROTULO_CAMPO = {
+    "filial_id": "filial padrão",
+    "ativo": "ativo",
+    "nome": "nome",
+    "papel": "papel",
+}
 
 
 @dataclass(frozen=True)
@@ -63,6 +77,22 @@ class UsuarioDTO:
     is_gerente: bool
     deve_trocar_senha: bool
     versao: int
+    filiais: tuple[int, ...] = ()  # permitidas (com a padrão)
+    filiais_codigos: tuple[str, ...] = ()
+    email: str | None = None  # prompt 32 (só para o administrador)
+    email_confirmado: bool = False
+
+
+@dataclass(frozen=True)
+class SenhaGerada:
+    """Devolvida UMA vez à tela do administrador, para entregar ao usuário. Nunca vai
+    para log nem e-mail; o banco guarda só o hash."""
+
+    usuario: UsuarioDTO
+    senha_temporaria: str
+
+    def __repr__(self) -> str:
+        return f"SenhaGerada(usuario_id={self.usuario.id}, senha_temporaria='***')"
 
 
 @dataclass(frozen=True)
@@ -75,6 +105,19 @@ class EventoUsuarioDTO:
 
 
 # --- Validação (pura) ------------------------------------------------------------------
+
+
+def gerar_senha_temporaria() -> str:
+    """14 caracteres do módulo secrets, sem 0/O/o nem 1/l/I/i, com pelo menos uma
+    maiúscula, uma minúscula e um dígito."""
+    while True:
+        senha = "".join(secrets.choice(ALFABETO_TEMPORARIA) for _ in range(TAMANHO_TEMPORARIA))
+        if (
+            any(c.isupper() for c in senha)
+            and any(c.islower() for c in senha)
+            and any(c.isdigit() for c in senha)
+        ):
+            return senha
 
 
 def validar_senha_nova(senha: object, login: str | None) -> str:
@@ -139,6 +182,25 @@ def _filial(s: Session, filial_id: object) -> Filial:
     return filial
 
 
+def _filiais(s: Session, filiais: object, padrao: int) -> list[Filial]:
+    """Filiais permitidas (ids) validadas; a padrão entra sempre e precisa estar nelas."""
+    if filiais is None:
+        filiais = [padrao]
+    if not isinstance(filiais, list | tuple | set | frozenset) or not all(
+        _e_int(f) for f in filiais
+    ):
+        raise ErroValidacao("filiais", "Filiais inválidas.")
+    if not filiais:
+        raise ErroValidacao("filiais", MSG_SEM_FILIAL)
+    if padrao not in filiais:
+        raise ErroValidacao("filial_id", MSG_FILIAL_PADRAO)
+    return sorted((_filial(s, f) for f in set(filiais)), key=lambda f: f.codigo)
+
+
+def _codigos(filiais) -> str:
+    return ", ".join(f.codigo for f in sorted(filiais, key=lambda f: f.codigo))
+
+
 def _garantir_admin_restante(s: Session, usuario: Usuario, papel: str, ativo: bool) -> None:
     """O último administrador ativo não deixa de ser administrador nem se desativa."""
     deixa_de_ser = usuario.papel == "admin" and usuario.ativo and (papel != "admin" or not ativo)
@@ -163,6 +225,7 @@ def criar(
     senha: object,
     is_gerente: bool = False,
     temporaria: bool = True,
+    filiais: object = None,
 ) -> Usuario:
     nome = _validar_nome(nome)
     login = _validar_login(login)
@@ -171,6 +234,7 @@ def criar(
     if not isinstance(is_gerente, bool) or (is_gerente and papel == "admin"):
         raise ErroValidacao("perfil", "Escolha um único perfil: usuário, gerente ou administrador.")
     filial = _filial(s, filial_id)
+    permitidas = _filiais(s, filiais, filial.id)
     repo = UsuarioRepo(s)
     if repo.obter_por_login(login) is not None:  # logins são guardados em minúsculas
         raise ErroConflito()
@@ -185,16 +249,21 @@ def criar(
             deve_trocar_senha=temporaria,
         )
     )
+    usuario.filiais = permitidas
+    s.flush()
     agora = relogio.agora()
     _registrar(
         s, autor_id, usuario.id, "criacao", None, f"{login} | {filial.codigo} | {papel}", agora
     )
+    if len(permitidas) > 1:
+        _registrar(s, autor_id, usuario.id, "filiais", None, _codigos(permitidas), agora)
     logger.info("Usuário criado: usuario_id=%s por admin_id=%s.", usuario.id, autor_id)
     return usuario
 
 
 def alterar(s: Session, autor_id: int | None, usuario: Usuario, alteracoes: dict) -> int:
-    """Aplica nome, filial_id, papel, ativo e gerente. Devolve quantos campos mudaram."""
+    """Aplica nome, filial_id (padrão), filiais (permitidas), papel, ativo e gerente.
+    Devolve quantos campos mudaram. Desativar revoga os 'Lembrar de mim'."""
     if not isinstance(alteracoes, dict) or not set(alteracoes) <= {*CAMPOS_ALTERAVEIS, "gerente"}:
         raise ErroValidacao("alteracoes", "Dados inválidos.")
     novos: dict = {}
@@ -202,6 +271,12 @@ def alterar(s: Session, autor_id: int | None, usuario: Usuario, alteracoes: dict
         novos["nome"] = _validar_nome(alteracoes["nome"])
     if "filial_id" in alteracoes:
         novos["filial_id"] = _filial(s, alteracoes["filial_id"]).id
+    padrao = novos.get("filial_id", usuario.filial_id)
+    novas_filiais = None
+    if "filiais" in alteracoes:
+        novas_filiais = _filiais(s, alteracoes["filiais"], padrao)
+    elif padrao not in usuario.filiais_ids:
+        raise ErroValidacao("filial_id", MSG_FILIAL_PADRAO)
     if "papel" in alteracoes:
         novos["papel"] = _validar_papel(alteracoes["papel"])
     if "ativo" in alteracoes:
@@ -236,6 +311,16 @@ def alterar(s: Session, autor_id: int | None, usuario: Usuario, alteracoes: dict
     for _campo, _novo, rotulo, texto_antigo, texto_novo in mudancas_texto:
         _registrar(s, autor_id, usuario.id, rotulo, texto_antigo, texto_novo, agora)
     mudancas = len(mudancas_texto)
+    if novas_filiais is not None:
+        antes = list(usuario.filiais) or [usuario.filial]
+        if {f.id for f in antes} != {f.id for f in novas_filiais}:
+            usuario.filiais = novas_filiais
+            _registrar(
+                s, autor_id, usuario.id, "filiais", _codigos(antes), _codigos(novas_filiais), agora
+            )
+            mudancas += 1
+    if novos.get("ativo") is False and "ativo" in [m[0] for m in mudancas_texto]:
+        sessoes_lembradas.revogar_sessoes_lembradas(usuario.id, s)
     if mudancas:
         s.flush()
         s.refresh(usuario)
@@ -251,6 +336,7 @@ def redefinir(
     usuario.senha_hash = senhas.gerar_hash(senha)
     usuario.deve_trocar_senha = temporaria
     TentativaLoginRepo(s).apagar(TIPO_LOGIN, protecao_login.chave_do_login(usuario.login))
+    sessoes_lembradas.revogar_sessoes_lembradas(usuario.id, s)
     _registrar(s, autor_id, usuario.id, "senha", None, SENHA_REDEFINIDA, relogio.agora())
     s.flush()
     logger.info("Senha redefinida: usuario_id=%s por admin_id=%s.", usuario.id, autor_id)
@@ -259,7 +345,8 @@ def redefinir(
 # --- Leitura ---------------------------------------------------------------------------
 
 
-def _dto(u: Usuario) -> UsuarioDTO:
+def _dto(u: Usuario, notificacao: UsuarioNotificacao | None = None) -> UsuarioDTO:
+    filiais = sorted({f.id: f for f in [*u.filiais, u.filial]}.values(), key=lambda f: f.codigo)
     return UsuarioDTO(
         u.id,
         u.nome,
@@ -271,7 +358,15 @@ def _dto(u: Usuario) -> UsuarioDTO:
         u.is_gerente,
         u.deve_trocar_senha,
         u.versao,
+        filiais=tuple(f.id for f in filiais),
+        filiais_codigos=tuple(f.codigo for f in filiais),
+        email=notificacao.email if notificacao else None,
+        email_confirmado=bool(notificacao and notificacao.email_confirmado_em),
     )
+
+
+def _dto_completo(s: Session, u: Usuario) -> UsuarioDTO:
+    return _dto(u, s.get(UsuarioNotificacao, u.id))
 
 
 def _admin(ator_id: int):
@@ -319,18 +414,20 @@ def listar_usuarios(
         )
     if papel is not None:
         consulta = consulta.where(Usuario.papel == papel)
-    if filial_id is not None:
-        consulta = consulta.where(Usuario.filial_id == filial_id)
+    if filial_id is not None:  # padrão ou permitida
+        consulta = consulta.where(
+            or_(Usuario.filial_id == filial_id, Usuario.filiais.any(Filial.id == filial_id))
+        )
     if ativo is not None:
         consulta = consulta.where(Usuario.ativo.is_(ativo))
     with sessao() as s:
-        return [_dto(u) for u in s.scalars(consulta)]
+        return [_dto_completo(s, u) for u in s.scalars(consulta)]
 
 
 def obter_usuario(ator_id: int, usuario_id: int) -> UsuarioDTO:
     _admin(ator_id)
     with sessao() as s:
-        return _dto(_carregar(s, usuario_id))
+        return _dto_completo(s, _carregar(s, usuario_id))
 
 
 def listar_eventos_usuario(ator_id: int, usuario_id: int) -> list[EventoUsuarioDTO]:
@@ -358,15 +455,25 @@ def listar_eventos_usuario(ator_id: int, usuario_id: int) -> list[EventoUsuarioD
 
 
 def criar_usuario(
-    ator_id: int, nome: str, login: str, filial_id: int, papel: str, senha_temporaria: str
-) -> UsuarioDTO:
+    ator_id: int,
+    nome: str,
+    login: str,
+    filial_id: int,
+    papel: str,
+    filiais: list[int] | None = None,
+) -> SenhaGerada:
+    """Cria com senha temporária GERADA (devolvida uma vez para a tela). ``filial_id``:
+    a filial padrão; ``filiais``: as permitidas (padrão: só a padrão)."""
     ator = _admin(ator_id)
+    senha = gerar_senha_temporaria()
     with sessao() as s:
-        return _dto(criar(s, ator.usuario_id, nome, login, filial_id, papel, senha_temporaria))
+        usuario = criar(s, ator.usuario_id, nome, login, filial_id, papel, senha, filiais=filiais)
+        return SenhaGerada(_dto_completo(s, usuario), senha)
 
 
 def alterar_usuario(ator_id: int, usuario_id: int, versao: int, alteracoes: dict) -> UsuarioDTO:
-    """Nome, filial_id, papel e ativo. Versão desatualizada: ErroConflito."""
+    """Nome, filial_id (padrão), filiais (permitidas), papel e ativo. Versão
+    desatualizada: ErroConflito."""
     ator = _admin(ator_id)
     try:
         with sessao() as s:
@@ -376,23 +483,24 @@ def alterar_usuario(ator_id: int, usuario_id: int, versao: int, alteracoes: dict
             if not isinstance(alteracoes, dict) or not set(alteracoes) <= set(CAMPOS_ALTERAVEIS):
                 raise ErroValidacao("alteracoes", "Dados inválidos.")
             alterar(s, ator.usuario_id, usuario, alteracoes)
-            return _dto(usuario)
+            return _dto_completo(s, usuario)
     except StaleDataError:
         raise ErroConflito() from None
 
 
-def redefinir_senha(
-    ator_id: int, usuario_id: int, versao: int, senha_temporaria: str
-) -> UsuarioDTO:
+def redefinir_senha(ator_id: int, usuario_id: int, versao: int) -> SenhaGerada:
+    """O sistema GERA a senha temporária (devolvida uma vez para a tela), guarda só o
+    hash, marca a troca obrigatória e revoga os 'Lembrar de mim'."""
     ator = _admin(ator_id)
+    senha = gerar_senha_temporaria()
     try:
         with sessao() as s:
             usuario = _carregar(s, usuario_id)
             if not _e_int(versao) or versao != usuario.versao:
                 raise ErroConflito()
-            redefinir(s, ator.usuario_id, usuario, senha_temporaria)
+            redefinir(s, ator.usuario_id, usuario, senha)
             s.refresh(usuario)
-            return _dto(usuario)
+            return SenhaGerada(_dto_completo(s, usuario), senha)
     except StaleDataError:
         raise ErroConflito() from None
 
@@ -412,5 +520,6 @@ def trocar_propria_senha(ator_id: int, senha_atual: str, senha_nova: str) -> Non
             raise ErroValidacao("senha", "A nova senha deve ser diferente da atual.")
         usuario.senha_hash = senhas.gerar_hash(senha_nova)
         usuario.deve_trocar_senha = False
+        sessoes_lembradas.revogar_sessoes_lembradas(usuario.id, s)
         _registrar(s, usuario.id, usuario.id, "senha", None, SENHA_ALTERADA, relogio.agora())
         logger.info("Senha alterada pelo próprio usuário: usuario_id=%s.", usuario.id)

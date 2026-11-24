@@ -14,6 +14,7 @@ from osapp.services.auth import PAPEIS
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao
 from osapp.ui import rotas, rotulos, theme
 from osapp.ui.components import basicos
+from osapp.ui.components.chips import GrupoChips
 from osapp.ui.components.formulario_os import lista_suspensa
 from osapp.ui.views.base import Tela
 from osapp.ui.views.notificacoes_email import SEM_EMAIL, TITULO_SECAO
@@ -24,6 +25,21 @@ MSG_CONFLITO = "Este usuário foi alterado por outra pessoa. Abra de novo e tent
 MSG_LOGIN_EXISTE = "Já existe um usuário com este login."
 ROTULO_SENHA_TEMPORARIA = "Senha temporária"
 AJUDA_SENHA_TEMPORARIA = "O usuário vai trocar esta senha no primeiro acesso."
+ROTULO_FILIAIS = "Filiais permitidas"
+ROTULO_FILIAL_PADRAO = "Filial padrão"
+AVISO_SENHA_UMA_VEZ = (
+    "Anote e entregue ao usuário. Ela não será mostrada de novo; o usuário vai "
+    "trocá-la no primeiro acesso."
+)
+TEXTO_REDEFINIR = (
+    "O sistema vai gerar uma senha temporária nova e mostrá-la uma única vez. A senha "
+    "atual deixa de valer e o usuário sai dos aparelhos lembrados."
+)
+
+
+def texto_filiais(codigos, padrao: str) -> str:
+    """'1007 (padrão), 2001'. Função pura (testada)."""
+    return ", ".join(f"{c} (padrão)" if c == padrao else c for c in codigos)
 
 
 def _mensagem(tela, texto: str, rota: str, rotulo: str) -> None:
@@ -137,6 +153,7 @@ class ListaUsuarios(Tela):
         _atualizar(self.conteudo)
 
     def _cartao(self, u) -> ft.Control:
+        filiais_txt = texto_filiais(u.filiais_codigos or (u.filial_codigo,), u.filial_codigo)
         selos = [basicos.selo(rotulos.papel(u.papel), *theme.COR_ORIGEM)]
         if not u.ativo:
             selos.append(basicos.selo("Inativo", *theme.COR_STATUS_CANCELADA))
@@ -153,7 +170,17 @@ class ListaUsuarios(Tela):
                                 size=theme.FONTE_CORPO,
                                 weight=ft.FontWeight.BOLD,
                             ),
-                            basicos.subtitulo(f"{u.login}  ·  {u.filial_codigo}"),
+                            basicos.subtitulo(f"{u.login}  ·  {filiais_txt}"),
+                            *(
+                                [
+                                    basicos.subtitulo(
+                                        f"{u.email}"
+                                        f"{'' if u.email_confirmado else ' (não confirmado)'}"
+                                    )
+                                ]
+                                if u.email
+                                else []
+                            ),
                             ft.Row(selos, wrap=True, spacing=6, run_spacing=6),
                         ],
                         spacing=4,
@@ -182,9 +209,9 @@ class FormularioUsuario(Tela):
         return self._inicial is not None and self._digitado() != self._inicial
 
     def _digitado(self) -> tuple:
-        senha = self.senha.value if self.usuario is None else ""
         login = self.login.value if self.usuario is None else ""
-        return (self.nome.value, login, self.filial.value, self.papel.value, senha)
+        filiais = tuple(sorted(self.filiais.valor))
+        return (self.nome.value, login, self.filial.value, self.papel.value, filiais)
 
     async def carregar(self) -> None:
         ator_id = self.app.sessao.ator_id
@@ -233,28 +260,29 @@ class FormularioUsuario(Tela):
         self.login = basicos.campo_texto(
             "Login", value=u.login if u else "", read_only=u is not None, max_length=50
         )
+        padrao = u.filial_id if u else self.app.sessao.filial_id
         self.filial = lista_suspensa(
-            "Filial",
+            ROTULO_FILIAL_PADRAO,
             [ft.DropdownOption(key=str(f.id), text=f"{f.codigo} - {f.nome}") for f in filiais],
-            str(u.filial_id) if u else str(self.app.sessao.filial_id),
+            str(padrao),
+            on_select=self._ao_mudar_padrao,
+        )
+        self.filiais = GrupoChips(
+            [(f.id, f.codigo) for f in filiais],
+            set(u.filiais) if u and u.filiais else {padrao},
+            multipla=True,
+            minimo=1,
         )
         self.papel = lista_suspensa(
             "Papel",
             [ft.DropdownOption(key=p, text=rotulos.papel(p)) for p in PAPEIS],
             u.papel if u else "usuario",
         )
-        self.senha = basicos.campo_texto(
-            ROTULO_SENHA_TEMPORARIA,
-            password=True,
-            can_reveal_password=True,
-            helper=f"{AJUDA_SENHA_TEMPORARIA} {usuarios.MSG_REGRA_SENHA}",
-            helper_max_lines=3,
-        )
         self.campos = {
             "nome": self.nome,
             "login": self.login,
-            "senha": self.senha,
             "filial_id": _ErroNaLista(self.filial),
+            "filiais": self.filiais,
             "papel": _ErroNaLista(self.papel),
             "ativo": self,
         }
@@ -264,11 +292,13 @@ class FormularioUsuario(Tela):
         campos: list[ft.Control] = [
             self.nome,
             self.login,
-            ft.Row([self.filial]),
             ft.Row([self.papel]),
+            basicos.subtitulo(ROTULO_FILIAIS),
+            self.filiais.controle,
+            ft.Row([self.filial]),
         ]
         if u is None:
-            campos.append(self.senha)
+            campos.append(basicos.subtitulo(f"{AJUDA_SENHA_TEMPORARIA} Ela é gerada ao criar."))
         cartoes: list[ft.Control] = [
             basicos.cartao(
                 basicos.coluna(
@@ -287,6 +317,13 @@ class FormularioUsuario(Tela):
             cartoes.append(await self._historico())
         self.conteudo.controls = cartoes
         self._inicial = self._digitado()
+
+    def _ao_mudar_padrao(self, _e=None) -> None:
+        """A filial padrão entra sempre nas permitidas."""
+        if self.filial.value:
+            self.filiais.valor.add(int(self.filial.value))
+            self.filiais.definir(self.filiais.valor)
+            self.filiais.update()
 
     # O ErroValidacao de 'ativo' (último administrador) aparece no aviso da tela.
     @property
@@ -396,7 +433,7 @@ class FormularioUsuario(Tela):
         if self.botao.disabled:
             return
         self.aviso.visible = False
-        for campo in (self.nome, self.login, self.senha):
+        for campo in (self.nome, self.login):
             campo.error = None
         self.botao.disabled = True
         _atualizar(self.conteudo)
@@ -417,16 +454,21 @@ class FormularioUsuario(Tela):
             self.login.value or "",
             int(self.filial.value),
             self.papel.value,
-            self.senha.value or "",
+            sorted(self.filiais.valor),
             campos=self.campos,
             erros_tratados=(ErroConflito,),
         )
-        self.senha.value = ""
         if isinstance(resultado.erro, ErroConflito):
             self.login.error = MSG_LOGIN_EXISTE
         elif resultado.ok:
             self._inicial = self._digitado()
-            await self.app.ir(rotas.rota_usuario(resultado.valor.id), mensagem="Usuário criado.")
+            gerada = resultado.valor
+            destino = rotas.rota_usuario(gerada.usuario.id)
+
+            async def ir() -> None:
+                await self.app.ir(destino, mensagem="Usuário criado.")
+
+            self._mostrar_senha("Usuário criado", gerada, ir)
 
     async def _alterar(
         self, extra: dict | None = None, mensagem: str = "Usuário alterado."
@@ -438,6 +480,7 @@ class FormularioUsuario(Tela):
                 ("nome", (self.nome.value or "").strip(), u.nome),
                 ("filial_id", int(self.filial.value), u.filial_id),
                 ("papel", self.papel.value, u.papel),
+                ("filiais", sorted(self.filiais.valor), sorted(u.filiais)),
             )
             if valor != antes
         }
@@ -477,60 +520,65 @@ class FormularioUsuario(Tela):
         )
 
     def _perguntar_redefinir(self, _e=None) -> None:
-        campo = basicos.campo_texto(
-            ROTULO_SENHA_TEMPORARIA,
-            password=True,
-            can_reveal_password=True,
-            helper=usuarios.MSG_REGRA_SENHA,
-            helper_max_lines=3,
-        )
-
-        async def confirmar(_e=None) -> None:
+        async def redefinir() -> None:
             resultado = await self.app.chamar(
                 usuarios.redefinir_senha,
                 self.app.sessao.ator_id,
                 self.usuario.id,
                 self.usuario.versao,
-                campo.value or "",
-                campos={"senha": campo},
                 erros_tratados=(ErroConflito,),
             )
-            campo.value = ""
-            if resultado.ok:
-                self.app.page.pop_dialog()
-                self.app.avisar("Senha redefinida. O usuário vai trocá-la no próximo acesso.")
-                self.conteudo.controls = [basicos.carregando()]
-                await self.carregar()
-            elif isinstance(resultado.erro, ErroConflito):
-                self.app.page.pop_dialog()
+            if isinstance(resultado.erro, ErroConflito):
                 self.app.avisar(MSG_CONFLITO)
-            else:
-                _atualizar(campo)
+            elif resultado.ok:
 
-        def cancelar(_e=None) -> None:
+                async def recarregar() -> None:
+                    self.conteudo.controls = [basicos.carregando()]
+                    await self.carregar()
+
+                self._mostrar_senha("Senha redefinida", resultado.valor, recarregar)
+
+        self.app.confirmar("Redefinir senha?", TEXTO_REDEFINIR, "Gerar senha", redefinir)
+
+    def _mostrar_senha(self, titulo: str, gerada, depois) -> None:
+        """A senha temporária, UMA vez. Fechar o diálogo a descarta da tela."""
+        texto = ft.Text(
+            gerada.senha_temporaria,
+            selectable=True,
+            color=theme.COR_TITULO,
+            size=theme.FONTE_SAUDACAO,
+            weight=ft.FontWeight.BOLD,
+            font_family=theme.FONTE_FAMILIA,
+        )
+
+        async def fechar(_e=None) -> None:
+            texto.value = ""
             self.app.page.pop_dialog()
+            await depois()
 
         self.app.page.show_dialog(
             ft.AlertDialog(
                 modal=True,
                 bgcolor=theme.COR_CARTAO,
-                title=ft.Text("Redefinir senha", color=theme.COR_TITULO),
+                title=ft.Text(titulo, color=theme.COR_TITULO),
                 content=ft.Container(
                     width=theme.LARGURA_MAX_LOGIN,
-                    content=basicos.coluna([basicos.subtitulo(AJUDA_SENHA_TEMPORARIA), campo]),
+                    content=basicos.coluna(
+                        [
+                            basicos.subtitulo(
+                                f"{ROTULO_SENHA_TEMPORARIA} de {gerada.usuario.login}:"
+                            ),
+                            texto,
+                            basicos.subtitulo(AVISO_SENHA_UMA_VEZ),
+                        ]
+                    ),
                 ),
                 actions=[
                     ft.TextButton(
-                        content="Cancelar",
+                        content="Já anotei",
                         style=theme.estilo_botao_texto(),
                         height=theme.ALVO_TOQUE_MIN,
-                        on_click=cancelar,
-                    ),
-                    ft.TextButton(
-                        content="Redefinir",
-                        style=theme.estilo_botao_texto(),
-                        height=theme.ALVO_TOQUE_MIN,
-                        on_click=confirmar,
+                        on_click=fechar,
                     ),
                 ],
             )
