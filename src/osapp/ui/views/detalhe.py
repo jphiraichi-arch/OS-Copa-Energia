@@ -7,7 +7,7 @@ from functools import partial
 import flet as ft
 
 from osapp import formatacao
-from osapp.services import custos, lixeira, motivos_cancelamento, ordens, status
+from osapp.services import custos, lixeira, motivos_cancelamento, ordens, status, visualizacoes
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao, ErroValidacao
 from osapp.ui import fase_custo, historico, rotas, rotulos, secoes, textos, theme
 from osapp.ui import urgencia as urgencia_ui
@@ -32,6 +32,9 @@ class Detalhe(Tela):
 
     async def carregar(self) -> None:
         ator_id = self.app.sessao.ator_id
+        # Prompt 42: abrir o detalhe registra a visualização (o serviço decide se conta);
+        # uma falha aqui nunca impede de mostrar a OS (registrar_visualizacao não levanta).
+        await self.app.chamar(visualizacoes.registrar_visualizacao, ator_id, self.os_id)
         resultado = await self.app.chamar(
             ordens.obter_os, ator_id, self.os_id, erros_tratados=(ErroNaoEncontrado,)
         )
@@ -122,7 +125,9 @@ class Detalhe(Tela):
             for c in secoes.secoes(self.app.sessao.papel, d.status, solicitacao=solicitacao)
             if c != secoes.CONCLUSAO or status.encerrado(d.status)
         )
+        vis = None if d.visualizacoes is None else bool(d.visualizacoes)  # prompt 42
         selos = [
+            *([basicos.selo_visualizacao(vis)] if vis is not None else []),
             basicos.selo_origem(d.origem),
             *([basicos.selo_nivel(d.urgencia, "Urgência: ")] if solicitacao else []),
             basicos.selo_nivel(d.prioridade, "Prioridade: "),
@@ -434,7 +439,13 @@ class Detalhe(Tela):
         Seções do usuario: SOLICITAÇÃO, URGÊNCIA e, depois de concluída, CONCLUSÃO (a nota)."""
         lista = secoes.secoes(self.app.sessao.papel, v.status, solicitacao=True)
         topo = self._cabeca(
-            v.numero, v.status, v.titulo, [basicos.selo_nivel(v.urgencia, "Urgência: ")]
+            v.numero,
+            v.status,
+            v.titulo,
+            [
+                basicos.selo_nivel(v.urgencia, "Urgência: "),
+                *([basicos.selo_visualizacao(v.visualizada)] if v.visualizada is not None else []),
+            ],
         )
         cartoes: list[ft.Control] = [topo]
         cartoes.append(
@@ -751,7 +762,41 @@ def _linha_do_tempo(d) -> list[ft.Control]:
     motivo = getattr(d, "motivo_cancelamento", None)
     if motivo:  # prompt 41: visível a todos os que veem a OS
         controles.append(basicos.rotulo_valor("Motivo do cancelamento", motivo))
+    controles += linhas_visualizacao(d)
     return controles
+
+
+def texto_visualizacao_solicitante(d) -> str | None:
+    """Prompt 42 (usuario): 'Visualizada por X em dd/mm/aaaa HH:MM' ou 'Ainda não
+    visualizada pela manutenção'. Função pura (testada)."""
+    if getattr(d, "visualizada", None) is None:
+        return None
+    if not d.visualizada:
+        return "Ainda não visualizada pela manutenção"
+    quando = formatacao.formatar_data_hora(d.primeira_visualizacao_em)
+    return f"Visualizada por {d.primeiro_visualizador} em {quando}"
+
+
+def linhas_visualizacao(d) -> list[ft.Control]:
+    """Usuario: uma frase. Manutenção e administrador: todos, com a primeira e a última."""
+    if isinstance(d, ordens.OsVisaoSolicitante):
+        texto = texto_visualizacao_solicitante(d)
+        return [basicos.rotulo_valor("Visualização", texto)] if texto else []
+    lista = getattr(d, "visualizacoes", None)
+    if lista is None:
+        return []
+    if not lista:
+        return [basicos.rotulo_valor("Visualização", "Ainda não visualizada pela manutenção")]
+    return [
+        basicos.rotulo_valor(
+            "Visualizada por",
+            "\n".join(
+                f"{v.nome}: primeira {formatacao.formatar_data_hora(v.primeira_em)}, "
+                f"última {formatacao.formatar_data_hora(v.ultima_em)}"
+                for v in lista
+            ),
+        )
+    ]
 
 
 def _cartao_nota(nota: str, titulo: str) -> ft.Control:

@@ -223,6 +223,9 @@ PERMITIDOS_USUARIO = {
     "cancelada_em",
     "nota_conclusao",
     "motivo_cancelamento",  # prompt 41: o motivo do cancelamento é visível a todos
+    "visualizada",  # prompt 42: só o indicador, o primeiro visualizador e quando
+    "primeiro_visualizador",
+    "primeira_visualizacao_em",
     "acoes",
     "pode_editar",
     "pode_cancelar",

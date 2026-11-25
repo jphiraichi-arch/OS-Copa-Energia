@@ -67,6 +67,15 @@ def texto_resumo_mensal(resumo, termo: str, periodo: str) -> str:
 
 
 TEMPOS_POR_ESPECIALIDADE = "Por especialidade"
+
+
+def texto_nao_visualizadas(n: int, mais_antiga_segundos: int | None) -> str:
+    """'3 (a mais antiga há 2 d 4 h)' ou 'Nenhuma'. Função pura (testada)."""
+    if not n:
+        return "Nenhuma"
+    return f"{n} (a mais antiga há {_tempo(mais_antiga_segundos)})"
+
+
 TITULO_SLA = "Dentro do SLA"
 AJUDA_SLA = (
     "Entre as ordens cujo prazo já venceu no fim do período ou que já cumpriram a etapa: "
@@ -334,6 +343,7 @@ class RelatorioTempos(Tela):
                 self._por_urgencia(b),
                 *([self._por_especialidade(b)] if getattr(b, "por_especialidade", ()) else []),
                 *([self._sla(b)] if hasattr(b, "sla_inicio") else []),
+                *([self._visualizacao(b)] if hasattr(b, "tempo_ate_visualizacao") else []),
             ]
         else:
             linhas.append(basicos.subtitulo(textos.TEMPOS_VAZIO))
@@ -397,6 +407,36 @@ class RelatorioTempos(Tela):
             for e in r.por_especialidade
         ]
         return self._tabela_tempos(TEMPOS_POR_ESPECIALIDADE, "Especialidade", itens)
+
+    @staticmethod
+    def _visualizacao(b) -> ft.Control:
+        """Prompt 42: aberta -> visualizada -> em execução, e as não visualizadas."""
+
+        def medida(m) -> str:
+            return (
+                f"média {_tempo(m.media_segundos)} · mediana {_tempo(m.mediana_segundos)} · n {m.n}"
+            )
+
+        linhas: list[ft.Control] = [
+            basicos.titulo("Tempo até a visualização", theme.FONTE_CORPO + 2),
+            basicos.rotulo_valor("Aberta até visualizada", medida(b.tempo_ate_visualizacao)),
+            basicos.rotulo_valor("Visualizada até em execução", medida(b.visualizada_ate_inicio)),
+        ]
+        for urgencia, m in b.visualizacao_por_urgencia:
+            linhas.append(
+                ft.Row(
+                    [basicos.selo_nivel(urgencia), basicos.texto(medida(m))],
+                    wrap=True,
+                    spacing=theme.ESPACO_P,
+                )
+            )
+        linhas.append(
+            basicos.rotulo_valor(
+                "Não visualizadas no fim do período",
+                texto_nao_visualizadas(b.nao_visualizadas, b.nao_visualizada_mais_antiga_segundos),
+            )
+        )
+        return basicos.cartao(basicos.coluna(linhas, espaco=theme.ESPACO_P))
 
     @staticmethod
     def _sla(b) -> ft.Control:

@@ -37,7 +37,7 @@ from osapp.repositories import (
     TipoManutencaoRepo,
     UsuarioRepo,
 )
-from osapp.services import custos, email_mensagem, notificacoes, relogio
+from osapp.services import custos, email_mensagem, notificacoes, relogio, visualizacoes
 from osapp.services import sla as sla_srv
 from osapp.services import status as _status
 from osapp.services.auth import Ator, carregar_ator
@@ -142,6 +142,7 @@ class OsResumo:
     # Prompt 41: para mostrar '—' (sem previsto), 'Sem gasto' ou o total.
     tem_itens_previstos: bool = False
     sem_gasto_previsto: bool = False
+    visualizada: bool | None = None  # prompt 42 (None: origem manutenção)
 
 
 @dataclass(frozen=True)
@@ -159,6 +160,7 @@ class ResumoSolicitante:
     inicio_execucao_em: datetime | None
     concluida_em: datetime | None
     cancelada_em: datetime | None
+    visualizada: bool | None = None  # prompt 42 (None: origem manutenção, sem indicador)
 
 
 @dataclass(frozen=True)
@@ -229,6 +231,10 @@ class OsVisaoSolicitante:
     nota_conclusao: str | None
     acoes: AcoesSolicitante
     motivo_cancelamento: str | None = None  # prompt 41 (todos os que veem a OS)
+    # Prompt 42: só isto da tabela de visualizações (sim/não, o primeiro e quando).
+    visualizada: bool | None = None
+    primeiro_visualizador: str | None = None
+    primeira_visualizacao_em: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -274,6 +280,8 @@ class OsDetalhe:
     prazo_solucao_em: datetime | None = None
     sla: sla_srv.Etiqueta | None = None
     motivo_cancelamento: str | None = None  # prompt 41
+    # Prompt 42: todos os que visualizaram (primeira e última vez); None: origem manutenção.
+    visualizacoes: tuple | None = None
     nota_conclusao: str | None = None
     aberta_em: datetime | None = None
     inicio_execucao_em: datetime | None = None
@@ -372,6 +380,14 @@ def _validar_tipo(s: Session, valor: object) -> int | None:
     if tipo is None or not tipo.ativo:
         raise ErroValidacao("tipo_id", "Escolha um tipo de manutenção válido.")
     return tipo.id
+
+
+def _visualizacoes_de(ordem) -> tuple | None:
+    if ordem.origem != ORIGEM_SOLICITACAO:
+        return None
+    from sqlalchemy.orm import object_session
+
+    return visualizacoes.visualizadores(object_session(ordem), ordem.id)
 
 
 def texto_motivo(ordem) -> str | None:
@@ -667,6 +683,7 @@ def _detalhe(ordem: OrdemServico, ator: Ator) -> OsDetalhe:
         prazo_solucao_em=ordem.prazo_solucao_em,
         sla=_etiqueta(ordem),
         motivo_cancelamento=texto_motivo(ordem),
+        visualizacoes=_visualizacoes_de(ordem),
         nota_conclusao=ordem.nota_conclusao,
         aberta_em=ordem.aberta_em,
         inicio_execucao_em=ordem.inicio_execucao_em,
@@ -718,18 +735,27 @@ def _resumo_solicitante(linha) -> ResumoSolicitante:
 
 
 def _com_motivo(s: Session, visao):
-    """Prompt 41: o motivo do cancelamento vai também para o modelo do usuario."""
+    """Prompt 41: o motivo do cancelamento vai também para o modelo do usuario. Prompt 42:
+    e o indicador de visualização (sim/não, o primeiro visualizador e quando). Lê só as
+    colunas permitidas (origem e motivo), nunca a linha inteira da OS."""
+    origem, motivo_id, motivo_texto = s.execute(
+        select(
+            OrdemServico.origem,
+            OrdemServico.motivo_cancelamento_id,
+            OrdemServico.motivo_cancelamento_texto,
+        ).where(OrdemServico.id == visao.id)
+    ).one()
+    lista = visualizacoes.visualizadores(s, visao.id)
+    visao = replace(
+        visao,
+        visualizada=bool(lista) if origem == ORIGEM_SOLICITACAO else None,
+        primeiro_visualizador=lista[0].nome if lista else None,
+        primeira_visualizacao_em=lista[0].primeira_em if lista else None,
+    )
     if visao.status != _status.CANCELADA:
         return visao
-    ordem = OrdemServicoRepo(s).obter_sem_relacoes(visao.id)
-    motivo = (
-        MotivoCancelamentoRepo(s).obter(ordem.motivo_cancelamento_id)
-        if ordem.motivo_cancelamento_id
-        else None
-    )
-    return replace(
-        visao, motivo_cancelamento=_texto_do_motivo(motivo, ordem.motivo_cancelamento_texto)
-    )
+    motivo = MotivoCancelamentoRepo(s).obter(motivo_id) if motivo_id else None
+    return replace(visao, motivo_cancelamento=_texto_do_motivo(motivo, motivo_texto))
 
 
 def _ver(s: Session, ator: Ator, ordem: OrdemServico):
@@ -986,6 +1012,7 @@ def listar_os(
     origem: str | None = None,
     escopo: str | None = ESCOPO_ITENS,
     especialidade_id: int | None = None,
+    nao_visualizadas: bool = False,
 ) -> PaginaOs:
     """Lista paginada. O papel usuario recebe ResumoSolicitante, só da própria filial.
 
@@ -1002,6 +1029,8 @@ def listar_os(
     if especialidade_id is not None and (ator.e_usuario or not _e_int(especialidade_id)):
         # Prompt 37: o usuario nunca filtra nem recebe especialidade.
         raise ErroValidacao("especialidade_id", "Filtro inválido.")
+    if nao_visualizadas and ator.e_usuario:  # prompt 42: filtro da manutenção
+        raise ErroValidacao("nao_visualizadas", "Filtro inválido.")
     if not _e_int(pagina) or pagina < 1:
         raise ErroValidacao("pagina", "Página inválida.")
     limite, deslocamento = ITENS_POR_PAGINA + 1, (pagina - 1) * ITENS_POR_PAGINA
@@ -1013,6 +1042,17 @@ def listar_os(
                 filtro_filial, status, condicao, limite, deslocamento
             )
             itens = tuple(_resumo_solicitante(linha) for linha in linhas[:ITENS_POR_PAGINA])
+            vistas = visualizacoes.visualizadas(s, (i.id for i in itens))
+            origens = {linha["id"]: linha["origem"] for linha in linhas}
+            itens = tuple(
+                replace(
+                    i,
+                    visualizada=(i.id in vistas)
+                    if origens.get(i.id) == ORIGEM_SOLICITACAO
+                    else None,
+                )
+                for i in itens
+            )
             return PaginaOs(itens=itens, tem_mais=len(linhas) > ITENS_POR_PAGINA)
         ordens = repo.listar(
             filial_id=filtro_filial,
@@ -1020,9 +1060,11 @@ def listar_os(
             condicao=condicao,
             limite=limite,
             deslocamento=deslocamento,
-            origem=origem,
+            origem=ORIGEM_SOLICITACAO if nao_visualizadas else origem,
             especialidade_id=especialidade_id,
+            nao_visualizadas=nao_visualizadas,
         )
+        vistas = visualizacoes.visualizadas(s, (o.id for o in ordens))
         itens = tuple(
             OsResumo(
                 id=o.id,
@@ -1044,6 +1086,7 @@ def listar_os(
                 sla=_etiqueta(o),
                 tem_itens_previstos=any(i.fase == custos.FASE_PREVISTO for i in o.itens),
                 sem_gasto_previsto=bool(o.sem_gasto_previsto),
+                visualizada=(o.id in vistas) if o.origem == ORIGEM_SOLICITACAO else None,
             )
             for o in ordens[:ITENS_POR_PAGINA]
         )
@@ -1368,6 +1411,9 @@ def iniciar_execucao(ator_id: int, os_id: int, versao: int) -> OsDetalhe:
                     ordem.urgencia,
                     observacao=NOTA_PRIORIDADE_DA_URGENCIA,
                 )
+            # Prompt 42: iniciar sem ter aberto o detalhe registra a visualização (mesma
+            # transação): o início nunca vem antes da primeira visualização.
+            visualizacoes.registrar(s, ator, ordem, agora)
             _mudar_status(
                 s,
                 ator,

@@ -55,6 +55,10 @@ VAR_GUIA = "OS_GUIA_ARQUIVO"
 VAR_AMBIENTE = "OS_AMBIENTE"
 GUIA_PADRAO = "docs/guia/guia.yaml"
 
+# Prompt 42: visualizações de administradores não contam como 'Visualizada' (constante
+# de configuração do sistema, não variável de ambiente).
+CONTAR_VISUALIZACAO_ADMIN = False
+
 _dotenv_lido = False
 
 

@@ -27,6 +27,7 @@ from osapp.models import (
     OsEvento,
     OsItemCusto,
     OsSequencia,
+    OsVisualizacao,
     SessaoLembrada,
     TentativaLogin,
 )
@@ -89,6 +90,7 @@ def preparar() -> ResultadoPiloto:
             # Core sobre a tabela: sem eventos do ORM nem o filtro da lixeira.
             return s.execute(delete(modelo.__table__)).rowcount or 0
 
+        apagar(OsVisualizacao)  # prompt 42
         emails = apagar(EmailFila)
         itens = apagar(OsItemCusto)
         eventos = apagar(OsEvento)

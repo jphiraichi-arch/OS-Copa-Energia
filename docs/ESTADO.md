@@ -1477,3 +1477,31 @@ estão agora, não refeitas pelo histórico).
   ajustados.
 - Não verificado aqui: a renderização da barra no navegador (lista longa a 390, ~800 e
   1280 px). Conferência manual na lista de passos de implantação.
+
+
+## Prompt 42 — indicador 'Visualizada' (25/11/2026)
+
+- Inspeção: o Detalhe carrega a OS com `ordens.obter_os` (e o histórico com
+  `listar_eventos`); Assumir e Alterar (`views/os_formulario.py`) e Concluir
+  (`views/concluir.py`) também chamam `obter_os`, mas não registram visualização — só o
+  Detalhe chama `registrar_visualizacao`. O relatório existente é o mensal do prompt 25
+  (mais o de tempos do prompt 18); os rótulos do histórico ficam em
+  `ui/rotulos_eventos.py` e as frases em `ui/historico.py` (prompt 26).
+- Migração `0020`: `os_visualizacoes` (id, os_id, usuario_id, primeira e última; par
+  único; índice em os_id).
+- `services/visualizacoes.py`: `conta`, `registrar` (na transação de quem chama),
+  `registrar_visualizacao` (Detalhe; nunca levanta a não ser sessão inválida),
+  `visualizadores`, `visualizadas`, `primeiras(..., antes_de=fim)`. `iniciar_execucao`
+  registra antes do evento STATUS. `listar_os(..., nao_visualizadas=True)`.
+- Modelos de leitura: `OsDetalhe.visualizacoes` (todos, primeira e última; None em OS da
+  manutenção); `OsVisaoSolicitante.visualizada`/`primeiro_visualizador`/
+  `primeira_visualizacao_em`; `OsResumo.visualizada` e `ResumoSolicitante.visualizada`.
+- Relatório mensal (mês e acumulado, mesma população e busca): `tempo_ate_visualizacao`
+  (geral e `visualizacao_por_urgencia`), `visualizada_ate_inicio`, `nao_visualizadas` e
+  a idade da mais antiga; só visualizações antes do fim do período contam.
+- Telas: selo nos cartões da Home e no Detalhe (todos os papéis); chip 'Não visualizadas'
+  na Home (manutenção e administrador); no Detalhe, a frase para o usuario e a lista para
+  manutenção/administrador; cartão 'Tempo até a visualização' no relatório.
+- `preparar-piloto` passou a apagar também `os_visualizacoes`.
+- Testes: `tests/test_visualizacao.py` (concorrência no PostgreSQL com 8 threads: 1 linha,
+  1 evento).

@@ -196,3 +196,13 @@ def selo_sla(etiqueta) -> ft.Container | None:
         return None
     fundo, cor = getattr(theme, TOM_SLA[etiqueta.codigo])
     return selo(etiqueta.texto, fundo, cor, ICONE_SLA[etiqueta.codigo])
+
+
+def selo_visualizacao(visualizada: bool | None) -> ft.Container | None:
+    """Prompt 42: olho + texto. None (OS da manutenção): sem indicador. Verde 'Visualizada';
+    cinza 'Não visualizada' (par com contraste >= 4,5:1, theme.PARES_TEXTO)."""
+    if visualizada is None:
+        return None
+    if visualizada:
+        return selo("Visualizada", *theme.COR_STATUS_CONCLUIDA, ft.Icons.VISIBILITY)
+    return selo("Não visualizada", *theme.COR_STATUS_OUTRO, ft.Icons.VISIBILITY_OFF)

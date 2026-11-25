@@ -9,6 +9,7 @@ from osapp.models.notificacao import EmailFila, UsuarioNotificacao
 from osapp.models.ordem_servico import OrdemServico
 from osapp.models.os_evento import OsEvento
 from osapp.models.os_sequencia import OsSequencia
+from osapp.models.os_visualizacao import OsVisualizacao
 from osapp.models.sessao_lembrada import SessaoLembrada
 from osapp.models.sla import SlaAlvo
 from osapp.models.tentativa_login import TentativaLogin
@@ -28,6 +29,7 @@ __all__ = [
     "OsEvento",
     "OsItemCusto",
     "OsSequencia",
+    "OsVisualizacao",
     "SessaoLembrada",
     "SlaAlvo",
     "TentativaLogin",

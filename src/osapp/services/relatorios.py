@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from osapp.config import carregar_config
 from osapp.db import sessao
 from osapp.repositories import EspecialidadeRepo, FilialRepo, OrdemServicoRepo
-from osapp.services import custos, linha_do_tempo, ordens, relogio, sla
+from osapp.services import custos, linha_do_tempo, ordens, relogio, sla, visualizacoes
 from osapp.services import status as _status
 from osapp.services.auth import Ator, carregar_ator
 from osapp.services.erros import ErroPermissao, ErroValidacao
@@ -605,6 +605,14 @@ class BlocoMensal:
     sla_inicio: sla.Cumprimento = sla.Cumprimento(0, 0)
     sla_solucao: sla.Cumprimento = sla.Cumprimento(0, 0)
     sla_por_urgencia: tuple = ()
+    # Prompt 42: aberta -> primeira visualização contada (só as antes do fim do período),
+    # geral e por urgência; visualizada -> em execução; as não visualizadas no fim do
+    # período (quantas e a idade da mais antiga, em segundos).
+    tempo_ate_visualizacao: Medida = Medida(0, None, None)
+    visualizacao_por_urgencia: tuple = ()
+    visualizada_ate_inicio: Medida = Medida(0, None, None)
+    nao_visualizadas: int = 0
+    nao_visualizada_mais_antiga_segundos: int | None = None
 
 
 @dataclass(frozen=True)
@@ -670,6 +678,33 @@ def _sla_do_bloco(medidas, prazos: dict, fim) -> dict:
     return {"sla_inicio": inicio, "sla_solucao": solucao, "sla_por_urgencia": por}
 
 
+def _visualizacao_do_bloco(medidas, primeiras: dict, fim) -> dict:
+    """Prompt 42 (mesma população e busca do bloco). ``primeiras``: os_id -> primeira
+    visualização antes de ``fim``. m = (id, urgencia, aberta, inicio, conclusao, ...)."""
+    ate_vis: list[int] = []
+    por_urg: dict[str, list[int]] = {n: [] for n in ordens.NIVEIS}
+    vis_inicio: list[int] = []
+    idades: list[int] = []
+    for m in medidas:
+        os_id, urgencia, aberta, inicio = m[0], m[1], m[2], m[3]
+        vista = primeiras.get(os_id)
+        if vista is None:
+            idades.append(_segundos(aberta, fim))
+            continue
+        segundos = _segundos(aberta, vista)
+        ate_vis.append(segundos)
+        por_urg.setdefault(urgencia, []).append(segundos)
+        if inicio is not None and inicio >= vista:
+            vis_inicio.append(_segundos(vista, inicio))
+    return {
+        "tempo_ate_visualizacao": medir(ate_vis),
+        "visualizacao_por_urgencia": tuple((n, medir(por_urg[n])) for n in reversed(ordens.NIVEIS)),
+        "visualizada_ate_inicio": medir(vis_inicio),
+        "nao_visualizadas": len(idades),
+        "nao_visualizada_mais_antiga_segundos": max(idades) if idades else None,
+    }
+
+
 def _bloco(
     repo,
     populacao,
@@ -682,6 +717,7 @@ def _bloco(
     sem_gasto=None,
     especialidades=None,
     prazos=None,
+    primeiras=None,
 ):
     """Um bloco (mês ou acumulado). ``populacao``: linhas de solicitacoes_ate sem a busca;
     ``ids_busca``: ids que correspondem ao termo (None sem termo)."""
@@ -750,6 +786,7 @@ def _bloco(
         busca=busca,
         por_especialidade=medidas_por_especialidade(medidas, *(especialidades or ({}, []))),
         **_sla_do_bloco(medidas, prazos or {}, fim),
+        **_visualizacao_do_bloco(medidas, primeiras or {}, fim),
     )
     return bloco, medidas
 
@@ -804,6 +841,7 @@ def relatorio_mensal(
         situacoes = {p[0]: linha_do_tempo.situacao_em(marcos[p[0]], fim) for p in populacao}
         sem_gasto = repo.sem_gasto(p[0] for p in populacao)
         prazos = repo.prazos(p[0] for p in populacao)
+        primeiras = visualizacoes.primeiras(s, (p[0] for p in populacao), antes_de=fim)
         especialidades = (
             repo.especialidades(p[0] for p in populacao),
             [(e.id, e.nome) for e in EspecialidadeRepo(s).listar(so_ativas=False)],
@@ -820,6 +858,7 @@ def relatorio_mensal(
             sem_gasto,
             especialidades,
             prazos,
+            primeiras,
         )
         acumulado, _ = _bloco(
             repo,
@@ -833,6 +872,7 @@ def relatorio_mensal(
             sem_gasto,
             especialidades,
             prazos,
+            primeiras,
         )
         lista = _resultado_busca(
             repo, termo_limpo or "", escopo, linhas_do_mes, len(linhas_do_mes), pagina

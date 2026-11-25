@@ -302,3 +302,20 @@ de nova solicitação, abaixo), planos preventivos, estoque, exportação PDF/Ex
   Detalhe para todos que veem a OS.
 - Barra inferior própria (`components/barra_inferior.py`), centralizada na largura do
   conteúdo, abaixo da área rolável (o conteúdo nunca fica por baixo dela).
+
+## 'Visualizada' (prompt 42)
+
+- Uma visualização conta só quando quem abre o DETALHE tem papel manutenção
+  (administrador não conta: `config.CONTAR_VISUALIZACAO_ADMIN = False`), a OS é de origem
+  'solicitacao', está visível para ele (filial permitida, fora da lixeira) e ele não é o
+  solicitante. Lista, busca, contadores e relatório nunca registram. Iniciar a execução
+  sem ter aberto o detalhe registra a visualização na mesma transação.
+- `os_visualizacoes` (uma linha por OS e pessoa): `primeira_visualizacao_em` nunca muda;
+  gravação atômica (INSERT ... ON CONFLICT DO NOTHING RETURNING e, se já existia, UPDATE da
+  última), nunca 'ler e depois inserir'. Só a primeira de cada pessoa vai para o histórico
+  (VISUALIZACAO, 'Visualizada por <nome>'). Uma falha ao registrar nunca impede abrir o
+  detalhe.
+- O papel usuario recebe só: visualizada (sim/não), o nome de quem viu primeiro e quando.
+  Manutenção e administrador recebem todos, com a primeira e a última vez.
+- Indicador único (`basicos.selo_visualizacao`): olho + texto, verde 'Visualizada' /
+  cinza 'Não visualizada' (contraste >= 4,5:1), só em OS de origem 'solicitacao'.

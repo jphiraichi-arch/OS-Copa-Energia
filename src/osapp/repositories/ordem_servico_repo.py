@@ -66,6 +66,7 @@ class OrdemServicoRepo:
         deslocamento: int = 0,
         origem: str | None = None,
         especialidade_id: int | None = None,
+        nao_visualizadas: bool = False,
     ) -> list[OrdemServico]:
         """Lista da mais nova para a mais antiga, com filtros opcionais.
 
@@ -74,6 +75,12 @@ class OrdemServicoRepo:
         consulta = _filtrar(select(OrdemServico), filial_id, status, condicao, origem)
         if especialidade_id is not None:  # prompt 37
             consulta = consulta.where(OrdemServico.especialidade_id == especialidade_id)
+        if nao_visualizadas:  # prompt 42: nenhuma visualização contada
+            from osapp.models import OsVisualizacao
+
+            consulta = consulta.where(
+                ~select(OsVisualizacao.id).where(OsVisualizacao.os_id == OrdemServico.id).exists()
+            )
         consulta = (
             consulta.order_by(OrdemServico.criado_em.desc(), OrdemServico.id.desc())
             .limit(limite)

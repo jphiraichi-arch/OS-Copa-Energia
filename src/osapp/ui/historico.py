@@ -6,7 +6,7 @@ Os rótulos e a formatação dos valores vêm de ui/rotulos_eventos.py (prompt 2
 from __future__ import annotations
 
 from osapp import formatacao
-from osapp.services import custos, ordens
+from osapp.services import custos, ordens, visualizacoes
 from osapp.ui import rotulos_eventos
 
 SETA = "->"
@@ -52,6 +52,8 @@ def frase(evento) -> str:
             f"{FRASE_ITEM_ALTERADO}{detalhe}: {_item(evento.valor_antigo)} {SETA} "
             f"{_item(evento.valor_novo)}"
         )
+    if evento.tipo == visualizacoes.TIPO_VISUALIZACAO:  # prompt 42
+        return f"Visualizada por {_texto(evento.valor_novo or '')}"
     if evento.tipo == ordens.TIPO_EXCLUSAO:
         return f"{FRASE_EXCLUSAO}. Motivo: {_texto(evento.valor_novo or '')}"
     if evento.tipo == ordens.TIPO_RESTAURACAO:

@@ -18,6 +18,8 @@ from osapp.ui.views.base import Tela
 
 TODAS_AS_FILIAIS = "todas"
 SOLICITACOES_ABERTAS = "solicitacoes_abertas"  # filtro rápido (manutenção e administrador)
+NAO_VISUALIZADAS = "nao_visualizadas"
+ROTULO_NAO_VISUALIZADAS = "Não visualizadas"
 ROTULO_SOLICITACOES_ABERTAS = "Abertas pela operação"  # prompt 41 (era "Solicitações abertas")
 ESCOPO_PADRAO = ordens.ESCOPO_TUDO  # decisão de 21/11/2026
 
@@ -56,6 +58,7 @@ class Home(Tela):
         opcoes = [(None, textos.HOME_TODAS), *status.ROTULOS.items()]
         if not app.sessao.e_usuario:
             opcoes.insert(1, (SOLICITACOES_ABERTAS, ROTULO_SOLICITACOES_ABERTAS))
+            opcoes.insert(2, (NAO_VISUALIZADAS, ROTULO_NAO_VISUALIZADAS))  # prompt 42
         self.chips = GrupoChips(
             opcoes,
             None,
@@ -173,16 +176,18 @@ class Home(Tela):
             self.lista.controls = []
         self.conteudo.update()
         rapido = self.filtro_status == SOLICITACOES_ABERTAS
+        nao_vistas = self.filtro_status == NAO_VISUALIZADAS
         resultado = await self.app.chamar(
             ordens.listar_os,
             self.app.sessao.ator_id,
             self.busca.value or None,
-            status.ABERTA if rapido else self.filtro_status,
+            status.ABERTA if rapido else (None if nao_vistas else self.filtro_status),
             self.filtro_filial,
             self.pagina,
             ordens.ORIGEM_SOLICITACAO if rapido else None,
             self.escopo.valor if self.escopo else ESCOPO_PADRAO,
             None if self.app.sessao.e_usuario else self.filtro_especialidade,
+            nao_vistas,
         )
         self.rodape.controls = []
         if resultado.ok:
@@ -208,6 +213,8 @@ class Home(Tela):
     def _cartao(self, item) -> ft.Control:
         if isinstance(item, ordens.ResumoSolicitante):
             selos = [basicos.selo_nivel(item.urgencia, "Urgência: ")]
+            if item.visualizada is not None:  # prompt 42
+                selos.append(basicos.selo_visualizacao(item.visualizada))
             detalhes = [item.solicitante, f"aberta em {formatacao.formatar_data(item.aberta_em)}"]
         else:
             selos = [basicos.selo_origem(item.origem)]
@@ -217,6 +224,8 @@ class Home(Tela):
                 selos.append(basicos.selo_nivel(item.prioridade, "Prioridade: "))
             if item.sla is not None:  # prompt 38 (só manutenção e administrador)
                 selos.append(basicos.selo_sla(item.sla))
+            if item.visualizada is not None:  # prompt 42
+                selos.append(basicos.selo_visualizacao(item.visualizada))
             detalhes = [
                 item.solicitante,
                 fase_custo.texto_da_lista(
