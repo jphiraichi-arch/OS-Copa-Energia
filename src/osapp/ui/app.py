@@ -21,11 +21,12 @@ from osapp.ui import navegacao, rotas, textos, theme
 from osapp.ui import sessao as sessao_ui
 from osapp.ui.components import basicos, cabecalho
 from osapp.ui.components.banner import banner
+from osapp.ui.components.barra_inferior import BarraInferior
 from osapp.ui.views.base import Tela
 from osapp.ui.views.concluir import ConcluirOs
 from osapp.ui.views.configuracoes import Configuracoes
 from osapp.ui.views.detalhe import Detalhe
-from osapp.ui.views.especialidades import Especialidades
+from osapp.ui.views.especialidades import Especialidades, MotivosCancelamento
 from osapp.ui.views.home import Home
 from osapp.ui.views.lixeira import Lixeira, LixeiraDetalhe
 from osapp.ui.views.login import Login
@@ -61,6 +62,7 @@ TELAS = {
     "fila_email": FilaEmails,
     "especialidades": Especialidades,
     "sla": Sla,
+    "motivos_cancelamento": MotivosCancelamento,
     "lixeira": Lixeira,
     "lixeira_detalhe": LixeiraDetalhe,
     "configuracoes": Configuracoes,
@@ -112,7 +114,7 @@ class App:
         self.familia_lembrada: str | None = None
         self._token_tentado = False
         self._lugar_banner = ft.Container()
-        self._barra_inferior: ft.NavigationBar | None = None
+        self._barra_inferior: BarraInferior | None = None
 
     # --- Inicialização ----------------------------------------------------------------
 
@@ -281,14 +283,7 @@ class App:
         self.contadores = resultado.valor
         self._desenhar_banner()
         if self._barra_inferior is not None:
-            for destino, novo in zip(
-                self._barra_inferior.destinations, self._destinos_da_barra(), strict=True
-            ):
-                destino.icon, destino.selected_icon = novo.icon, novo.selected_icon
-            try:
-                self._barra_inferior.update()
-            except RuntimeError:
-                pass  # a tela já foi trocada
+            self._barra_inferior.definir_selo(self._indice_ordens(), self._texto_selo_ordens())
 
     async def entrar(self, ator, login: str = "", lembrar: bool = False) -> None:
         """Chamado pela tela de login depois de o serviço autenticar o usuário.
@@ -352,33 +347,19 @@ class App:
     def _destinos(self):
         return navegacao.destinos(self.sessao.papel)
 
-    async def _ao_escolher_destino(self, e) -> None:
-        await self.ir(self._destinos()[int(e.control.selected_index)].rota)
+    def _ao_escolher_destino(self, indice: int) -> None:
+        self.page.run_task(self.ir, self._destinos()[indice].rota)
 
-    def _selo_ordens(self) -> ft.Badge | None:
-        """Selo com o número de ordens abertas (nem concluídas nem canceladas)."""
+    def _texto_selo_ordens(self) -> str | None:
+        """Selo de 'Ordens': quantas ordens com status Aberta (prompt 41)."""
         abertas = self.contadores.abertas if self.contadores else 0
-        if not abertas:
-            return None
-        return ft.Badge(
-            label=str(abertas), bgcolor=theme.COR_CARTAO, text_color=theme.COR_TITULO
-        )  # branco: aparece sobre a barra escura e sobre o indicador laranja
+        return str(abertas) if abertas else None
 
-    def _destinos_da_barra(self) -> list[ft.NavigationBarDestination]:
-        """O selo vai no ícone do destino 'Ordens' (como no exemplo de ft.Badge)."""
-        destinos = []
-        for d in self._destinos():
-            selo = self._selo_ordens() if d.chave == "ordens" else None
-            destinos.append(
-                ft.NavigationBarDestination(
-                    icon=ft.Icon(ICONES[d.chave][0], color=theme.COR_ICONE_BARRA, badge=selo),
-                    selected_icon=ft.Icon(
-                        ICONES[d.chave][1], color=theme.COR_SOBRE_DESTAQUE, badge=selo
-                    ),
-                    label=d.rotulo,
-                )
-            )
-        return destinos
+    def _indice_ordens(self) -> int:
+        return next((i for i, d in enumerate(self._destinos()) if d.chave == "ordens"), -1)
+
+    def _destinos_da_barra(self) -> list[tuple[str, ft.IconData, ft.IconData]]:
+        return [(d.rotulo, ICONES[d.chave][0], ICONES[d.chave][1]) for d in self._destinos()]
 
     def _desenhar_banner(self) -> None:
         """Faixa da tela atual (se ela tiver uma), com a filial e os contadores."""
@@ -392,7 +373,7 @@ class App:
             indicadores = (
                 [
                     (textos.BANNER_ABERTAS, str(c.abertas)),
-                    (textos.BANNER_AGUARDANDO, str(c.aguardando_inicio)),
+                    (textos.BANNER_EM_EXECUCAO, str(c.em_execucao)),
                 ]
                 if c
                 else []
@@ -469,19 +450,19 @@ class App:
             ajuda=self._botao_ajuda(rota),
         )
         ativo = navegacao.destino_ativo(self.sessao.papel, rota)
-        self._barra_inferior = ft.NavigationBar(
-            selected_index=ativo if ativo is not None else 0,
-            bgcolor=theme.COR_BARRA,
-            indicator_color=theme.COR_DESTAQUE if ativo is not None else theme.COR_BARRA,
-            destinations=self._destinos_da_barra(),
-            on_change=self._ao_escolher_destino,
+        selo = self._texto_selo_ordens()
+        self._barra_inferior = BarraInferior(
+            self._destinos_da_barra(),
+            ativo,
+            self._ao_escolher_destino,
+            self._e_largo(),
+            {self._indice_ordens(): selo} if selo else None,
         )
         return ft.View(
             route=rota,
             padding=0,
             spacing=0,
             bgcolor=theme.COR_FUNDO_PAGINA,
-            navigation_bar=self._barra_inferior,
             controls=[
                 ft.SafeArea(
                     expand=True,
@@ -489,7 +470,9 @@ class App:
                         expand=True,
                         spacing=0,
                         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
-                        controls=[barra, area],
+                        # A barra inferior vem depois da área rolável (que tem expand):
+                        # o conteúdo termina acima dela, nunca por baixo (prompt 41).
+                        controls=[barra, area, self._barra_inferior.controle],
                     ),
                 )
             ],

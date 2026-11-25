@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import flet as ft
 
-from osapp.services import especialidades
+from osapp.services import especialidades, motivos_cancelamento
 from osapp.services.erros import ErroPermissao
 from osapp.ui import theme
 from osapp.ui.components import basicos
@@ -26,16 +26,24 @@ def _atualizar(controle) -> None:
 
 
 class Especialidades(Tela):
+    """Editor de uma lista simples (nome, ordem, ativo). Prompt 41: o mesmo editor serve
+    aos motivos de cancelamento (subclasse abaixo)."""
+
+    servico = especialidades
+    titulo_lista = TITULO
+    ajuda_lista = AJUDA
+    rotulo_novo = "Nova especialidade"
+
     def __init__(self, app, **_params) -> None:
         self.app = app
         self.nova = basicos.campo_texto(
-            "Nova especialidade", max_length=especialidades.NOME_MAX, on_submit=self._criar
+            self.rotulo_novo, max_length=self.servico.NOME_MAX, on_submit=self._criar
         )
         self.lista = basicos.coluna([basicos.carregando()], espaco=theme.ESPACO_P)
         self.conteudo = basicos.coluna(
             [
-                basicos.titulo(TITULO, theme.FONTE_SAUDACAO),
-                basicos.subtitulo(AJUDA),
+                basicos.titulo(self.titulo_lista, theme.FONTE_SAUDACAO),
+                basicos.subtitulo(self.ajuda_lista),
                 basicos.cartao(
                     basicos.coluna(
                         [self.nova, basicos.botao_primario("Adicionar", ft.Icons.ADD, self._criar)]
@@ -47,7 +55,7 @@ class Especialidades(Tela):
 
     async def carregar(self) -> None:
         r = await self.app.chamar(
-            especialidades.listar, self.app.sessao.ator_id, True, erros_tratados=(ErroPermissao,)
+            self.servico.listar, self.app.sessao.ator_id, True, erros_tratados=(ErroPermissao,)
         )
         if not r.ok:
             self.conteudo.controls = [basicos.mensagem_central(self.app.MENSAGEM_GENERICA)]
@@ -56,28 +64,28 @@ class Especialidades(Tela):
         _atualizar(self.conteudo)
 
     def _linha(self, e, posicao: int, total: int) -> ft.Control:
-        nome = basicos.campo_texto("Nome", value=e.nome, max_length=especialidades.NOME_MAX)
+        nome = basicos.campo_texto("Nome", value=e.nome, max_length=self.servico.NOME_MAX)
 
         async def salvar(_ev=None) -> None:
             r = await self.app.chamar(
-                especialidades.alterar,
+                self.servico.alterar,
                 self.app.sessao.ator_id,
                 e.id,
                 nome.value or "",
                 campos={"nome": nome},
             )
             if r.ok:
-                self.app.avisar("Especialidade salva.")
+                self.app.avisar("Salvo.")
 
         async def ativar(_ev=None) -> None:
             r = await self.app.chamar(
-                especialidades.alterar, self.app.sessao.ator_id, e.id, None, not e.ativo
+                self.servico.alterar, self.app.sessao.ator_id, e.id, None, not e.ativo
             )
             if r.ok:
                 await self.carregar()
 
         async def mover(direcao: int) -> None:
-            r = await self.app.chamar(especialidades.mover, self.app.sessao.ator_id, e.id, direcao)
+            r = await self.app.chamar(self.servico.mover, self.app.sessao.ator_id, e.id, direcao)
             if r.ok:
                 await self.carregar()
 
@@ -133,12 +141,24 @@ class Especialidades(Tela):
 
     async def _criar(self, _e=None) -> None:
         r = await self.app.chamar(
-            especialidades.criar,
+            self.servico.criar,
             self.app.sessao.ator_id,
             self.nova.value or "",
             campos={"nome": self.nova},
         )
         if r.ok:
             self.nova.value = ""
-            self.app.avisar("Especialidade criada.")
+            self.app.avisar("Criado.")
             await self.carregar()
+
+
+class MotivosCancelamento(Especialidades):
+    """Perfil > Motivos de cancelamento (prompt 41, administrador)."""
+
+    servico = motivos_cancelamento
+    titulo_lista = "Motivos de cancelamento"
+    ajuda_lista = (
+        "Os motivos que aparecem ao cancelar uma solicitação. 'Outro' sempre pede um texto. "
+        "Um motivo desativado não aparece mais, mas continua nas ordens antigas."
+    )
+    rotulo_novo = "Novo motivo"

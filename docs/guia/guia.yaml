@@ -242,5 +242,13 @@ telas:
         - Valem para ordens abertas depois da mudança; as antigas não mudam.
         - Um dia = 24 horas de relógio.
 
+  motivos_cancelamento:
+    admin:
+      titulo: Motivos de cancelamento
+      texto: |
+        Os motivos que aparecem ao cancelar uma solicitação.
+        - Crie, renomeie, reordene ou desative.
+        - 'Outro' sempre pede uma descrição.
+
 # Telas sem ajuda de propósito (por papel). Vazio: todas as telas têm ajuda.
 sem_ajuda: []

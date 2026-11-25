@@ -1445,3 +1445,35 @@ estão agora, não refeitas pelo histórico).
   filtro de avisos por especialidade — o que cada um precisa, o que já existe, o que
   bloqueia, riscos e tamanho. Seis refatorações pequenas propostas (R1 a R6), NÃO
   aplicadas: esperam aprovação. Nenhum código, modelo, migração ou tela mudou.
+
+
+## Prompt 41 — ajustes de layout e de formulários (testes no PC) (25/11/2026)
+
+- Inspeção: (1) a barra inferior era o `ft.NavigationBar` da View
+  (`View.navigation_bar`); ele não tem largura máxima nem alinhamento dos itens (doc
+  controls/navigationbar), então numa tela larga os itens se espalhavam pela janela; a doc
+  não diz se o corpo termina acima dele. (2) A seção de itens já era um componente só
+  (`EditorItens`) nas três telas; na Nova OS a opção 'Sem gasto' não aparecia porque
+  `criar_os` não recebia a marca. (3) `pendencias_para_iniciar` devolvia o que faltava e o
+  Detalhe só mostrava 'Iniciar execução' quando completo (e um texto 'Falta para
+  iniciar'). (4) O cancelamento não tinha motivo.
+- Migração `0019`: `motivos_cancelamento` ('Fora do escopo (TI)', 'Duplicada', 'Aberta por
+  engano', 'Outro') e `ordens_servico.motivo_cancelamento_id`/`_texto` (vazias nas
+  canceladas antes).
+- Serviços: `contadores` -> `abertas` (ABERTA) e `em_execucao`; `pendencias_inicio`;
+  `AcoesOs.iniciar_bloqueado`; `criar_os(sem_gasto_previsto=)`; `cancelar(..., motivo_id,
+  motivo_texto)` (motivo na observação do evento STATUS; `motivo_cancelamento` em
+  `OsDetalhe` e `OsVisaoSolicitante`); `OsResumo.tem_itens_previstos`/`sem_gasto_previsto`;
+  `services/motivos_cancelamento.py` (mesma API das especialidades); `services/piloto.py`
+  e o comando `preparar-piloto`; `config.ambiente()` (`OS_AMBIENTE`).
+- Telas: barra inferior própria (`BarraInferior`, 60 px na tela larga, 80 px no celular,
+  itens em até 1100 px, abaixo da área rolável); 'Sem gasto' na Nova OS; pills 'A
+  DEFINIR' / 'SEM GASTO' / total; Detalhe com 'Iniciar execução' desabilitado, o que falta
+  e atalhos ('Adicionar item de custo', 'Marcar sem gasto', 'Completar planejamento');
+  faixa 'Abertas'/'Em execução'; filtro 'Abertas pela operação'; custo do cartão '—' /
+  'Sem gasto' / total; dica de escopo de TI na Nova Solicitação; diálogo de cancelamento
+  com motivos em chips; Perfil > Motivos de cancelamento (administrador).
+- Testes: `tests/test_prompt41.py`; testes anteriores de contadores e cancelamento
+  ajustados.
+- Não verificado aqui: a renderização da barra no navegador (lista longa a 390, ~800 e
+  1280 px). Conferência manual na lista de passos de implantação.

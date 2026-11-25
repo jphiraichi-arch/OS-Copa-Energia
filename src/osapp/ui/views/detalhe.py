@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from functools import partial
+
 import flet as ft
 
 from osapp import formatacao
-from osapp.services import custos, lixeira, ordens, status
-from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao
-from osapp.ui import historico, rotas, rotulos, secoes, textos, theme
+from osapp.services import custos, lixeira, motivos_cancelamento, ordens, status
+from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao, ErroValidacao
+from osapp.ui import fase_custo, historico, rotas, rotulos, secoes, textos, theme
 from osapp.ui import urgencia as urgencia_ui
 from osapp.ui.components import basicos
+from osapp.ui.components.chips import GrupoChips
 from osapp.ui.components.custos_tabela import tabela_custos
 from osapp.ui.components.opcoes import opcao_card
 from osapp.ui.components.secao import secao, status_pill
@@ -161,13 +164,7 @@ class Detalhe(Tela):
                             self._custos(d),
                             *[self._itens(d, fase) for fase in custos.FASES if _tem_fase(d, fase)],
                         ],
-                        pill=status_pill("SEM GASTO", "neutro")
-                        if d.sem_gasto_previsto
-                        else status_pill(
-                            "PREVISTO: "
-                            + formatacao.formatar_brl(d.resumo_custos.total_previsto_centavos),
-                            "info",
-                        ),
+                        pill=_pill_fase(d),
                     )
                 )
             elif chave == secoes.CONCLUSAO:
@@ -247,6 +244,55 @@ class Detalhe(Tela):
         """Os quatro instantes de status (linha do tempo)."""
         return self._secao("Datas", _linha_do_tempo(d))
 
+    def _iniciar_bloqueado(self, d) -> list[ft.Control]:
+        """Prompt 41: o botão fica visível e desabilitado, com o que falta (a mesma lista
+        de ``ordens.pendencias_inicio``) e atalhos para resolver."""
+        botao = basicos.botao_primario("Iniciar execução", ft.Icons.PLAY_ARROW, None)
+        botao.disabled = True
+        controles: list[ft.Control] = [
+            botao,
+            basicos.subtitulo(texto_pendencias(d.pendencias_para_iniciar)),
+        ]
+        atalhos: list[ft.Control] = []
+        if (
+            ordens.PENDENCIA_VALOR in d.pendencias_para_iniciar
+            and d.acoes.pode_editar_itens_previstos
+        ):
+            atalhos.append(
+                basicos.botao_secundario(
+                    "Adicionar item de custo", ft.Icons.ADD_SHOPPING_CART, self._alterar
+                )
+            )
+            atalhos.append(
+                basicos.botao_secundario(
+                    "Marcar sem gasto", ft.Icons.MONEY_OFF, self._marcar_sem_gasto
+                )
+            )
+        outros = [p for p in d.pendencias_para_iniciar if p != ordens.PENDENCIA_VALOR]
+        if outros and d.acoes.pode_editar:
+            atalhos.append(
+                basicos.botao_secundario(
+                    "Completar planejamento", ft.Icons.EVENT_NOTE, self._alterar
+                )
+            )
+        return controles + atalhos
+
+    async def _marcar_sem_gasto(self, _e=None) -> None:
+        r = await self.app.chamar(
+            ordens.definir_sem_gasto,
+            self.app.sessao.ator_id,
+            self.os_id,
+            self.os.versao,
+            custos.FASE_PREVISTO,
+            True,
+            erros_tratados=(ErroConflito,),
+        )
+        if isinstance(r.erro, ErroConflito):
+            self.app.avisar(MENSAGEM_CONFLITO)
+        elif r.ok:
+            self.app.avisar("Previsto marcado como Sem gasto.")
+        await self.carregar()
+
     def _acoes(self, d) -> list[ft.Control]:
         """Botões de ação, mostrados conforme ``acoes`` (calculado pelo serviço).
 
@@ -268,6 +314,8 @@ class Detalhe(Tela):
                     "Iniciar execução", ft.Icons.PLAY_ARROW, self._perguntar_iniciar
                 )
             )
+        elif d.acoes.iniciar_bloqueado:
+            botoes += self._iniciar_bloqueado(d)
         if d.acoes.pode_concluir:
             botoes.append(
                 basicos.botao_primario(
@@ -430,13 +478,79 @@ class Detalhe(Tela):
     async def _editar_solicitacao(self, _e=None) -> None:
         await self.app.ir(rotas.rota_editar_solicitacao(self.os_id))
 
-    def _perguntar_cancelar(self, _e=None) -> None:
-        self.app.confirmar(
-            "Cancelar solicitação?",
-            "A Ordem de Serviço será cancelada e não poderá mais ser iniciada nem editada.",
-            "Sim, cancelar",
-            lambda: self._mudar_status(ordens.cancelar, "Solicitação cancelada."),
-            rotulo_cancelar="Voltar",
+    async def _perguntar_cancelar(self, _e=None) -> None:
+        """Prompt 41: o motivo em chips ('Fora do escopo (TI)' primeiro); 'Outro' pede
+        um texto. Quem confere é ordens.cancelar."""
+        lista = await self.app.chamar(motivos_cancelamento.listar, self.app.sessao.ator_id)
+        if not lista.ok:
+            return
+        motivos = GrupoChips([(m.id, m.nome) for m in lista.valor], None, opcional=False)
+        texto = basicos.campo_texto(
+            "Descreva o motivo (obrigatório em 'Outro')",
+            max_length=ordens.MOTIVO_TEXTO_MAX,
+            multiline=True,
+            max_lines=4,
+        )
+
+        async def confirmar(_e=None) -> None:
+            r = await self.app.chamar(
+                partial(ordens.cancelar, motivo_id=motivos.valor, motivo_texto=texto.value),
+                self.app.sessao.ator_id,
+                self.os_id,
+                self.os.versao,
+                campos={"motivo_cancelamento_id": motivos, "motivo_cancelamento_texto": texto},
+                erros_tratados=(ErroConflito, ErroPermissao, ErroNaoEncontrado),
+            )
+            if r.ok:
+                self.app.page.pop_dialog()
+                self.app.avisar("Solicitação cancelada.")
+                await self.app.atualizar_contadores()
+                await self.carregar()
+            elif not isinstance(r.erro, ErroValidacao):
+                self.app.page.pop_dialog()
+                self.app.avisar(
+                    MENSAGEM_CONFLITO
+                    if isinstance(r.erro, ErroConflito)
+                    else self.app.MENSAGEM_GENERICA
+                )
+                await self.carregar()
+
+        def voltar(_e=None) -> None:
+            self.app.page.pop_dialog()
+
+        self.app.page.show_dialog(
+            ft.AlertDialog(
+                modal=True,
+                bgcolor=theme.COR_CARTAO,
+                title=ft.Text("Cancelar solicitação?", color=theme.COR_TITULO),
+                content=ft.Container(
+                    width=theme.LARGURA_MAX_LOGIN,
+                    content=basicos.coluna(
+                        [
+                            basicos.subtitulo(
+                                "A Ordem de Serviço será cancelada e não poderá mais ser "
+                                "iniciada nem editada. Qual o motivo?"
+                            ),
+                            motivos.controle,
+                            texto,
+                        ]
+                    ),
+                ),
+                actions=[
+                    ft.TextButton(
+                        content="Voltar",
+                        style=theme.estilo_botao_texto(),
+                        height=theme.ALVO_TOQUE_MIN,
+                        on_click=voltar,
+                    ),
+                    ft.TextButton(
+                        content="Sim, cancelar",
+                        style=theme.estilo_botao_texto(),
+                        height=theme.ALVO_TOQUE_MIN,
+                        on_click=confirmar,
+                    ),
+                ],
+            )
         )
 
     async def _alterar(self, _e=None) -> None:
@@ -600,6 +714,21 @@ class Detalhe(Tela):
         return self._secao("Histórico", linhas)
 
 
+def texto_pendencias(pendencias) -> str:
+    """'Para iniciar, falta: tempo previsto, especialidade.' Função pura (testada)."""
+    return "Para iniciar, falta: " + ", ".join(pendencias) + "."
+
+
+def _pill_fase(d) -> ft.Control:
+    """Prompt 41: 'A DEFINIR' / 'SEM GASTO' / o total previsto."""
+    e = fase_custo.exibicao(
+        any(i.fase == custos.FASE_PREVISTO for i in d.itens),
+        d.sem_gasto_previsto,
+        d.resumo_custos.total_previsto_centavos,
+    )
+    return status_pill(e.pill, e.tom)
+
+
 def _tem_fase(d, fase: str) -> bool:
     return any(i.fase == fase for i in d.itens)
 
@@ -611,7 +740,7 @@ def _linha_do_tempo(d) -> list[ft.Control]:
         linhas.append(("Cancelada em", d.cancelada_em))
     else:
         linhas.append(("Concluída em", d.concluida_em))
-    return [
+    controles = [
         basicos.rotulo_valor(
             rotulo,
             formatacao.formatar_data_hora(instante) if instante else "Ainda não",
@@ -619,6 +748,10 @@ def _linha_do_tempo(d) -> list[ft.Control]:
         )
         for rotulo, instante in linhas
     ]
+    motivo = getattr(d, "motivo_cancelamento", None)
+    if motivo:  # prompt 41: visível a todos os que veem a OS
+        controles.append(basicos.rotulo_valor("Motivo do cancelamento", motivo))
+    return controles
 
 
 def _cartao_nota(nota: str, titulo: str) -> ft.Control:

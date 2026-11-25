@@ -7,10 +7,10 @@ import flet as ft
 from osapp import formatacao
 from osapp.services import custos, ordens, relogio
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao
-from osapp.ui import formularios, historico, rotas, secoes, theme
+from osapp.ui import fase_custo, formularios, historico, rotas, secoes, theme
 from osapp.ui.components import basicos
 from osapp.ui.components.campos import CampoHora
-from osapp.ui.components.editor_itens import EditorItens
+from osapp.ui.components.editor_itens import SecaoItensCusto
 from osapp.ui.components.secao import SecaoCard, status_pill
 from osapp.ui.views.base import Tela
 from osapp.ui.views.detalhe import MENSAGEM_CONFLITO
@@ -25,7 +25,7 @@ class ConcluirOs(Tela):
         self.os_id = os_id
         self.tz = app.config.tz
         self.os = None
-        self.realizados: EditorItens | None = None
+        self.realizados: SecaoItensCusto | None = None
         self._inicial: dict[str, str] | None = None
         self.conteudo = basicos.coluna([basicos.carregando()])
 
@@ -86,7 +86,7 @@ class ConcluirOs(Tela):
         hoje, _hora = formularios.partes_locais(relogio.agora(), self.tz)
         data = {"hint_text": "dd/mm/aaaa", "keyboard_type": ft.KeyboardType.DATETIME}
         self.previstos = formularios.itens_da_fase(d.itens, custos.FASE_PREVISTO)
-        self.realizados = EditorItens(
+        self.realizados = SecaoItensCusto(
             self.app,
             custos.FASE_REALIZADO,
             categorias,
@@ -258,9 +258,12 @@ class ConcluirOs(Tela):
 
     def _atualizar_previa(self) -> None:
         # Pill da seção: 'SEM GASTO' quando a fase realizada está marcada (prompt 31).
-        self.secao_conclusao.definir_pill(
-            status_pill("SEM GASTO", "neutro") if self.realizados.sem_gasto else None
+        e = fase_custo.exibicao(
+            bool(self.realizados.itens),
+            self.realizados.sem_gasto,
+            self.realizados.resumo().total_realizado_centavos,
         )
+        self.secao_conclusao.definir_pill(status_pill(e.pill, e.tom))
         self._calcular_previa()
         try:
             self.previa.update()

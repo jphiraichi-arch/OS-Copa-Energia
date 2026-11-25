@@ -35,6 +35,7 @@ def itens_do_perfil(papel: str) -> tuple[str, ...]:
             "usuarios",
             "especialidades",
             "sla",
+            "motivos_cancelamento",
             "lixeira",
             "fila_email",
             "nova_solicitacao",
@@ -49,6 +50,11 @@ _ENTRADAS = {
     "lixeira": (textos.MENU_LIXEIRA, ft.Icons.DELETE_OUTLINE, rotas.LIXEIRA),
     "fila_email": (textos.MENU_FILA_EMAIL, ft.Icons.OUTBOX_OUTLINED, rotas.FILA_EMAIL),
     "sla": (textos.MENU_SLA, ft.Icons.TIMER_OUTLINED, rotas.SLA),
+    "motivos_cancelamento": (
+        textos.MENU_MOTIVOS,
+        ft.Icons.CANCEL_PRESENTATION_OUTLINED,
+        rotas.MOTIVOS_CANCELAMENTO,
+    ),
     "especialidades": (
         textos.MENU_ESPECIALIDADES,
         ft.Icons.ENGINEERING_OUTLINED,

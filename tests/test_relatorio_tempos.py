@@ -11,7 +11,7 @@ import pytest
 from osapp import formatacao
 from osapp.services import administracao, custos, ordens, relatorios, relogio, status
 from osapp.services.erros import ErroPermissao, ErroValidacao
-from tests.fabricas import NOTA, categoria_id, especialidade_id, itens, tipo_id
+from tests.fabricas import NOTA, categoria_id, especialidade_id, itens, motivo_id, tipo_id
 
 SENHA = "senha-ficticia-123"
 SP = ZoneInfo("America/Sao_Paulo")
@@ -133,7 +133,9 @@ def test_exclusoes(p, tempo):
     valida = solicitacao_com_tempos(p, tempo, BASE, resposta=H, solucao=2 * H)
     # cancelada
     cancelada = abrir(p, tempo, BASE + H)
-    ordens.cancelar(p["sol"], cancelada.id, ordens.obter_os(p["sol"], cancelada.id).versao)
+    ordens.cancelar(
+        p["sol"], cancelada.id, ordens.obter_os(p["sol"], cancelada.id).versao, motivo_id()
+    )
     # origem manutenção
     tempo.agora = BASE
     m = ordens.criar_os(

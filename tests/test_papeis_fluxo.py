@@ -21,7 +21,7 @@ from osapp.services.erros import (
     ErroValidacao,
 )
 from tests.conftest import config_alembic
-from tests.fabricas import NOTA, categoria_id, especialidade_id, itens, tipo_id
+from tests.fabricas import NOTA, categoria_id, especialidade_id, itens, motivo_id, tipo_id
 
 SENHA = "senha-ficticia-123"
 T0 = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
@@ -104,7 +104,7 @@ def solicitacao(p, destino=status.ABERTA, urgencia="alta"):
     if destino == status.CONCLUIDA:
         d = concluir(p["man"], d)
     if destino == status.CANCELADA:
-        d = ordens.cancelar(p["sol"], d.id, d.versao)
+        d = ordens.cancelar(p["sol"], d.id, d.versao, motivo_id())
     assert d.status == destino
     return ordens.obter_os(p["admin"], d.id)
 
@@ -171,7 +171,7 @@ def executar(acao, ator, d):
         return ordens.desfazer_inicio(ator, d.id, d.versao)
     if acao == "concluir":
         return concluir(ator, d)
-    return ordens.cancelar(ator, d.id, d.versao)
+    return ordens.cancelar(ator, d.id, d.versao, motivo_id())
 
 
 def foto(os_id):
@@ -222,6 +222,7 @@ PERMITIDOS_USUARIO = {
     "concluida_em",
     "cancelada_em",
     "nota_conclusao",
+    "motivo_cancelamento",  # prompt 41: o motivo do cancelamento é visível a todos
     "acoes",
     "pode_editar",
     "pode_cancelar",
@@ -263,7 +264,7 @@ def test_usuario_so_recebe_campos_permitidos(pessoas):
     concluida = solicitacao(pessoas, status.CONCLUIDA)
     nova = ordens.criar_solicitacao(pessoas["sol"], "Torneira", "Pingando.", "baixa")
     editada = ordens.editar_solicitacao(pessoas["sol"], nova.id, nova.versao, {"urgencia": "media"})
-    cancelada = ordens.cancelar(pessoas["sol"], editada.id, editada.versao)
+    cancelada = ordens.cancelar(pessoas["sol"], editada.id, editada.versao, motivo_id())
     recebidos = [
         nova,
         editada,
@@ -451,7 +452,7 @@ def test_concluir_exige_realizado_e_guarda_nota_aparada(pessoas, tempo):
 def test_cancelar_e_final(pessoas, tempo):
     d = solicitacao(pessoas, status.ABERTA)
     tempo.avancar(minutes=7)
-    v = ordens.cancelar(pessoas["sol"], d.id, d.versao)
+    v = ordens.cancelar(pessoas["sol"], d.id, d.versao, motivo_id())
     assert isinstance(v, ordens.OsVisaoSolicitante)
     assert (v.status, v.cancelada_em) == (status.CANCELADA, T0 + timedelta(minutes=7))
     completo = ordens.obter_os(pessoas["admin"], d.id)

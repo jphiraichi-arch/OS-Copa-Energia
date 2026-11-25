@@ -19,7 +19,7 @@ from osapp.services import administracao, custos, lixeira, ordens, relatorios
 from osapp.services.auth import carregar_ator
 from osapp.services.erros import ErroNaoEncontrado, ErroPermissao, ErroValidacao
 from tests.conftest import RAIZ, config_alembic
-from tests.fabricas import categoria_id, especialidade_id, tipo_id
+from tests.fabricas import categoria_id, especialidade_id, motivo_id, tipo_id
 from tests.test_relatorio_tempos import BASE, DIA, SENHA, H, Relogio
 
 M = timedelta(minutes=1)
@@ -105,7 +105,7 @@ def test_excluida_some_de_tudo_para_todos(p, duas):
             ordens.obter_os(ator, alvo.id)
         # Contadores (faixa e selo).
         c = ordens.contadores(ator)
-        assert (c.abertas, c.aguardando_inicio) == (1, 1)
+        assert (c.abertas, c.em_execucao) == (1, 0)
     for papel in ("man", "admin"):
         with pytest.raises(ErroNaoEncontrado):
             ordens.listar_eventos(p[papel], alvo.id)
@@ -204,7 +204,7 @@ def test_excluida_nao_pode_ser_mexida(p, duas, tempo):
     tentativas = [
         lambda a: ordens.editar_os(a, alvo.id, alvo.versao, {"tempo_previsto_minutos": 30}),
         lambda a: ordens.iniciar_execucao(a, alvo.id, alvo.versao),
-        lambda a: ordens.cancelar(a, alvo.id, alvo.versao),
+        lambda a: ordens.cancelar(a, alvo.id, alvo.versao, motivo_id()),
         lambda a: ordens.desfazer_inicio(a, em_execucao.id, em_execucao.versao),
         lambda a: ordens.concluir_os(
             a,

@@ -10,6 +10,7 @@ from osapp.db import Base
 from osapp.models.custos import OsItemCusto
 from osapp.models.especialidade import Especialidade
 from osapp.models.filial import Filial
+from osapp.models.motivo_cancelamento import MotivoCancelamento
 from osapp.models.tipo_manutencao import TipoManutencao
 from osapp.models.tipos import DataHoraUTC
 from osapp.models.usuario import Usuario
@@ -92,6 +93,11 @@ class OrdemServico(Base):
     concluida_em: Mapped[datetime | None] = mapped_column(DataHoraUTC())
     cancelada_em: Mapped[datetime | None] = mapped_column(DataHoraUTC())
     cancelada_por_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
+    # Prompt 41: motivo do cancelamento ('Outro' exige texto). Vazio nas canceladas antes.
+    motivo_cancelamento_id: Mapped[int | None] = mapped_column(
+        ForeignKey("motivos_cancelamento.id")
+    )
+    motivo_cancelamento_texto: Mapped[str | None] = mapped_column(String(300))
     # Busca sem acento e sem maiúsculas: normalizar_busca(título + ' ' + descrição).
     # Mantida pelos eventos do ORM abaixo; nunca usar insert/update em lote nesta tabela.
     busca_texto: Mapped[str] = mapped_column(Text, default="", server_default="")
@@ -113,6 +119,7 @@ class OrdemServico(Base):
     tipo: Mapped[TipoManutencao | None] = relationship()
     especialidade: Mapped[Especialidade | None] = relationship()
     cancelada_por: Mapped[Usuario | None] = relationship(foreign_keys=[cancelada_por_id])
+    motivo_cancelamento: Mapped[MotivoCancelamento | None] = relationship()
     excluida_por: Mapped[Usuario | None] = relationship(foreign_keys=[excluida_por_id])
     # Itens de custo (os totais são sempre calculados a partir deles).
     itens: Mapped[list[OsItemCusto]] = relationship(

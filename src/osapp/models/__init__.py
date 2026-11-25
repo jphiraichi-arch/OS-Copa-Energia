@@ -4,6 +4,7 @@ from osapp.models.alerta import AlertaDia, AlertaErro
 from osapp.models.custos import CategoriaCusto, OsItemCusto
 from osapp.models.especialidade import Especialidade
 from osapp.models.filial import Filial
+from osapp.models.motivo_cancelamento import MotivoCancelamento
 from osapp.models.notificacao import EmailFila, UsuarioNotificacao
 from osapp.models.ordem_servico import OrdemServico
 from osapp.models.os_evento import OsEvento
@@ -22,6 +23,7 @@ __all__ = [
     "EmailFila",
     "Especialidade",
     "Filial",
+    "MotivoCancelamento",
     "OrdemServico",
     "OsEvento",
     "OsItemCusto",

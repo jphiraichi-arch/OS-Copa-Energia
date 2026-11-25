@@ -10,7 +10,7 @@ import flet as ft
 
 from osapp import formatacao
 from osapp.services import especialidades, ordens, status
-from osapp.ui import rotas, rotulos, textos, theme
+from osapp.ui import fase_custo, rotas, rotulos, textos, theme
 from osapp.ui.components import basicos
 from osapp.ui.components.chips import GrupoChips
 from osapp.ui.components.escopo_busca import SeletorEscopo
@@ -18,7 +18,7 @@ from osapp.ui.views.base import Tela
 
 TODAS_AS_FILIAIS = "todas"
 SOLICITACOES_ABERTAS = "solicitacoes_abertas"  # filtro rápido (manutenção e administrador)
-ROTULO_SOLICITACOES_ABERTAS = "Solicitações abertas"
+ROTULO_SOLICITACOES_ABERTAS = "Abertas pela operação"  # prompt 41 (era "Solicitações abertas")
 ESCOPO_PADRAO = ordens.ESCOPO_TUDO  # decisão de 21/11/2026
 
 
@@ -219,7 +219,11 @@ class Home(Tela):
                 selos.append(basicos.selo_sla(item.sla))
             detalhes = [
                 item.solicitante,
-                formatacao.formatar_brl(item.total_previsto_centavos),
+                fase_custo.texto_da_lista(
+                    item.tem_itens_previstos,
+                    item.sem_gasto_previsto,
+                    item.total_previsto_centavos,
+                ),
                 formatacao.formatar_data(item.aberta_em or item.criado_em),
             ]
             if self.app.sessao.e_admin:

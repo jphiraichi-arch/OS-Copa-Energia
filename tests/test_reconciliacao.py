@@ -21,7 +21,7 @@ from osapp.services import status as st
 from osapp.services.erros import ErroNaoEncontrado, ErroPermissao, ErroValidacao
 from osapp.ui import navegacao, rotas, secoes
 from tests.conftest import RAIZ
-from tests.fabricas import categoria_id, especialidade_id, novo_usuario, tipo_id
+from tests.fabricas import categoria_id, especialidade_id, motivo_id, novo_usuario, tipo_id
 
 T0 = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
 UI = RAIZ / "src" / "osapp" / "ui"
@@ -69,7 +69,7 @@ def _solicitacao_completa(c):
 def _no_status(c, destino):
     d = _solicitacao_completa(c)
     if destino == st.CANCELADA:
-        return ordens.cancelar(c["admin"], d.id, d.versao)
+        return ordens.cancelar(c["admin"], d.id, d.versao, motivo_id())
     if destino in (st.EM_EXECUCAO, st.CONCLUIDA):
         d = ordens.iniciar_execucao(c["pedro"], d.id, d.versao)
     if destino == st.CONCLUIDA:
@@ -103,8 +103,9 @@ def test_regra_02_so_o_app_monta_a_navegacao_e_usa_a_funcao_pura():
     com_barra = sorted(
         p.relative_to(UI).as_posix()
         for p in arquivos
-        if re.search(r"ft\.(NavigationBar|NavigationRail)\(", _texto(p))
+        if re.search(r"ft\.(NavigationBar|NavigationRail)\(|BarraInferior\(", _texto(p))
     )
+    # Prompt 41: a barra é o componente BarraInferior, montado só pelo app.
     assert com_barra == ["app.py"]
     assert "navegacao.destinos(" in _texto(UI / "app.py")
     assert "import flet" not in _texto(UI / "navegacao.py")  # função pura
@@ -182,7 +183,9 @@ def test_regra_10_previsto_completo_e_a_unica_verificacao(c):
     }
     assert not re.search("equip" + "ament", " ".join(d.pendencias_para_iniciar), re.I)
     fonte = inspect.getsource(ordens.iniciar_execucao)
-    assert "pendencias_para_iniciar(" in fonte  # a mesma função, não uma cópia
+    # A mesma função, não uma cópia (prompt 41: pendencias_inicio chama esta).
+    assert "pendencias_inicio(" in fonte or "pendencias_para_iniciar(" in fonte
+    assert "pendencias_para_iniciar(ordem)" in inspect.getsource(ordens.pendencias_inicio)
     assert inspect.getsource(ordens.previsto_completo).count("pendencias_para_iniciar") == 1
 
 
@@ -280,7 +283,7 @@ def test_regra_17_assumir_usa_tempo_e_itens_e_lista_o_que_falta(c):
     from osapp.ui.views import os_formulario
 
     fonte = inspect.getsource(os_formulario.EditarOs) + inspect.getsource(os_formulario.AssumirOs)
-    assert "EditorItens(" in fonte and "pendencias" in fonte
+    assert "SecaoItensCusto(" in fonte and "pendencias" in fonte  # prompt 41: o nome novo
     assert "CampoDuracao" in _texto(UI / "components" / "formulario_os.py")
     assert "valor_previsto_centavos" not in _texto(UI / "views" / "os_formulario.py")
     v = ordens.criar_solicitacao(c["sol"], "Sem previsto", "Descrição.", "alta")

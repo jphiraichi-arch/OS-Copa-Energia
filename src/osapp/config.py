@@ -52,6 +52,7 @@ VAR_BASE_URL = "OS_BASE_URL"
 VAR_EMAIL_MAX_TENTATIVAS = "OS_EMAIL_MAX_TENTATIVAS"
 VAR_ALERTAS = "OS_ALERTAS_EMAIL"
 VAR_GUIA = "OS_GUIA_ARQUIVO"
+VAR_AMBIENTE = "OS_AMBIENTE"
 GUIA_PADRAO = "docs/guia/guia.yaml"
 
 _dotenv_lido = False
@@ -258,3 +259,18 @@ def guia_arquivo() -> str:
     """OS_GUIA_ARQUIVO: caminho do guia rápido (prompt 39). Padrão: docs/guia/guia.yaml,
     relativo à pasta em que o app roda."""
     return _texto(VAR_GUIA) or GUIA_PADRAO
+
+
+def ambiente() -> str:
+    """OS_AMBIENTE: 'producao', 'homologacao', 'desenvolvimento'... (prompt 41: o comando
+    preparar-piloto recusa 'producao' sem um segundo aviso). Padrão: vazio."""
+    return _texto(VAR_AMBIENTE).lower()
+
+
+def nome_do_banco(url: str) -> str:
+    """O nome do banco na URL (para a confirmação digitada do preparar-piloto)."""
+    from urllib.parse import urlsplit
+
+    if url.startswith("sqlite"):
+        return url.rsplit("/", 1)[-1] or "memoria"
+    return urlsplit(normalizar_url_do_banco(url).replace("+psycopg", "")).path.lstrip("/")

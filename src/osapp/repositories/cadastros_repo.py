@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from osapp.models import CategoriaCusto, Especialidade, TipoManutencao
+from osapp.models import CategoriaCusto, Especialidade, MotivoCancelamento, TipoManutencao
 
 
 class CategoriaCustoRepo:
@@ -68,3 +68,31 @@ class EspecialidadeRepo:
         self._s.add(especialidade)
         self._s.flush()
         return especialidade
+
+
+class MotivoCancelamentoRepo:
+    """Prompt 41."""
+
+    def __init__(self, sessao: Session) -> None:
+        self._s = sessao
+
+    def obter(self, motivo_id: int) -> MotivoCancelamento | None:
+        return self._s.get(MotivoCancelamento, motivo_id)
+
+    def obter_por_codigo(self, codigo: str) -> MotivoCancelamento | None:
+        return self._s.scalars(
+            select(MotivoCancelamento).where(MotivoCancelamento.codigo == codigo)
+        ).one_or_none()
+
+    def listar(self, so_ativas: bool = True) -> list[MotivoCancelamento]:
+        consulta = select(MotivoCancelamento).order_by(
+            MotivoCancelamento.ordem, MotivoCancelamento.id
+        )
+        if so_ativas:
+            consulta = consulta.where(MotivoCancelamento.ativo.is_(True))
+        return list(self._s.scalars(consulta))
+
+    def adicionar(self, motivo: MotivoCancelamento) -> MotivoCancelamento:
+        self._s.add(motivo)
+        self._s.flush()
+        return motivo

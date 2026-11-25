@@ -14,7 +14,7 @@ from osapp.services.erros import (
     ErroPermissao,
     ErroValidacao,
 )
-from tests.fabricas import args_de_conclusao, args_de_criacao
+from tests.fabricas import args_de_conclusao, args_de_criacao, motivo_id
 
 T0 = datetime(2026, 5, 4, 12, 0, tzinfo=UTC)
 INICIO = T0 - timedelta(hours=3)
@@ -56,7 +56,7 @@ def preparar(cenario, destino, **extras):
     if destino == status.CONCLUIDA:
         d = concluir(cenario["pedro"], d)
     if destino == status.CANCELADA:
-        d = ordens.cancelar(cenario["admin"], d.id, d.versao)
+        d = ordens.cancelar(cenario["admin"], d.id, d.versao, motivo_id())
     assert d.status == destino
     return d
 
@@ -179,7 +179,7 @@ def test_transicao_fora_da_tabela_e_recusada_ate_para_admin(cenario, origem, des
         status.EM_EXECUCAO: lambda d: ordens.iniciar_execucao(cenario["admin"], d.id, d.versao),
         status.ABERTA: lambda d: ordens.desfazer_inicio(cenario["admin"], d.id, d.versao),
         status.CONCLUIDA: lambda d: concluir(cenario["admin"], d),
-        status.CANCELADA: lambda d: ordens.cancelar(cenario["admin"], d.id, d.versao),
+        status.CANCELADA: lambda d: ordens.cancelar(cenario["admin"], d.id, d.versao, motivo_id()),
     }
     d = preparar(cenario, origem)
     if (origem, destino) in MOVIMENTOS:

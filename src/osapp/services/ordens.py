@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
@@ -24,11 +24,13 @@ from osapp.busca import normalizar_busca
 from osapp.config import carregar_config
 from osapp.db import sessao
 from osapp.models import OrdemServico, OsEvento, OsItemCusto
+from osapp.models.motivo_cancelamento import CODIGO_OUTRO
 from osapp.models.ordem_servico import INCLUIR_EXCLUIDAS
 from osapp.repositories import (
     CategoriaCustoRepo,
     EspecialidadeRepo,
     FilialRepo,
+    MotivoCancelamentoRepo,
     OrdemServicoRepo,
     OsEventoRepo,
     OsSequenciaRepo,
@@ -137,6 +139,9 @@ class OsResumo:
     aberta_em: datetime | None = None
     solicitante: str = ""
     sla: sla_srv.Etiqueta | None = None  # prompt 38
+    # Prompt 41: para mostrar '—' (sem previsto), 'Sem gasto' ou o total.
+    tem_itens_previstos: bool = False
+    sem_gasto_previsto: bool = False
 
 
 @dataclass(frozen=True)
@@ -190,6 +195,8 @@ class AcoesOs:
     pode_cancelar: bool = False
     pode_editar_solicitacao: bool = False  # editar_solicitacao (título, descrição, urgência)
     pode_excluir: bool = False  # lixeira.excluir_os (prompt 24)
+    # Prompt 41: teria permissão para iniciar, mas falta algo (``pendencias_inicio``).
+    iniciar_bloqueado: bool = False
 
 
 @dataclass(frozen=True)
@@ -221,6 +228,7 @@ class OsVisaoSolicitante:
     cancelada_em: datetime | None
     nota_conclusao: str | None
     acoes: AcoesSolicitante
+    motivo_cancelamento: str | None = None  # prompt 41 (todos os que veem a OS)
 
 
 @dataclass(frozen=True)
@@ -265,6 +273,7 @@ class OsDetalhe:
     prazo_inicio_em: datetime | None = None
     prazo_solucao_em: datetime | None = None
     sla: sla_srv.Etiqueta | None = None
+    motivo_cancelamento: str | None = None  # prompt 41
     nota_conclusao: str | None = None
     aberta_em: datetime | None = None
     inicio_execucao_em: datetime | None = None
@@ -363,6 +372,17 @@ def _validar_tipo(s: Session, valor: object) -> int | None:
     if tipo is None or not tipo.ativo:
         raise ErroValidacao("tipo_id", "Escolha um tipo de manutenção válido.")
     return tipo.id
+
+
+def texto_motivo(ordem) -> str | None:
+    """'Duplicada' ou 'Outro: <texto>' (prompt 41); None sem motivo (canceladas antes)."""
+    return _texto_do_motivo(ordem.motivo_cancelamento, ordem.motivo_cancelamento_texto)
+
+
+def _texto_do_motivo(motivo, texto: str | None) -> str | None:
+    if motivo is None:
+        return None
+    return f"{motivo.nome}: {texto}" if texto else motivo.nome
 
 
 def _etiqueta(ordem) -> sla_srv.Etiqueta | None:
@@ -521,6 +541,13 @@ def pendencias_para_iniciar(ordem: OrdemServico) -> tuple[str, ...]:
     return tuple(faltam)
 
 
+def pendencias_inicio(ordem) -> tuple[str, ...]:
+    """Prompt 41: o que falta para iniciar (tempo previsto, custo previsto, tipo,
+    especialidade, prioridade). A MESMA função que ``iniciar_execucao`` usa e que a tela
+    recebe em ``OsDetalhe.pendencias_para_iniciar``: as duas nunca discordam."""
+    return pendencias_para_iniciar(ordem)
+
+
 def previsto_completo(ordem: OrdemServico) -> bool:
     """Único ponto que decide se o previsto basta para iniciar a execução."""
     return not pendencias_para_iniciar(ordem)
@@ -538,6 +565,7 @@ def _acoes(ator: Ator, ordem: OrdemServico) -> AcoesOs:
         pode_cancelar=_pode(_status.CANCELAR, ator, ordem),
         pode_editar_solicitacao=_pode_editar_solicitacao(ator, ordem),
         pode_excluir=pode_usar_lixeira(ator),
+        iniciar_bloqueado=_pode(_status.INICIAR, ator, ordem) and not previsto_completo(ordem),
     )
 
 
@@ -638,6 +666,7 @@ def _detalhe(ordem: OrdemServico, ator: Ator) -> OsDetalhe:
         prazo_inicio_em=ordem.prazo_inicio_em,
         prazo_solucao_em=ordem.prazo_solucao_em,
         sla=_etiqueta(ordem),
+        motivo_cancelamento=texto_motivo(ordem),
         nota_conclusao=ordem.nota_conclusao,
         aberta_em=ordem.aberta_em,
         inicio_execucao_em=ordem.inicio_execucao_em,
@@ -688,11 +717,27 @@ def _resumo_solicitante(linha) -> ResumoSolicitante:
     )
 
 
+def _com_motivo(s: Session, visao):
+    """Prompt 41: o motivo do cancelamento vai também para o modelo do usuario."""
+    if visao.status != _status.CANCELADA:
+        return visao
+    ordem = OrdemServicoRepo(s).obter_sem_relacoes(visao.id)
+    motivo = (
+        MotivoCancelamentoRepo(s).obter(ordem.motivo_cancelamento_id)
+        if ordem.motivo_cancelamento_id
+        else None
+    )
+    return replace(
+        visao, motivo_cancelamento=_texto_do_motivo(motivo, ordem.motivo_cancelamento_texto)
+    )
+
+
 def _ver(s: Session, ator: Ator, ordem: OrdemServico):
     """O modelo de leitura do papel do ator, com a OS já gravada."""
     s.flush()
     if ator.e_usuario:
-        return _visao_solicitante(OrdemServicoRepo(s).visao_solicitante(ordem.id), ator)
+        visao = _visao_solicitante(OrdemServicoRepo(s).visao_solicitante(ordem.id), ator)
+        return _com_motivo(s, visao)
     s.refresh(ordem)  # versão nova e relacionamentos (só para manutenção e administrador)
     return _detalhe(ordem, ator)
 
@@ -861,6 +906,7 @@ def criar_os(
     tipo_id: int | None = None,
     prioridade: str | None = None,
     especialidade_id: int | None = None,
+    sem_gasto_previsto: bool = False,
 ) -> OsDetalhe:
     """OS completa (origem 'manutencao'): só manutenção e administrador. Previsto, tipo,
     prioridade e especialidade são opcionais aqui; iniciar exige o previsto completo.
@@ -877,6 +923,10 @@ def criar_os(
         else _validar_tempo("tempo_previsto_minutos", tempo_previsto_minutos)
     )
     prioridade = _validar_nivel("prioridade", prioridade, obrigatorio=False)
+    if not isinstance(sem_gasto_previsto, bool):
+        raise ErroValidacao("itens_previstos", "Valor inválido.")
+    if sem_gasto_previsto and itens_previstos:
+        raise ErroValidacao("itens_previstos", MSG_SEM_GASTO_COM_ITENS)
     try:
         with sessao() as s:
             itens = (
@@ -899,6 +949,8 @@ def criar_os(
                 especialidade_id=_validar_especialidade(s, especialidade_id),
             )
             _gravar_itens(s, ordem, ator, custos.FASE_PREVISTO, itens, agora)
+            if sem_gasto_previsto:  # prompt 41: marcado já na criação, com o evento
+                _registrar_sem_gasto(s, ator, ordem, custos.FASE_PREVISTO, True, agora)
             s.flush()
             s.refresh(ordem)
             logger.info("OS criada: os_id=%s usuario_id=%s.", ordem.id, ator.usuario_id)
@@ -921,7 +973,7 @@ def obter_os(ator_id: int, os_id: int):
             linha = OrdemServicoRepo(s).visao_solicitante(os_id) if _e_int(os_id) else None
             if linha is None or linha["filial_id"] not in ator.filiais:
                 raise ErroNaoEncontrado()
-            return _visao_solicitante(linha, ator)
+            return _com_motivo(s, _visao_solicitante(linha, ator))
         return _detalhe(_carregar_visivel(s, ator, os_id), ator)
 
 
@@ -990,6 +1042,8 @@ def listar_os(
                 aberta_em=o.aberta_em,
                 solicitante=o.criado_por.nome,
                 sla=_etiqueta(o),
+                tem_itens_previstos=any(i.fase == custos.FASE_PREVISTO for i in o.itens),
+                sem_gasto_previsto=bool(o.sem_gasto_previsto),
             )
             for o in ordens[:ITENS_POR_PAGINA]
         )
@@ -1037,8 +1091,8 @@ def _filial_da_lista(ator: Ator, filial_id: object, acao: str) -> int | tuple[in
 class Contadores:
     """Números da faixa e do selo de 'Ordens' (não revelam campo restrito)."""
 
-    abertas: int  # ABERTA + EM_EXECUCAO (nem concluídas nem canceladas)
-    aguardando_inicio: int  # ainda ABERTA
+    abertas: int  # status ABERTA (prompt 41; antes era ABERTA + EM_EXECUCAO)
+    em_execucao: int  # status EM_EXECUCAO
     filial_rotulo: str  # 'código - nome' da filial considerada, ou 'Todas as filiais'
 
 
@@ -1059,10 +1113,9 @@ def contadores(ator_id: int, filial_id: int | None = None) -> Contadores:
             if filial is None:
                 raise ErroValidacao("filial_id", "Filial não encontrada.")
             rotulo = f"{filial.codigo} - {filial.nome}"
-    aguardando = por_status.get(_status.ABERTA, 0)
     return Contadores(
-        abertas=aguardando + por_status.get(_status.EM_EXECUCAO, 0),
-        aguardando_inicio=aguardando,
+        abertas=por_status.get(_status.ABERTA, 0),
+        em_execucao=por_status.get(_status.EM_EXECUCAO, 0),
         filial_rotulo=rotulo,
     )
 
@@ -1109,6 +1162,7 @@ def _mudar_status(
     acao: str,
     agora: datetime,
     outros_campos: dict[str, object],
+    observacao: str | None = None,
 ) -> None:
     """Aplica uma transição da tabela: campos e evento STATUS, na mesma transação.
 
@@ -1121,7 +1175,9 @@ def _mudar_status(
     ordem.atualizado_em = agora
     for campo, valor in outros_campos.items():
         setattr(ordem, campo, valor)
-    registrar_evento(s, ordem.id, ator.usuario_id, TIPO_STATUS, agora, "status", anterior, destino)
+    registrar_evento(
+        s, ordem.id, ator.usuario_id, TIPO_STATUS, agora, "status", anterior, destino, observacao
+    )
 
 
 def _registrar_mudancas(s, ator, ordem, mudancas, agora) -> None:
@@ -1289,7 +1345,7 @@ def iniciar_execucao(ator_id: int, os_id: int, versao: int) -> OsDetalhe:
             if not _pode(_status.INICIAR, ator, ordem):
                 raise _negar(ator, f"iniciar OS em status {ordem.status}")
             _conferir_versao(ordem, versao)
-            faltam = pendencias_para_iniciar(ordem)
+            faltam = pendencias_inicio(ordem)
             if faltam == (PENDENCIA_VALOR,):
                 raise ErroValidacao("itens_previstos", MSG_SEM_GASTO)
             if faltam:
@@ -1434,16 +1490,38 @@ def concluir_os(
         raise ErroConflito() from None
 
 
-def cancelar(ator_id: int, os_id: int, versao: int):
+MOTIVO_TEXTO_MIN, MOTIVO_TEXTO_MAX = 5, 300
+MSG_MOTIVO = "Escolha o motivo do cancelamento."
+MSG_MOTIVO_OUTRO = f"Descreva o motivo ({MOTIVO_TEXTO_MIN} a {MOTIVO_TEXTO_MAX} caracteres)."
+
+
+def cancelar(
+    ator_id: int,
+    os_id: int,
+    versao: int,
+    motivo_id: object = None,
+    motivo_texto: object = None,
+):
     """ABERTA -> CANCELADA: o solicitante (na própria solicitação) ou o administrador.
-    Grava cancelada_em e cancelada_por_id. Devolve o modelo de leitura do papel."""
+    Grava cancelada_em, cancelada_por_id e o motivo (prompt 41: obrigatório; 'Outro' exige
+    um texto de 5 a 300 caracteres). O motivo vai na observação do evento STATUS.
+    Devolve o modelo de leitura do papel."""
     ator = carregar_ator(ator_id)
+    texto = motivo_texto.strip() if isinstance(motivo_texto, str) else None
     try:
         with sessao() as s:
             ordem = _carregar_para_escrita(s, ator, os_id)
             if not _pode(_status.CANCELAR, ator, ordem):
                 raise _negar(ator, f"cancelar OS em status {ordem.status}")
             _conferir_versao(ordem, versao)
+            motivo = MotivoCancelamentoRepo(s).obter(motivo_id) if _e_int(motivo_id) else None
+            if motivo is None or not motivo.ativo:
+                raise ErroValidacao("motivo_cancelamento_id", MSG_MOTIVO)
+            if motivo.codigo == CODIGO_OUTRO:
+                if not texto or not MOTIVO_TEXTO_MIN <= len(texto) <= MOTIVO_TEXTO_MAX:
+                    raise ErroValidacao("motivo_cancelamento_texto", MSG_MOTIVO_OUTRO)
+            else:
+                texto = (texto or None) and texto[:MOTIVO_TEXTO_MAX]
             agora = relogio.agora()
             _mudar_status(
                 s,
@@ -1451,7 +1529,13 @@ def cancelar(ator_id: int, os_id: int, versao: int):
                 ordem,
                 _status.CANCELAR,
                 agora,
-                {"cancelada_em": agora, "cancelada_por_id": ator.usuario_id},
+                {
+                    "cancelada_em": agora,
+                    "cancelada_por_id": ator.usuario_id,
+                    "motivo_cancelamento_id": motivo.id,
+                    "motivo_cancelamento_texto": texto,
+                },
+                observacao=f"Motivo: {motivo.nome}" + (f" - {texto}" if texto else ""),
             )
             s.flush()
             logger.info("OS cancelada: os_id=%s usuario_id=%s.", ordem.id, ator.usuario_id)

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
 import flet as ft
 
@@ -41,6 +42,41 @@ SUGESTAO_PAUSA_S = 0.3  # pausa na digitação antes de buscar sugestões
 Gravar = Callable[
     [str, formularios.ItemLocal | None, formularios.ItemLocal | None], Awaitable[bool]
 ]
+
+
+@dataclass
+class EstadoFase:
+    """Regras de uma fase de custo na tela (prompt 31/41), sem Flet: a marca 'Sem gasto' e
+    os itens nunca juntos. Mesma lógica nas três telas (Nova OS, Alterar, Concluir)."""
+
+    n_itens: int = 0
+    sem_gasto: bool = False
+
+    @property
+    def pode_adicionar(self) -> bool:
+        return not self.sem_gasto
+
+    def marcar(self, valor: bool) -> str:
+        """'aplicado' ou 'confirmar' (marcar com itens pergunta antes de removê-los)."""
+        if valor and self.n_itens:
+            return "confirmar"
+        self.sem_gasto = valor
+        return "aplicado"
+
+    def trocar_por_sem_gasto(self) -> None:
+        self.n_itens, self.sem_gasto = 0, True
+
+    def adicionar(self) -> None:
+        """Incluir um item desmarca 'Sem gasto'."""
+        self.n_itens += 1
+        self.sem_gasto = False
+
+    def remover(self) -> None:
+        self.n_itens = max(self.n_itens - 1, 0)
+
+    @property
+    def coerente(self) -> bool:
+        return not (self.sem_gasto and self.n_itens)
 
 
 class EditorItens:
@@ -272,7 +308,7 @@ class EditorItens:
         return ft.Row(controles, vertical_alignment=ft.CrossAxisAlignment.CENTER)
 
     async def _ao_mudar_sem_gasto(self, valor: bool) -> None:
-        if valor and self._itens:
+        if EstadoFase(len(self._itens), self._sem_gasto).marcar(valor) == "confirmar":
             n = len(self._itens)
 
             async def trocar() -> None:
@@ -323,6 +359,9 @@ class EditorItens:
             return await self._ao_gravar(operacao, antes, depois)
         if antes is None:
             self._itens.append(depois)
+            estado = EstadoFase(len(self._itens) - 1, self._sem_gasto)
+            estado.adicionar()
+            self._sem_gasto = estado.sem_gasto  # incluir item desmarca 'Sem gasto'
         else:
             self._itens = [depois if i.chave == antes.chave else i for i in self._itens]
         self.marcar_erro(None)
@@ -605,3 +644,8 @@ def _atualizar(controle) -> None:
         controle.update()
     except (RuntimeError, AssertionError):
         pass  # ainda não está na página, ou a tela já foi trocada
+
+
+# Prompt 41: o nome da seção compartilhada (previsto em Nova OS e Alterar, realizado em
+# Concluir). EditorItens continua valendo como nome antigo.
+SecaoItensCusto = EditorItens

@@ -6,13 +6,12 @@ from functools import partial
 
 import flet as ft
 
-from osapp import formatacao
 from osapp.services import custos, especialidades, ordens
 from osapp.services.erros import ErroConflito, ErroNaoEncontrado, ErroPermissao, ErroValidacao
-from osapp.ui import formularios, rotas, rotulos, secoes, theme
+from osapp.ui import fase_custo, formularios, rotas, rotulos, secoes, theme
 from osapp.ui import urgencia as urgencia_ui
 from osapp.ui.components import basicos
-from osapp.ui.components.editor_itens import ADICIONAR, EDITAR, EditorItens
+from osapp.ui.components.editor_itens import ADICIONAR, EDITAR, SecaoItensCusto
 from osapp.ui.components.formulario_os import FormularioOs
 from osapp.ui.components.opcoes import opcao_card
 from osapp.ui.components.secao import SecaoCard, secao, status_pill
@@ -26,7 +25,7 @@ TITULO_REALIZADOS = "Custos realizados"
 class AlvoDeErro:
     """Faz o editor de itens receber, como um campo, a mensagem de ErroValidacao da lista."""
 
-    def __init__(self, editor: EditorItens) -> None:
+    def __init__(self, editor: SecaoItensCusto) -> None:
         self._editor = editor
 
     @property
@@ -50,7 +49,7 @@ class _TelaDeFormulario(Tela):
     def __init__(self, app) -> None:
         self.app = app
         self.formulario: FormularioOs | None = None
-        self.editores: list[EditorItens] = []
+        self.editores: list[SecaoItensCusto] = []
         self.aviso = ft.Text("", color=theme.COR_ERRO, size=theme.FONTE_SUBTITULO, visible=False)
         self.botao = basicos.botao_primario(self.rotulo_do_botao, ft.Icons.SAVE, self._salvar)
         self.conteudo = basicos.coluna([basicos.carregando()])
@@ -121,7 +120,7 @@ class _TelaDeFormulario(Tela):
                     ft.Icons.RECEIPT_LONG,
                     titulo,
                     [editor.controle for editor in self.editores],
-                    pill=status_pill(self._resumo_itens(), "info"),
+                    pill=status_pill(self._resumo_itens(), self._exibicao_itens().tom),
                 )
                 for editor in self.editores:
                     editor.observar(self._atualizar_pill_itens)
@@ -135,17 +134,22 @@ class _TelaDeFormulario(Tela):
             self.botao,
         ]
 
-    def _resumo_itens(self) -> str:
-        """'PREVISTO: R$ 1.250,00' (subtotal ao vivo da fase prevista)."""
+    def _exibicao_itens(self):
+        """Prompt 41: 'A DEFINIR' (sem item nem marca), 'SEM GASTO' ou o total previsto."""
         previsto = next((e for e in self.editores if e.fase == custos.FASE_PREVISTO), None)
-        if previsto is not None and previsto.sem_gasto:
-            return "SEM GASTO"
-        total = previsto.resumo().total_previsto_centavos if previsto else 0
-        return f"PREVISTO: {formatacao.formatar_brl(total)}"
+        if previsto is None:
+            return fase_custo.exibicao(False, False, 0)
+        return fase_custo.exibicao(
+            bool(previsto.itens), previsto.sem_gasto, previsto.resumo().total_previsto_centavos
+        )
+
+    def _resumo_itens(self) -> str:
+        return self._exibicao_itens().pill
 
     def _atualizar_pill_itens(self) -> None:
         if self.secao_itens is not None:
-            self.secao_itens.definir_pill(status_pill(self._resumo_itens(), "info"))
+            e = self._exibicao_itens()
+            self.secao_itens.definir_pill(status_pill(e.pill, e.tom))
 
     def _atualizar_pill_planejamento(self) -> None:
         if self.secao_planejamento is not None:
@@ -201,7 +205,7 @@ class CriarOs(_TelaDeFormulario):
 
     def __init__(self, app, **_params) -> None:
         super().__init__(app)
-        self.previstos: EditorItens | None = None
+        self.previstos: SecaoItensCusto | None = None
 
     def tem_alteracoes(self) -> bool:
         return super().tem_alteracoes() or bool(self.previstos and self.previstos.itens)
@@ -221,12 +225,14 @@ class CriarOs(_TelaDeFormulario):
             self.formulario = FormularioOs(
                 self.app, filiais.valor, tipos=tipos.valor, especialidades=lista_esp.valor
             )
-            self.previstos = EditorItens(
+            # Prompt 41: 'Sem gasto' já na criação (fica na tela até gravar).
+            self.previstos = SecaoItensCusto(
                 self.app,
                 custos.FASE_PREVISTO,
                 categorias.valor,
                 titulo=TITULO_PREVISTOS,
                 filial_de=self._filial_escolhida,
+                com_sem_gasto=True,
             )
             self.editores = [self.previstos]
             self._mostrar_formulario()
@@ -248,6 +254,7 @@ class CriarOs(_TelaDeFormulario):
                 tipo_id=valores["tipo_id"],
                 prioridade=valores["prioridade"],
                 especialidade_id=valores["especialidade_id"],
+                sem_gasto_previsto=self.previstos.sem_gasto,
             ),
             self.app.sessao.ator_id,
             valores["titulo"],
@@ -316,7 +323,7 @@ class EditarOs(_TelaDeFormulario):
                     especialidades=lista_esp.valor,
                 )
                 self.editores = [
-                    EditorItens(
+                    SecaoItensCusto(
                         self.app,
                         custos.FASE_PREVISTO,
                         categorias.valor,
@@ -332,7 +339,7 @@ class EditarOs(_TelaDeFormulario):
                 ]
                 if os_.acoes.pode_editar_itens_realizados:
                     self.editores.append(
-                        EditorItens(
+                        SecaoItensCusto(
                             self.app,
                             custos.FASE_REALIZADO,
                             categorias.valor,

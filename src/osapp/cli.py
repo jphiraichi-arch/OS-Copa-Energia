@@ -76,6 +76,42 @@ def _validar_guia(_args) -> str:
     return "\n".join(linhas)
 
 
+def _preparar_piloto(args) -> str:
+    """Prompt 41: reinício antes do piloto. Exige --confirmar e o nome do banco digitado;
+    com OS_AMBIENTE=producao exige também --sei-que-e-producao."""
+    from osapp import config
+    from osapp.services import piloto
+
+    print("FAÇA UM BACKUP DO BANCO ANTES (docs/BACKUP.md). Isto não pode ser desfeito.")
+    for linha in piloto.plano():
+        print(linha)
+    if not args.confirmar:
+        raise ErroValidacao("confirmar", "Nada foi feito: rode de novo com --confirmar.")
+    if config.ambiente() == "producao" and not args.sei_que_e_producao:
+        raise ErroValidacao(
+            "ambiente",
+            "OS_AMBIENTE=producao: nada foi feito. Para continuar mesmo assim, acrescente "
+            "--sei-que-e-producao.",
+        )
+    banco = config.nome_do_banco(config.carregar_config().database_url)
+    if input(f"Digite o nome do banco para confirmar ({banco}): ").strip() != banco:
+        raise ErroValidacao("confirmar", "Nome do banco não confere: nada foi feito.")
+    r = piloto.preparar()
+    linhas = [
+        f"Apagadas: {r.ordens_apagadas} OS, {r.itens_apagados} itens, {r.eventos_apagados} "
+        f"eventos, {r.emails_apagados} e-mails, {r.sessoes_apagadas} 'lembrar de mim', "
+        f"{r.tentativas_apagadas} contadores de login. Numeração reiniciada.",
+    ]
+    if r.criados:
+        linhas.append("Usuários criados (senha temporária mostrada UMA vez; anote e entregue):")
+        linhas += [
+            f"  {u.nome:<16} {u.login:<16} {u.papel:<11} {u.senha_temporaria}" for u in r.criados
+        ]
+    if r.ja_existiam:
+        linhas.append("Já existiam (senha não mudou): " + ", ".join(r.ja_existiam))
+    return "\n".join(linhas)
+
+
 def _criar_filial(args) -> str:
     filial = administracao.criar_filial(
         _perguntar(args.codigo, "Código"), _perguntar(args.nome, "Nome")
@@ -330,6 +366,14 @@ def criar_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("validar-guia", help="Confere o guia rápido (botão '?')")
     p.set_defaults(func=_validar_guia)
+
+    p = sub.add_parser(
+        "preparar-piloto",
+        help="Apaga as OS de teste, reinicia a numeração e cria usuários do piloto",
+    )
+    p.add_argument("--confirmar", action="store_true", help="sem isto, só mostra o plano")
+    p.add_argument("--sei-que-e-producao", action="store_true")
+    p.set_defaults(func=_preparar_piloto)
 
     p = sub.add_parser("redefinir-senha", help="Redefine a senha e zera o atraso do login")
     p.add_argument("--login")

@@ -3,6 +3,7 @@
 from osapp.repositories.cadastros_repo import (
     CategoriaCustoRepo,
     EspecialidadeRepo,
+    MotivoCancelamentoRepo,
     TipoManutencaoRepo,
 )
 from osapp.repositories.filial_repo import FilialRepo
@@ -19,6 +20,7 @@ __all__ = [
     "EmailFilaRepo",
     "EspecialidadeRepo",
     "FilialRepo",
+    "MotivoCancelamentoRepo",
     "NotificacaoRepo",
     "OrdemServicoRepo",
     "OsEventoRepo",

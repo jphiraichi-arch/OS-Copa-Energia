@@ -277,3 +277,28 @@ de nova solicitação, abaixo), planos preventivos, estoque, exportação PDF/Ex
   período ou que já cumpriram a etapa (as que ainda estão no prazo ficam fora do
   denominador), com a situação reconstruída no fim do período (prompt 25); '—' com
   denominador zero; também por urgência.
+
+## Ajustes do prompt 41
+
+- **Apagamento físico**: a regra continua 'nunca apagar' (exclusão lógica, prompt 24), com
+  UMA exceção: o comando `preparar-piloto`, só para o reinício antes do piloto. Ele apaga
+  as OS de teste e o que depende delas (itens, eventos, fila de e-mails, 'lembrar de mim',
+  contadores de login) e reinicia a numeração; exige `--confirmar`, o nome do banco
+  digitado e, com `OS_AMBIENTE=producao`, `--sei-que-e-producao`. Sempre depois de um
+  backup.
+- Seção de itens de custo única (`SecaoItensCusto`, `components/editor_itens.py`) nas
+  três telas (previsto em Nova OS e Alterar, realizado em Concluir), com as regras de
+  'Sem gasto' do prompt 31 em `EstadoFase`. 'Sem gasto' existe também na criação
+  (`criar_os(..., sem_gasto_previsto=True)`, recusado junto com itens).
+- Exibição de uma fase (`ui/fase_custo.py`): sem item e sem marca, 'A DEFINIR' e '—'
+  (nunca 'R$ 0,00' para 'não preenchido'); marcada, 'SEM GASTO'; com itens, o total.
+- `ordens.pendencias_inicio` é a única lista do que falta para iniciar, usada pelo
+  serviço e pela tela; no Detalhe, 'Iniciar execução' fica visível e desabilitado, com os
+  motivos e atalhos.
+- Faixa: 'Abertas' (status Aberta) e 'Em execução'; o selo de Ordens mostra as Abertas.
+  Filtro rápido 'Abertas pela operação' (solicitações Abertas, por urgência e idade).
+- Cancelamento com motivo obrigatório (`motivos_cancelamento`, editável pelo
+  administrador; 'Outro' exige 5 a 300 caracteres); o motivo vai no evento e aparece no
+  Detalhe para todos que veem a OS.
+- Barra inferior própria (`components/barra_inferior.py`), centralizada na largura do
+  conteúdo, abaixo da área rolável (o conteúdo nunca fica por baixo dela).

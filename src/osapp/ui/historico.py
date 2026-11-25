@@ -59,7 +59,7 @@ def frase(evento) -> str:
     rotulo = rotulo_campo(evento.campo)
     novo = _formatar(evento.campo, evento.valor_novo)
     observacao = getattr(evento, "observacao", None)
-    if observacao and evento.tipo == ordens.TIPO_EDICAO:
+    if observacao and evento.tipo in (ordens.TIPO_EDICAO, ordens.TIPO_STATUS):  # p. 41: motivo
         return (
             f"{rotulo}: {_formatar(evento.campo, evento.valor_antigo)} {SETA} {novo} ({observacao})"
         )

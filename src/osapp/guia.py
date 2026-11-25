@@ -173,4 +173,5 @@ TELAS_POR_PAPEL: dict[str, tuple[str, ...]] = {
     "fila_email": ("admin",),
     "especialidades": ("admin",),
     "sla": ("admin",),
+    "motivos_cancelamento": ("admin",),
 }

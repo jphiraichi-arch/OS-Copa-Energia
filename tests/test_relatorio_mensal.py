@@ -33,7 +33,7 @@ from osapp.services import administracao, custos, lixeira, ordens, relatorios
 from osapp.services.erros import ErroPermissao, ErroValidacao
 from osapp.services.linha_do_tempo import Marco, periodo_do_mes, situacao_em, status_em
 from osapp.ui.views.relatorio_tempos import texto_taxa
-from tests.fabricas import categoria_id, especialidade_id, tipo_id
+from tests.fabricas import categoria_id, especialidade_id, motivo_id, tipo_id
 from tests.test_relatorio_tempos import SENHA, Relogio
 
 SP = ZoneInfo("America/Sao_Paulo")
@@ -116,7 +116,7 @@ class Cenario:
 
     def cancelar(self, d, quando):
         self.em(quando)
-        return ordens.cancelar(self.p["admin"], d.id, self._atual(d).versao)
+        return ordens.cancelar(self.p["admin"], d.id, self._atual(d).versao, motivo_id())
 
 
 def sem_agora(r):

@@ -70,6 +70,9 @@ RAIO_LOGO = 8
 # --- Tamanhos e espaçamentos -----------------------------------------------
 ALVO_TOQUE_MIN = 48
 ALTURA_BOTAO = 52
+# Prompt 41: altura da barra inferior (tela larga mais baixa; celular como antes).
+ALTURA_BARRA_LARGA = 60
+ALTURA_BARRA_CELULAR = 80
 LARGURA_MAX_CONTEUDO = 1100
 LARGURA_MAX_LOGIN = 420
 LARGURA_CELULAR_MAX = 600  # abaixo disto: layout de celular (1 coluna)

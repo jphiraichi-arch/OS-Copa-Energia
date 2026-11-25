@@ -80,3 +80,13 @@ def args_de_conclusao(dados: dict) -> dict:
         dados["itens_realizados"] = itens(dados.pop("valor_realizado_centavos"))
     dados.setdefault("nota_conclusao", NOTA)
     return dados
+
+
+def motivo_id(codigo: str = "ENGANO") -> int:
+    """Prompt 41: motivo de cancelamento (padrão 'Aberta por engano')."""
+    from osapp.models import MotivoCancelamento
+
+    with sessao() as s:
+        return s.scalars(
+            select(MotivoCancelamento.id).where(MotivoCancelamento.codigo == codigo)
+        ).one()

@@ -67,6 +67,12 @@ variável corrigir.
 |---|---|---|---|
 | `OS_GUIA_ARQUIVO` | não | `docs/guia/guia.yaml` | Arquivo do guia do botão '?'. Editado no servidor, vale sem reiniciar (docs/guia/COMO_EDITAR.md). |
 
+## Ambiente (prompt 41)
+
+| Variável | Obrigatória | Padrão | Significado |
+|---|---|---|---|
+| `OS_AMBIENTE` | não | vazio | Nome do ambiente (`producao`, `homologacao`, `desenvolvimento`). Com `producao`, o comando `preparar-piloto` exige um segundo aviso (`--sei-que-e-producao`). |
+
 ## Fora do app
 
 | Variável | Onde | Significado |

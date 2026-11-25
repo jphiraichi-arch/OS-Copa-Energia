@@ -34,10 +34,14 @@ def tom_urgencia(nivel: str | None) -> str:
     return nivel or "neutro"
 
 
+DICA_ESCOPO_TI = "Problemas de computador, rede ou sistemas: abrir chamado com a TI."
+
+
 class _FormularioSolicitacao(Tela):
     banner = None
     titulo_da_tela = ""
     rotulo_do_botao = ""
+    dica_titulo: str | None = None
 
     def __init__(self, app) -> None:
         self.app = app
@@ -48,8 +52,9 @@ class _FormularioSolicitacao(Tela):
 
     def _montar(self, titulo="", descricao="", urgencia=None, filial="") -> None:
         limpar = self._limpar_erro
+        extra = {"helper": self.dica_titulo, "helper_max_lines": 2} if self.dica_titulo else {}
         self.titulo = basicos.campo_texto(
-            "Título", value=titulo, max_length=ordens.TITULO_MAX, on_change=limpar
+            "Título", value=titulo, max_length=ordens.TITULO_MAX, on_change=limpar, **extra
         )
         self.descricao = basicos.campo_texto(
             "Descrição",
@@ -146,6 +151,7 @@ class NovaSolicitacao(_FormularioSolicitacao):
     banner = (ft.Icons.ADD_COMMENT, TITULO_NOVA)
     titulo_da_tela = TITULO_NOVA
     rotulo_do_botao = ROTULO_ENVIAR
+    dica_titulo = DICA_ESCOPO_TI  # prompt 41
 
     def __init__(self, app, **_params) -> None:
         super().__init__(app)

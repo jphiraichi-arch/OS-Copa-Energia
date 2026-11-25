@@ -83,6 +83,7 @@ def test_itens_do_perfil_por_papel():
         "usuarios",
         "especialidades",  # prompt 37
         "sla",  # prompt 38
+        "motivos_cancelamento",  # prompt 41
         "lixeira",
         "fila_email",  # prompt 32
         "nova_solicitacao",
@@ -224,27 +225,27 @@ def ordens_fixas(cenario):
 
 def test_contadores_com_dados_fixos(ordens_fixas):
     c = ordens.contadores(ordens_fixas["marina"])
-    assert (c.abertas, c.aguardando_inicio) == (5, 3)
+    assert (c.abertas, c.em_execucao) == (3, 2)  # prompt 41: status Aberta / Em execução
     assert c.filial_rotulo == "F001 - Filial Modelo Norte"
 
 
 def test_contadores_escopo_da_filial(ordens_fixas):
     todas = ordens.contadores(ordens_fixas["admin"])
-    assert (todas.abertas, todas.aguardando_inicio, todas.filial_rotulo) == (
-        7,
+    assert (todas.abertas, todas.em_execucao, todas.filial_rotulo) == (
         4,
+        3,
         "Todas as filiais",
     )
     so_f2 = ordens.contadores(ordens_fixas["admin"], ordens_fixas["f2"])
-    assert (so_f2.abertas, so_f2.aguardando_inicio) == (2, 1)
-    assert ordens.contadores(ordens_fixas["carlos"]).abertas == 2
+    assert (so_f2.abertas, so_f2.em_execucao) == (1, 1)
+    assert ordens.contadores(ordens_fixas["carlos"]).abertas == 1
     with pytest.raises(ErroPermissao):
         ordens.contadores(ordens_fixas["marina"], ordens_fixas["f2"])
 
 
 def test_usuario_recebe_so_a_propria_filial(ordens_fixas):
     c = ordens.contadores(ordens_fixas["solicitante"])
-    assert (c.abertas, c.aguardando_inicio) == (5, 3)
-    assert ordens.contadores(ordens_fixas["solicitante"], ordens_fixas["f1"]).abertas == 5
+    assert (c.abertas, c.em_execucao) == (3, 2)
+    assert ordens.contadores(ordens_fixas["solicitante"], ordens_fixas["f1"]).abertas == 3
     with pytest.raises(ErroPermissao):
         ordens.contadores(ordens_fixas["solicitante"], ordens_fixas["f2"])

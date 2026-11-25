@@ -33,6 +33,7 @@ MENU_LIXEIRA = "Lixeira"
 MENU_FILA_EMAIL = "Fila de e-mails"
 MENU_ESPECIALIDADES = "Especialidades"
 MENU_SLA = "SLA (prazos)"
+MENU_MOTIVOS = "Motivos de cancelamento"
 LIXEIRA_TITULO = "Lixeira"
 LIXEIRA_AVISO_EXCLUIR = (
     "A Ordem de Serviço será escondida de todos (inclusive dos administradores) até ser "
@@ -48,7 +49,7 @@ PRIORIDADE_SUGERIDA = "Sugerida pela urgência do solicitante"
 
 # --- Faixa (banner) ------------------------------------------------------------------------
 BANNER_ABERTAS = "Abertas"
-BANNER_AGUARDANDO = "Aguardando início"
+BANNER_EM_EXECUCAO = "Em execução"  # prompt 41 (saiu "Aguardando início")
 
 # --- Home ------------------------------------------------------------------------------
 HOME_TITULO = "Ordens de Serviço"

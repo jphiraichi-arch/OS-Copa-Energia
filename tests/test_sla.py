@@ -275,13 +275,19 @@ def test_migracao_0018_com_dados(banco_vazio):
     os_ = m2.tables["ordens_servico"]
     with db.obter_engine().connect() as c:
         assert c.execute(select(m2.tables["sla_alvos"])).all().__len__() == 4
-    from osapp.db import sessao
-    from osapp.models import OrdemServico
+    # Na 0018 o modelo atual (com colunas posteriores) não serve: lê pela tabela refletida.
+    with db.obter_engine().connect() as c:
+        prazos = dict(
+            (i, (pi, ps))
+            for i, pi, ps in c.execute(
+                select(os_.c.id, os_.c.prazo_inicio_em, os_.c.prazo_solucao_em)
+            ).all()
+        )
+    from osapp.models.tipos import DataHoraUTC
 
-    with sessao() as s:
-        a, b = s.get(OrdemServico, 1), s.get(OrdemServico, 2)
-        assert a.prazo_inicio_em == T0 + 4 * H and a.prazo_solucao_em == T0 + 48 * H
-        assert b.prazo_inicio_em is None
+    conv = DataHoraUTC().process_result_value
+    assert conv(prazos[1][0], None) == T0 + 4 * H and conv(prazos[1][1], None) == T0 + 48 * H
+    assert prazos[2] == (None, None)
     command.downgrade(cfg, "0017")
     m3 = MetaData()
     m3.reflect(bind=db.obter_engine())
