@@ -57,6 +57,7 @@ ORDEM_URGENCIA = {"baixa": 0, "media": 1, "alta": 2, "emergencial": 3}
 PAPEIS_COM_EMAIL = (PAPEL_MANUTENCAO, PAPEL_ADMIN)
 
 MSG_SEM_EMAIL = "Cadastre e confirme um e-mail antes."
+MSG_EMAIL_DESLIGADO = "O envio de e-mail está desligado neste servidor."
 MSG_NAO_CONFIRMADO = "Confirme o e-mail antes de ativar as notificações."
 MSG_AGUARDE = "Aguarde um minuto antes de pedir outro código."
 MSG_LIMITE_HORA = "Limite de códigos por hora atingido. Tente mais tarde."
@@ -168,6 +169,8 @@ def enviar_codigo(ator_id: int, email: object) -> MinhasNotificacoes:
     """
     ator = carregar_ator(ator_id)
     _exigir_papel_com_email(ator)
+    if not config.email_habilitado():  # prompt 46: nenhum código entra na fila
+        raise ErroValidacao("email", MSG_EMAIL_DESLIGADO)
     endereco = email_mensagem.normalizar_email(email)
     if endereco is None:
         raise ErroValidacao("email", email_mensagem.MSG_EMAIL_INVALIDO)
@@ -359,7 +362,10 @@ def enfileirar_nova_solicitacao(
     s: Session, dados: email_mensagem.DadosSolicitacao, filial_id: int, solicitante_id: int
 ) -> int:
     """Uma linha por destinatário, na sessão (transação) da própria OS. Nunca fala com
-    o SMTP. O endereço é copiado para a linha neste instante. Devolve quantas linhas."""
+    o SMTP. O endereço é copiado para a linha neste instante. Devolve quantas linhas.
+    Prompt 46: com o e-mail desligado (config.email_habilitado), não grava nada."""
+    if not config.email_habilitado():
+        return 0
     agora = relogio.agora()
     base_url = config.base_url()
     assunto = email_mensagem.assunto_nova_solicitacao(

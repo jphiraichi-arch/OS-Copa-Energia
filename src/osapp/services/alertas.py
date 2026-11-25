@@ -148,7 +148,8 @@ def _registrar(oc: Ocorrencia) -> int:
             oc.rota or "desconhecida",
             erro.ocorrencias_pendentes,
         )
-        if not config.alertas_por_email():
+        # Prompt 46: com o e-mail desligado, o alerta fica só no log (nada na fila).
+        if not (config.email_habilitado() and config.alertas_por_email()):
             erro.ultimo_alerta_em = agora
             erro.ocorrencias_pendentes = 0
             return 0

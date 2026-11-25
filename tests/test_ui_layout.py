@@ -85,7 +85,6 @@ def test_itens_do_perfil_por_papel():
         "sla",  # prompt 38
         "motivos_cancelamento",  # prompt 41
         "lixeira",
-        "fila_email",  # prompt 32
         "nova_solicitacao",
         "sair",
     )

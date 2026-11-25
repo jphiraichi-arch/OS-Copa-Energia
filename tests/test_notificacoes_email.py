@@ -44,6 +44,13 @@ class Relogio:
         self.agora += timedelta(**delta)
 
 
+@pytest.fixture(autouse=True)
+def _email_ligado(monkeypatch):
+    """Prompt 46: estes testes cobrem o e-mail ligado (OS_EMAIL_HABILITADO=1); o desligado
+    (padrão) está em tests/test_email_desligado.py."""
+    monkeypatch.setenv("OS_EMAIL_HABILITADO", "1")
+
+
 @pytest.fixture
 def clock(monkeypatch):
     r = Relogio()
@@ -687,39 +694,3 @@ def test_migracao_0013_com_dados(banco_vazio):
     with db.obter_engine().connect() as conn:
         assert conn.execute(select(m.tables["usuarios"].c.login)).scalars().all() == ["a"]
     command.upgrade(cfg, "head")
-
-
-# --- Interface (funções puras e montagem dos controles) ---------------------------------
-
-
-def test_textos_da_secao_e_quem_ve():
-    from osapp.ui.views import notificacoes_email as tela
-    from osapp.ui.views.perfil import tem_secao_email
-
-    assert tem_secao_email("manutencao") and tem_secao_email("admin")
-    assert not tem_secao_email("usuario")
-    assert tela.texto_status(None, None) == "Nenhum e-mail cadastrado"
-    assert tela.texto_status(None, "a@b.com") == "Não confirmado"
-    assert tela.texto_status(T0, "a@b.com") == "Confirmado em 24/11/2026"
-    assert [v for v, _ in tela.OPCOES_URGENCIA_MINIMA] == list(notificacoes.URGENCIAS_MINIMAS)
-    assert [r for _, r in tela.OPCOES_URGENCIA_MINIMA] == [
-        "Todas",
-        "Alta e acima",
-        "Somente emergencial",
-    ]
-
-
-def test_secao_monta_com_cada_estado():
-    from types import SimpleNamespace
-
-    from osapp.ui.views.notificacoes_email import FilaEmails, SecaoEmail
-
-    secao = SecaoEmail(SimpleNamespace(sessao=SimpleNamespace(ator_id=1)))
-    assert secao.receber.disabled and not secao.botao_remover.visible
-    secao._mostrar(notificacoes.MinhasNotificacoes("a@b.com", None, False, "alta", True))
-    assert secao.bloco_codigo.visible and secao.receber.disabled
-    assert secao.urgencia.valor == "alta"
-    secao._mostrar(notificacoes.MinhasNotificacoes("a@b.com", T0, True, "baixa", False))
-    assert not secao.receber.disabled and secao.receber.value
-    assert not secao.bloco_codigo.visible and secao.botao_remover.visible
-    assert FilaEmails(SimpleNamespace()).conteudo is not None

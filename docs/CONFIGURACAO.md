@@ -59,7 +59,8 @@ variável corrigir.
 | `OS_SMTP_REMETENTE` | só para e-mail | — | Endereço do remetente (From). |
 | `OS_BASE_URL` | não | — | Endereço público do app, para o link dos e-mails (ex.: `https://os.empresa.com.br`). |
 | `OS_EMAIL_MAX_TENTATIVAS` | não | `6` | Tentativas de envio antes de a mensagem ficar como 'falhou'. |
-| `OS_ALERTAS_EMAIL` | não | `1` | `0` desliga o e-mail dos alertas de erro grave (ficam só no log). |
+| `OS_EMAIL_HABILITADO` | não | `0` | Prompt 46. `1` liga o e-mail. Com `0` (padrão) o trabalhador da fila não sobe e nada entra em `email_fila` (avisos de solicitação, códigos de confirmação, alertas de erro grave); os erros graves ficam só no log. |
+| `OS_ALERTAS_EMAIL` | não | `1` | `0` desliga o e-mail dos alertas de erro grave (ficam só no log). Só vale com `OS_EMAIL_HABILITADO=1`. |
 
 ## Guia rápido (prompt 39)
 

@@ -170,7 +170,6 @@ TELAS_POR_PAPEL: dict[str, tuple[str, ...]] = {
     "usuario": ("admin",),
     "lixeira": ("admin",),
     "lixeira_detalhe": ("admin",),
-    "fila_email": ("admin",),
     "especialidades": ("admin",),
     "sla": ("admin",),
     "motivos_cancelamento": ("admin",),

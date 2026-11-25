@@ -30,7 +30,6 @@ MENU_SAIR = "Sair"
 
 # --- Lixeira (prompt 24) -------------------------------------------------------------------
 MENU_LIXEIRA = "Lixeira"
-MENU_FILA_EMAIL = "Fila de e-mails"
 MENU_ESPECIALIDADES = "Especialidades"
 MENU_SLA = "SLA (prazos)"
 MENU_MOTIVOS = "Motivos de cancelamento"

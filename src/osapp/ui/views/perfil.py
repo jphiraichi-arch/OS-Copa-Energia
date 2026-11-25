@@ -13,14 +13,7 @@ from osapp.ui import rotas, rotulos, textos, theme
 from osapp.ui.components import basicos
 from osapp.ui.views.aparelhos import SecaoAparelhos
 from osapp.ui.views.base import Tela
-from osapp.ui.views.notificacoes_email import SecaoEmail
 from osapp.ui.views.senha import cartao_alterar_senha
-
-
-def tem_secao_email(papel: str) -> bool:
-    """A seção 'Notificações por e-mail' (prompt 32): só manutenção e administrador.
-    Função pura (testada). O serviço recusa o papel usuario de qualquer forma."""
-    return papel in ("manutencao", "admin")
 
 
 def itens_do_perfil(papel: str) -> tuple[str, ...]:
@@ -37,7 +30,6 @@ def itens_do_perfil(papel: str) -> tuple[str, ...]:
             "sla",
             "motivos_cancelamento",
             "lixeira",
-            "fila_email",
             "nova_solicitacao",
         ]
     return (*itens, "sair")
@@ -48,7 +40,6 @@ _ENTRADAS = {
     "alterar_senha": (textos.MENU_ALTERAR_SENHA, ft.Icons.LOCK_RESET, rotas.ALTERAR_SENHA),
     "usuarios": (textos.MENU_USUARIOS, ft.Icons.GROUP_OUTLINED, rotas.USUARIOS),
     "lixeira": (textos.MENU_LIXEIRA, ft.Icons.DELETE_OUTLINE, rotas.LIXEIRA),
-    "fila_email": (textos.MENU_FILA_EMAIL, ft.Icons.OUTBOX_OUTLINED, rotas.FILA_EMAIL),
     "sla": (textos.MENU_SLA, ft.Icons.TIMER_OUTLINED, rotas.SLA),
     "motivos_cancelamento": (
         textos.MENU_MOTIVOS,
@@ -90,18 +81,13 @@ class Perfil(Tela):
             if linhas:
                 linhas.append(ft.Divider(height=1, thickness=1, color=theme.COR_CONTORNO))
             linhas.append(self._linha(rotulo, icone, rota))
-        self.secao_email = SecaoEmail(app) if tem_secao_email(sessao.papel) else None
         self.secao_aparelhos = SecaoAparelhos(app)  # prompt 35: todos os papéis
         controles: list[ft.Control] = [quem]
-        if self.secao_email is not None:
-            controles.append(self.secao_email.controle)
         controles.append(self.secao_aparelhos.controle)
         controles.append(basicos.cartao(ft.Column(linhas, spacing=0)))
         self.conteudo = basicos.coluna(controles, espaco=theme.ESPACO_M)
 
     async def carregar(self) -> None:
-        if self.secao_email is not None:
-            await self.secao_email.carregar()
         await self.secao_aparelhos.carregar()
 
     def _linha(self, rotulo: str, icone: ft.IconData, rota: str | None) -> ft.Control:

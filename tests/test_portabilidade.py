@@ -179,6 +179,7 @@ def test_saude_banco_inalcancavel_de_verdade(banco_vazio, monkeypatch):
 
 @pytest.fixture
 def admins(banco, monkeypatch):
+    monkeypatch.setenv("OS_EMAIL_HABILITADO", "1")  # prompt 46: alertas por e-mail ligados
     relogio_ = {"agora": T0}
     monkeypatch.setattr(relogio, "agora", lambda: relogio_["agora"])
     with sessao() as s:

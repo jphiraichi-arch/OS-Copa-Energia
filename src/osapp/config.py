@@ -51,6 +51,7 @@ VAR_SMTP_TLS = "OS_SMTP_TLS"
 VAR_BASE_URL = "OS_BASE_URL"
 VAR_EMAIL_MAX_TENTATIVAS = "OS_EMAIL_MAX_TENTATIVAS"
 VAR_ALERTAS = "OS_ALERTAS_EMAIL"
+VAR_EMAIL_HABILITADO = "OS_EMAIL_HABILITADO"
 VAR_GUIA = "OS_GUIA_ARQUIVO"
 VAR_AMBIENTE = "OS_AMBIENTE"
 GUIA_PADRAO = "docs/guia/guia.yaml"
@@ -251,6 +252,14 @@ def email_max_tentativas(padrao: int) -> int:
     if texto.isdigit() and int(texto) > 0:
         return int(texto)
     return padrao
+
+
+def email_habilitado() -> bool:
+    """OS_EMAIL_HABILITADO (prompt 46): '1' liga o e-mail. Padrão: desligado. Desligado, o
+    trabalhador da fila não sobe e nada entra em email_fila (avisos, códigos, alertas):
+    sem isso as linhas se acumulariam e sairiam todas atrasadas quando o e-mail voltasse.
+    Os erros graves continuam no log do servidor."""
+    return _texto(VAR_EMAIL_HABILITADO) == "1"
 
 
 def alertas_por_email() -> bool:

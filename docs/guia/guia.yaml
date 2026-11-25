@@ -152,15 +152,15 @@ telas:
       titulo: Perfil
       texto: |
         Seus dados e as opções da sua conta.
-        - **Notificações por e-mail**: cadastre e confirme o e-mail para receber avisos.
+        - **Alterar senha**: troque a sua senha quando quiser.
         - **Aparelhos conectados**: saia dos aparelhos lembrados.
         - **Sair** encerra a sessão neste aparelho.
     admin:
       titulo: Perfil
       texto: |
         Seus dados e a administração do sistema.
-        - **Usuários**, **Especialidades**, **SLA**, **Lixeira** e **Fila de e-mails**.
-        - **Notificações por e-mail** e **Aparelhos conectados**.
+        - **Usuários**, **Especialidades**, **SLA**, **Motivos de cancelamento** e **Lixeira**.
+        - **Aparelhos conectados**: saia dos aparelhos lembrados.
 
   alterar_senha:
     todos:
@@ -217,14 +217,6 @@ telas:
         O motivo da exclusão e quem excluiu.
         - **Restaurar** devolve a ordem à lista, como estava.
         - O histórico registra a exclusão e a restauração.
-
-  fila_email:
-    admin:
-      titulo: Fila de e-mails
-      texto: |
-        A situação dos e-mails do sistema.
-        - Veja quantos estão pendentes, enviados ou com falha.
-        - **Reenviar** tenta de novo um e-mail que falhou.
 
   especialidades:
     admin:

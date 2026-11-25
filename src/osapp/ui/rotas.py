@@ -17,7 +17,6 @@ RELATORIO_MENSAL = "/relatorios/mensal"
 PERFIL = "/perfil"
 ALTERAR_SENHA = "/perfil/senha"
 LIXEIRA = "/lixeira"
-FILA_EMAIL = "/perfil/fila-email"
 ESPECIALIDADES = "/perfil/especialidades"
 SLA = "/perfil/sla"
 MOTIVOS_CANCELAMENTO = "/perfil/motivos-cancelamento"
@@ -33,7 +32,6 @@ TABELA: dict[str, re.Pattern[str]] = {
     "usuario": re.compile(r"^/usuarios/(?P<usuario_id>[1-9]\d{0,17})$"),
     "perfil": re.compile(r"^/perfil$"),
     "alterar_senha": re.compile(r"^/perfil/senha$"),
-    "fila_email": re.compile(r"^/perfil/fila-email$"),
     "especialidades": re.compile(r"^/perfil/especialidades$"),
     "sla": re.compile(r"^/perfil/sla$"),
     "motivos_cancelamento": re.compile(r"^/perfil/motivos-cancelamento$"),
@@ -116,7 +114,6 @@ def rota_anterior(rota: str) -> str | None:
         "alterar_senha",
         "usuarios",
         "lixeira",
-        "fila_email",
         "especialidades",
     ):
         return PERFIL
@@ -141,7 +138,6 @@ def secao_da_rota(rota: str | None) -> str:
         "perfil",
         "configuracoes",
         "alterar_senha",
-        "fila_email",
         "especialidades",
         "sla",
         "motivos_cancelamento",

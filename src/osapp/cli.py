@@ -41,6 +41,10 @@ def _limpar_fila_email(_args) -> str:
 
 
 def _enviar_fila_email(_args) -> str:
+    from osapp import config
+
+    if not config.email_habilitado():  # prompt 46: nenhuma conexão com o servidor de e-mail
+        return "E-mail desligado (OS_EMAIL_HABILITADO diferente de 1): nada enviado."
     r = fila_email.processar_lote()
     if r.sem_config:
         return "E-mail não configurado (OS_SMTP_*): nada enviado."
