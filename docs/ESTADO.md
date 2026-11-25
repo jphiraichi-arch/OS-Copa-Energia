@@ -1545,3 +1545,27 @@ estão agora, não refeitas pelo histórico).
   navegador (Playwright, 390 e 1280 px, 0, 1 e 3 aparelhos): sem área cinza; 'Sair deste
   aparelho' remove a linha e o cartão encolhe.
 
+
+## Prompt 46 — versão final em Flet: e-mail escondido e versão fechada (25/11/2026)
+
+- Base: o ramo publicado (`d9bbae7`, prompt 43). Os prompts 44 e 45 (banco limpo) NÃO
+  estão nesta versão: o 44 está no ramo local `prompt-44-banco-limpo` (`d47617f`), o 45
+  não foi feito, e o reinício do banco não foi executado. Ver `docs/VERSAO_FLET_FINAL.md`.
+- E-mail escondido na interface: saíram a seção 'Notificações por e-mail' do Perfil, a
+  linha de e-mail e o cartão de notificações da tela de usuário, a tela e a rota 'Fila
+  de e-mails' (`ui/views/notificacoes_email.py` apagado; `/perfil/fila-email` virou rota
+  desconhecida e leva ao início). O guia rápido não fala mais de e-mail (`validar-guia`:
+  23 telas, todas com texto).
+- `OS_EMAIL_HABILITADO` (`config.email_habilitado`, padrão `0`): com `0`, `asgi.py` não
+  cria o trabalhador (uma linha INFO na partida), `enfileirar_nova_solicitacao` não grava,
+  `enviar_codigo` recusa (`MSG_EMAIL_DESLIGADO`), os alertas de erro grave ficam só no log
+  e `enviar-fila-email` não conecta. Listada em `.env.example` e `docs/CONFIGURACAO.md`.
+  O código de e-mail continua, com testes (com a variável em `1`).
+- Lacuna do prompt 22 corrigida (commit próprio): os serviços recusam quem tem troca de
+  senha pendente (`ErroTrocaDeSenhaPendente` em `auth.carregar_ator`), exceto trocar a
+  própria senha, 'lembrar de mim' e sair deste aparelho.
+- Testes: `tests/test_email_desligado.py` (nenhum texto da interface nem do guia fala de
+  e-mail; com 0: trabalhador não sobe, solicitação e alerta não gravam na fila, código
+  recusado, nenhuma conexão SMTP; com 1 a mesma solicitação grava),
+  `tests/test_senha_temporaria_servicos.py`. Saíram os 2 testes das telas de e-mail.
+- Versão fechada: tag anotada `v-flet-final` (local, não enviada).

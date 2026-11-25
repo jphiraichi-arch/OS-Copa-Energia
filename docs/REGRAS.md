@@ -196,6 +196,10 @@ de nova solicitação, abaixo), planos preventivos, estoque, exportação PDF/Ex
 
 ## Notificações por e-mail (prompt 32; substitui a regra do prompt 20 'sem e-mail')
 
+- **Prompt 46: escondido e desligado na versão Flet.** Nenhuma tela mostra e-mail;
+  `OS_EMAIL_HABILITADO` (padrão `0`) desliga o trabalhador e qualquer gravação em
+  `email_fila`. As regras abaixo valem quando o e-mail voltar (versão 2.0, API HTTPS).
+
 - E-mail só para **manutenção** e **administrador**, opcional e com consentimento (LGPD): o
   endereço é gravado só por ação do próprio usuário, serve só para estes avisos e o próprio
   usuário o remove ('Remover e-mail'). O papel usuario não tem campo de e-mail (o serviço
