@@ -9,3 +9,5 @@ __pycache__
 *.db
 tests
 docs
+# O guia rápido (prompt 39) é lido pelo app em produção.
+!docs/guia
