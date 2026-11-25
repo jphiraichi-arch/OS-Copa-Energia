@@ -162,6 +162,11 @@ Toda função de serviço começa por `carregar_ator`; usuário inativo é recus
 - Conteúdo centralizado com no máximo `theme.LARGURA_MAX_CONTEUDO` (1100 px); abaixo de
   `theme.LARGURA_CELULAR_MAX` (600 px), uma coluna.
 - A cor nunca é o único sinal: todo selo, pill, ponto e cartão selecionado tem texto.
+- Lists inside a card on a scrolling page are built as a Column without expand; the card
+  grows with its rows. A ListView is used only when it is the page's main scrolling area.
+  (Prompt 43.) E nunca um filho com `expand` dentro de `ft.Row(wrap=True)`: no Flet 1.1.2
+  ele vira um `Expanded` do Flutter dentro de um `Wrap`, e a compilação web de produção
+  desenha uma caixa cinza no lugar. Teste: `tests/test_aparelhos_card.py`.
 - Nenhuma cor fora de `theme.py`. Contraste de texto de no mínimo 4,5:1 (WCAG AA): todo par
   texto/fundo fica em `theme.PARES_TEXTO`, verificado com `theme.contraste()` em teste. Laranja
   (`COR_DESTAQUE`) nunca é cor de texto pequeno; nada de cinza ou azul claro em texto

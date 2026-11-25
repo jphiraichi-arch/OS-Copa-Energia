@@ -287,5 +287,5 @@ def test_linha_do_aparelho_marca_este():
     from osapp.ui.views.aparelhos import linha_do_aparelho
 
     a = sl.Aparelho("f", "Chrome em Android", T0, T0, T0)
-    assert linha_do_aparelho(a, True) == "Chrome em Android (este aparelho)"
-    assert linha_do_aparelho(a, False) == "Chrome em Android"
+    assert linha_do_aparelho(a, True).atual is True  # prompt 43: dados da linha
+    assert linha_do_aparelho(a, False).rotulo == "Chrome em Android"

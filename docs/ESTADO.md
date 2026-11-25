@@ -1517,3 +1517,31 @@ estão agora, não refeitas pelo histórico).
   docs/NUVEM.md, "Migrações"). O seed continua na inicialização. Teste:
   `test_inicializacao_sem_proxy_headers_do_uvicorn_e_sem_sqlite` confere que o script
   não chama o alembic.
+
+
+## Prompt 43 — hotfix: 'Aparelhos conectados' virava uma caixa cinza (25/11/2026)
+
+- Reproduzido localmente (SQLite, admin com 2 aparelhos lembrados; `listar_aparelhos`
+  devolvia 2): o cartão mostrava um retângulo cinza e nenhum aparelho. O console do
+  navegador não mostra erro (compilação web de produção); o log do servidor também não.
+- Causa: cada linha era `ft.Row(wrap=True)` com uma `ft.Column(expand=True)` dentro. No
+  Flet 1.1.2 a `Row` marca `host_expanded` mesmo com `wrap=True` (`row.py`, `init`), e o
+  cliente (`base_controls.dart`, `_expandable`) embrulha o filho com `expand` num
+  `Expanded`; com `wrap=True` o pai é um `Wrap` do Flutter, não um `Flex`. Confirmado:
+  só trocar `wrap=True` por `wrap=False` fez a linha aparecer.
+- `ui/views/aparelhos.py` refeito: `preparar` (função pura: mais recentes primeiro, 10 e
+  'Ver todos (N)', frase de vazio, marca do aparelho atual), `linha_do_aparelho` (devolve
+  `LinhaAparelho`), `tipo_do_aparelho` (ícone). Linhas numa `Column` simples, sem expand
+  e sem scroll; cada linha é uma `Row` sem wrap: ícone, rótulo com o selo 'Este
+  aparelho', 'Conectado em dd/mm/aaaa', 'Último uso dd/mm/aaaa HH:MM' e o botão 'Sair
+  deste aparelho' (48 px) embaixo. Um erro ao montar uma linha vai para o log e vira
+  'Não foi possível mostrar este aparelho.'. Nenhum serviço mudou.
+- Outras listas em cartões conferidas (varredura de código): visualizadores (texto em
+  `rotulo_valor`), Lixeira, usuários, itens e Histórico não têm `ListView` nem `expand`
+  dentro de `Row(wrap=True)` ou de `Column`; nenhuma mudou. Não há `ListView` no app.
+- REGRAS.md, 'Layout': a regra das listas em cartões.
+- Testes: `tests/test_aparelhos_card.py` (função pura com 0, 3 e 15 aparelhos; árvore do
+  cartão com 0, 1, 3 e 15; erro numa linha; varredura de todas as telas). Conferido no
+  navegador (Playwright, 390 e 1280 px, 0, 1 e 3 aparelhos): sem área cinza; 'Sair deste
+  aparelho' remove a linha e o cartão encolhe.
+
