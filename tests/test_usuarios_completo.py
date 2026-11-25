@@ -14,7 +14,12 @@ from osapp.db import sessao
 from osapp.models import Usuario, UsuarioEvento
 from osapp.services import administracao, notificacoes, ordens, relogio, senhas, usuarios
 from osapp.services.auth import autenticar
-from osapp.services.erros import ErroNaoEncontrado, ErroPermissao, ErroValidacao
+from osapp.services.erros import (
+    ErroNaoEncontrado,
+    ErroPermissao,
+    ErroTrocaDeSenhaPendente,
+    ErroValidacao,
+)
 from tests.conftest import config_alembic
 
 SENHA = "senha-ficticia-123"
@@ -77,14 +82,16 @@ def test_criar_mostra_a_senha_uma_vez_e_guarda_so_o_hash(p, caplog):
 
 
 def test_redefinir_gera_outra_senha_e_marca_troca(p, caplog):
+    with pytest.raises(ErroPermissao):  # manutenção não redefine senha de ninguém
+        usuarios.redefinir_senha(p["man"], p["usu"], 1)
     d = _dto(p, "man")
     with caplog.at_level(logging.DEBUG):
         gerada = usuarios.redefinir_senha(p["admin"], d.id, d.versao)
     assert gerada.senha_temporaria not in caplog.text
     assert gerada.usuario.deve_trocar_senha is True
     assert autenticar("mario.man", gerada.senha_temporaria).deve_trocar_senha is True
-    with pytest.raises(ErroPermissao):
-        usuarios.redefinir_senha(p["man"], p["usu"], 1)
+    with pytest.raises(ErroTrocaDeSenhaPendente):  # com senha temporária, só a troca
+        usuarios.listar_usuarios(p["man"])
 
 
 # --- Filiais permitidas --------------------------------------------------------------------

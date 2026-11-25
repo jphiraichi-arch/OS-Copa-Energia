@@ -31,6 +31,11 @@ class ErroMuitasTentativas(ErroAutenticacao):
     """
 
 
+class ErroTrocaDeSenhaPendente(ErroAutenticacao):
+    """O usuário ainda tem senha temporária: só pode trocá-la (ou sair). A interface já
+    leva para a troca; o serviço recusa o resto mesmo se a guarda for contornada."""
+
+
 class ErroPermissao(ErroDominio):
     def __init__(self) -> None:
         super().__init__("Operação não permitida.")

@@ -549,7 +549,7 @@ def redefinir_senha(ator_id: int, usuario_id: int, versao: int) -> SenhaGerada:
 
 def trocar_propria_senha(ator_id: int, senha_atual: str, senha_nova: str) -> None:
     """Qualquer usuário: confere a senha atual, aplica a regra e tira a troca obrigatória."""
-    ator = carregar_ator(ator_id)
+    ator = carregar_ator(ator_id, permitir_senha_temporaria=True)
     with sessao() as s:
         usuario = _carregar(s, ator.usuario_id)
         if not isinstance(senha_atual, str) or not senhas.verificar(

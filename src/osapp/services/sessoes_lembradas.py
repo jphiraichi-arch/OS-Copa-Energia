@@ -140,7 +140,7 @@ def _emitir(
 
 def lembrar(ator_id: int, user_agent: str | None) -> Emitido:
     """Depois de um login com a caixa marcada: nova família, válida por 7 dias."""
-    ator = carregar_ator(ator_id)
+    ator = carregar_ator(ator_id, permitir_senha_temporaria=True)
     with sessao() as s:
         agora = relogio.agora()
         emitido = _emitir(
@@ -252,7 +252,7 @@ def revogar_sessoes_lembradas(usuario_id: int, s: Session | None = None) -> int:
 
 def sair_deste_aparelho(ator_id: int, familia: object) -> None:
     """'Sair' num aparelho, ou 'Sair deste aparelho' na lista: só famílias do próprio."""
-    ator = carregar_ator(ator_id)
+    ator = carregar_ator(ator_id, permitir_senha_temporaria=True)
     if not isinstance(familia, str):
         return
     with sessao() as s:

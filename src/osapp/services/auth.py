@@ -15,7 +15,11 @@ from osapp.models import Usuario
 from osapp.models.tentativa_login import TIPO_IP, TIPO_LOGIN
 from osapp.repositories import UsuarioRepo
 from osapp.services import protecao_login, relogio, senhas
-from osapp.services.erros import ErroAutenticacao, ErroMuitasTentativas
+from osapp.services.erros import (
+    ErroAutenticacao,
+    ErroMuitasTentativas,
+    ErroTrocaDeSenhaPendente,
+)
 
 LOGIN_MAX = 50
 
@@ -145,10 +149,13 @@ def autenticar(login: str, senha: str, ip: str | None = None) -> Ator:
     return ator
 
 
-def carregar_ator(usuario_id: int) -> Ator:
+def carregar_ator(usuario_id: int, *, permitir_senha_temporaria: bool = False) -> Ator:
     """Recarrega o usuário do banco. Ausente ou inativo levanta ErroAutenticacao.
 
     Toda função de serviço começa por aqui: desativar um usuário vale imediatamente.
+    Com senha temporária (troca obrigatória pendente) levanta ErroTrocaDeSenhaPendente,
+    exceto nas funções que passam ``permitir_senha_temporaria=True``: trocar a própria
+    senha, 'lembrar de mim' no login e sair deste aparelho.
     """
     if isinstance(usuario_id, bool) or not isinstance(usuario_id, int):
         raise ErroAutenticacao()
@@ -157,4 +164,7 @@ def carregar_ator(usuario_id: int) -> Ator:
         if usuario is None or not usuario.ativo:
             logger.warning("Ator recusado: usuario_id=%s ausente ou inativo.", usuario_id)
             raise ErroAutenticacao()
+        if usuario.deve_trocar_senha and not permitir_senha_temporaria:
+            logger.warning("Ator recusado: usuario_id=%s com troca de senha pendente.", usuario_id)
+            raise ErroTrocaDeSenhaPendente()
         return _ator_de(usuario)
