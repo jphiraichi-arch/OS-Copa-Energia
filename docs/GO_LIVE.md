@@ -121,8 +121,9 @@ Lista completa e única: docs/CONFIGURACAO.md (e `.env.example`).
 - [ ] **Restauração testada**: restaurar um backup em um banco separado, subir o app
       apontando para ele e conferir que login, lista e detalhe de uma OS funcionam.
       Anotar a data do teste.
-- [ ] Antes de cada atualização do app: backup manual (as migrações rodam sozinhas ao
-      iniciar o contêiner, em `docker/iniciar.sh`).
+- [ ] Antes de cada atualização do app com migração nova: backup manual e, depois,
+      `alembic upgrade head` à mão (o contêiner não roda migrações; docs/NUVEM.md,
+      "Migrações").
 - [ ] Usuário do banco do app sem privilégios de superusuário.
 
 ## 5. Contas

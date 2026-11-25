@@ -414,8 +414,8 @@ não edita mais e o administrador edita, com a mudança no histórico; carlos (F
 - Extra `postgres` no `pyproject.toml` (`psycopg[binary]`); `config.normalizar_url_do_banco`
   aceita `postgres://` e `postgresql://`; conexões de rede usam `pool_pre_ping` e
   `pool_recycle`.
-- `Dockerfile`, `.dockerignore`, `docker/iniciar.sh` (migração, seed opcional, uvicorn com
-  um processo) e `render.yaml`. Guia em `docs/NUVEM.md`.
+- `Dockerfile`, `.dockerignore`, `docker/iniciar.sh` (migração [removida depois: veja
+  'Migrações manuais' no fim], seed opcional, uvicorn com um processo) e `render.yaml`. Guia em `docs/NUVEM.md`.
 - Verificado: a suíte inteira passa em SQLite e em PostgreSQL 16
   (`OS_TEST_DATABASE_URL`); a imagem foi construída e executada contra PostgreSQL, com
   login e criação de OS pelo navegador.
@@ -1505,3 +1505,15 @@ estão agora, não refeitas pelo histórico).
 - `preparar-piloto` passou a apagar também `os_visualizacoes`.
 - Testes: `tests/test_visualizacao.py` (concorrência no PostgreSQL com 8 threads: 1 linha,
   1 evento).
+
+
+## Correções depois do prompt 42 (25/11/2026)
+
+- Build no Render falhava (`"/docs/guia": not found`): o `.dockerignore` excluía `docs`
+  inteiro. Agora `!docs/guia`; `tests/test_imagem_docker.py` confere que toda origem de
+  `COPY` do Dockerfile existe e entra no contexto do build.
+- **Migrações manuais:** `docker/iniciar.sh` não roda mais `alembic upgrade head`. O
+  responsável roda a migração à mão, depois de um backup e antes do push (ordem em
+  docs/NUVEM.md, "Migrações"). O seed continua na inicialização. Teste:
+  `test_inicializacao_sem_proxy_headers_do_uvicorn_e_sem_sqlite` confere que o script
+  não chama o alembic.

@@ -39,9 +39,11 @@ Os limites mudam com frequência: confira as páginas oficiais antes de depender
      app não inicia.
    - `OS_PROXIES_CONFIAVEIS`: não precisa no Render (o padrão `10.0.0.0/8` cobre a rede
      interna); veja `docs/GO_LIVE.md`.
-4. Confirme. O Render constrói a imagem (`Dockerfile`), e o contêiner, ao iniciar, roda
-   `alembic upgrade head`, o seed (se `OS_SEED_SENHA` existir) e o servidor.
-5. Abra o endereço mostrado pelo Render e entre com `admin` e a senha do passo 3.
+4. Antes da primeira implantação, crie as tabelas no seu computador, apontando para o
+   banco: `OS_DATABASE_URL='<url do Neon>' alembic upgrade head`.
+5. Confirme. O Render constrói a imagem (`Dockerfile`), e o contêiner, ao iniciar, roda
+   o seed (se `OS_SEED_SENHA` existir) e o servidor. Ele **não** roda migrações.
+6. Abra o endereço mostrado pelo Render e entre com `admin` e a senha do passo 3.
 
 ## Depois de publicar
 
@@ -51,16 +53,29 @@ Os limites mudam com frequência: confira as páginas oficiais antes de depender
   `pip install -e '.[postgres]'`).
 - **Remover os usuários fictícios:** apague `OS_SEED_SENHA` no painel e desative-os com
   `python -m osapp.cli desativar-usuario --login marina.teste` (e os demais).
-- **Atualizações:** cada push no ramo publicado gera uma nova implantação; as migrações
-  rodam sozinhas na inicialização.
+- **Atualizações:** cada push no ramo publicado gera uma nova implantação. As migrações
+  não rodam sozinhas: veja a seção seguinte.
 
-## Migração e seed na inicialização
+## Migrações
 
-O contêiner roda `alembic upgrade head` e o seed a cada início (`docker/iniciar.sh`). O
-comando de pré-implantação (*pre-deploy*) do Render, que rodaria a migração uma única vez,
-só existe em serviços pagos. No plano gratuito, uma trava consultiva do PostgreSQL
-(`db.trava_de_inicializacao`) garante que, se duas instâncias subirem juntas, uma espere a
-outra terminar. Ao passar para um plano pago, a migração pode ir para o pre-deploy.
+O contêiner **não** roda `alembic upgrade head` (`docker/iniciar.sh`): as migrações são
+feitas à mão pelo responsável, depois de um backup. Quando uma atualização traz migração
+nova (pasta `migrations/versions`), a ordem é:
+
+1. Backup do banco (docs/BACKUP.md).
+2. No seu computador, na versão nova do código e apontando para o banco:
+   `OS_DATABASE_URL='<url do Neon>' alembic upgrade head`; depois `alembic current` deve
+   mostrar a última revisão.
+3. Logo em seguida, push no ramo publicado (a implantação). Entre os passos 2 e 3 o
+   código antigo roda sobre o esquema novo: uma coluna nova obrigatória sem valor padrão
+   faria o código antigo falhar ao gravar. Por isso faça os passos 2 e 3 juntos, fora do
+   horário de uso.
+
+Para voltar uma migração: `alembic downgrade -1` (toda migração tem downgrade testado).
+
+O seed continua na inicialização (se `OS_SEED_SENHA` existir). Uma trava consultiva do
+PostgreSQL (`db.trava_de_inicializacao`) garante que, se duas instâncias subirem juntas,
+uma espere a outra terminar o seed.
 
 > **Atenção: use o endereço direto do banco, não o *pooler*.** A trava de inicialização é
 > uma trava de sessão do PostgreSQL e precisa de uma conexão direta. No Neon, o endereço

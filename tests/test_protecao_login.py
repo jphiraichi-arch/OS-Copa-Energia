@@ -473,7 +473,10 @@ def test_inicializacao_sem_proxy_headers_do_uvicorn_e_sem_sqlite():
     assert "--no-proxy-headers" in script and "--no-access-log" in script
     assert "forwarded-allow-ips" not in script
     assert subprocess.run(["sh", "-n", str(RAIZ / "docker" / "iniciar.sh")]).returncode == 0
-    # Com SQLite o contêiner para antes de migrar.
+    # As migrações são manuais (depois de um backup): o contêiner nunca as roda.
+    comandos = [linha for linha in script.splitlines() if not linha.lstrip().startswith("#")]
+    assert not any("alembic" in linha for linha in comandos)
+    # Com SQLite o contêiner para antes de subir.
     resultado = subprocess.run(
         ["sh", str(RAIZ / "docker" / "iniciar.sh")],
         env={"OS_DATABASE_URL": "sqlite:///x.db", "PATH": "/usr/bin:/bin"},
